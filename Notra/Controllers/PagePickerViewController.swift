@@ -104,8 +104,8 @@ extension PagePickerViewController: UITableViewDelegate, UITableViewDataSource {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         viewModel.selectPage(at: indexPath.row)
-        let setupComplete = SetupCompleteViewController()
-        navigationController?.pushViewController(setupComplete, animated: true)
+        let roleAssignmentVC = DatabaseRoleAssignmentViewController()
+        navigationController?.pushViewController(roleAssignmentVC, animated: true)
     }
 }
 

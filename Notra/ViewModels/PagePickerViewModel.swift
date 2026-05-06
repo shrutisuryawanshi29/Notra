@@ -43,5 +43,6 @@ final class PagePickerViewModel {
         let page = pages[index]
         UserDefaultsManager.shared.selectedPageId = page.id
         UserDefaultsManager.shared.selectedPageTitle = page.title
+        SessionCacheManager.shared.selectedPage = (id: page.id, title: page.title)
     }
 }

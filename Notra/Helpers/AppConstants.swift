@@ -16,5 +16,8 @@ struct AppConstants {
         static let notionToken = "notionToken"
         static let selectedPageId = "selectedPageId"
         static let selectedPageTitle = "selectedPageTitle"
+        static let databaseMappings = "databaseMappings"
+        static let columnMappings = "columnMappings"
+        static let categoryValues = "categoryValues"
     }
 }
