@@ -17,12 +17,4 @@ struct AppConstants {
         static let selectedPageId = "selectedPageId"
         static let selectedPageTitle = "selectedPageTitle"
     }
-
-    struct Storyboard {
-        static let mainStoryboard = "Main"
-    }
-
-    struct Debug {
-        static let enabled = true
-    }
 }

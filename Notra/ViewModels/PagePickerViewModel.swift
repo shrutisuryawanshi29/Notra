@@ -43,10 +43,5 @@ final class PagePickerViewModel {
         let page = pages[index]
         UserDefaultsManager.shared.selectedPageId = page.id
         UserDefaultsManager.shared.selectedPageTitle = page.title
-
-        if AppConstants.Debug.enabled {
-            print("[PagePickerViewModel] Selected page ID: \(page.id)")
-            print("[PagePickerViewModel] Selected page title: \(page.title)")
-        }
     }
 }

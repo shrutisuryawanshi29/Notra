@@ -21,12 +21,12 @@ final class TokenEntryViewModel {
             return
         }
 
-        UserDefaultsManager.shared.notionToken = trimmedToken
-
-        if AppConstants.Debug.enabled {
-            print("[TokenEntryViewModel] Token saved successfully")
+        guard trimmedToken.hasPrefix("secret_") else {
+            delegate?.tokenEntryDidFailValidation("Invalid token format. Token should start with 'secret_'.")
+            return
         }
 
+        UserDefaultsManager.shared.notionToken = trimmedToken
         delegate?.tokenEntryDidSave()
     }
 }

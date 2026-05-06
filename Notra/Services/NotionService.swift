@@ -46,8 +46,7 @@ final class NotionService {
             return
         }
 
-        let urlString = baseURL + AppConstants.API.searchEndpoint
-        guard let url = URL(string: urlString) else {
+        guard let url = URL(string: baseURL + AppConstants.API.searchEndpoint) else {
             completion(.failure(.invalidResponse))
             return
         }
@@ -57,86 +56,40 @@ final class NotionService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(notionVersion, forHTTPHeaderField: "Notion-Version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["filter": ["property": "object", "value": "page"]])
 
-        let body: [String: Any] = [
-            "filter": [
-                "property": "object",
-                "value": "page"
-            ]
-        ]
-
-        do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        } catch {
-            completion(.failure(.networkError(error)))
-            return
-        }
-
-        if AppConstants.Debug.enabled {
-            print("[NotionService] API request started - fetching pages")
-        }
-
-        let task = session.dataTask(with: request) { data, response, error in
+        session.dataTask(with: request) { data, response, error in
             if let error = error {
-                if AppConstants.Debug.enabled {
-                    print("[NotionService] Network error: \(error.localizedDescription)")
-                }
-                DispatchQueue.main.async {
-                    completion(.failure(.networkError(error)))
-                }
+                DispatchQueue.main.async { completion(.failure(.networkError(error))) }
                 return
             }
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                DispatchQueue.main.async {
-                    completion(.failure(.invalidResponse))
-                }
+                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
                 return
             }
 
             if httpResponse.statusCode == 401 {
-                if AppConstants.Debug.enabled {
-                    print("[NotionService] Invalid token - 401 status")
-                }
-                DispatchQueue.main.async {
-                    completion(.failure(.invalidToken))
-                }
+                DispatchQueue.main.async { completion(.failure(.invalidToken)) }
                 return
             }
 
             if httpResponse.statusCode != 200 {
-                let message = "Status code: \(httpResponse.statusCode)"
-                if AppConstants.Debug.enabled {
-                    print("[NotionService] API error: \(message)")
-                }
-                DispatchQueue.main.async {
-                    completion(.failure(.apiError(message)))
-                }
+                DispatchQueue.main.async { completion(.failure(.apiError("Status: \(httpResponse.statusCode)"))) }
                 return
             }
 
             guard let data = data else {
-                DispatchQueue.main.async {
-                    completion(.failure(.invalidResponse))
-                }
+                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
                 return
             }
 
-do {
-                let decoder = JSONDecoder()
-                let searchResponse = try decoder.decode(NotionSearchResponse.self, from: data)
+            do {
+                let searchResponse = try JSONDecoder().decode(NotionSearchResponse.self, from: data)
 
-                if AppConstants.Debug.enabled {
-                    print("[NotionService] Total results: \(searchResponse.results.count)")
-                }
-
-let topLevelPages = searchResponse.results.filter { page in
-                    return page.parent.type == "workspace" && page.parent.workspace == true
-                }.sorted { $0.title.lowercased() < $1.title.lowercased() }
-
-                if AppConstants.Debug.enabled {
-                    print("[NotionService] Top-level pages after filtering: \(topLevelPages.count)")
-                }
+                let topLevelPages = searchResponse.results
+                    .filter { $0.parent.type == "workspace" && $0.parent.workspace == true }
+                    .sorted { $0.title.lowercased() < $1.title.lowercased() }
 
                 DispatchQueue.main.async {
                     if topLevelPages.isEmpty {
@@ -146,15 +99,8 @@ let topLevelPages = searchResponse.results.filter { page in
                     }
                 }
             } catch {
-                if AppConstants.Debug.enabled {
-                    print("[NotionService] Decoding error: \(error.localizedDescription)")
-                }
-                DispatchQueue.main.async {
-                    completion(.failure(.decodingError(error)))
-                }
+                DispatchQueue.main.async { completion(.failure(.decodingError(error))) }
             }
-        }
-
-        task.resume()
+        }.resume()
     }
 }
