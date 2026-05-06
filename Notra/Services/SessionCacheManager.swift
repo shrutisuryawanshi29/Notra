@@ -13,6 +13,173 @@ final class SessionCacheManager {
 
     private init() {}
 
+    // MARK: - Transaction Cache
+
+    private var expenses: [NormalizedTransaction] {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return cache["expenses"] as? [NormalizedTransaction] ?? []
+        }
+        set {
+            lock.lock()
+            cache["expenses"] = newValue
+            lock.unlock()
+            print("[SessionCache] Expense cache count: \(newValue.count)")
+        }
+    }
+
+    private var incomes: [NormalizedTransaction] {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return cache["incomes"] as? [NormalizedTransaction] ?? []
+        }
+        set {
+            lock.lock()
+            cache["incomes"] = newValue
+            lock.unlock()
+            print("[SessionCache] Income cache count: \(newValue.count)")
+        }
+    }
+
+    private var expenseSections: [GroupedTransactionSection] {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return cache["expenseSections"] as? [GroupedTransactionSection] ?? []
+        }
+        set {
+            lock.lock()
+            cache["expenseSections"] = newValue
+            lock.unlock()
+            print("[SessionCache] Grouped expense section count: \(newValue.count)")
+        }
+    }
+
+    private var incomeSections: [GroupedTransactionSection] {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return cache["incomeSections"] as? [GroupedTransactionSection] ?? []
+        }
+        set {
+            lock.lock()
+            cache["incomeSections"] = newValue
+            lock.unlock()
+            print("[SessionCache] Grouped income section count: \(newValue.count)")
+        }
+    }
+
+    private var fetchedMonths: [MonthMetadata] {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return cache["fetchedMonths"] as? [MonthMetadata] ?? []
+        }
+        set {
+            lock.lock()
+            cache["fetchedMonths"] = newValue
+            lock.unlock()
+        }
+    }
+
+    // MARK: - Public Accessors
+
+    var allExpenses: [NormalizedTransaction] {
+        return expenses
+    }
+
+    var allIncomes: [NormalizedTransaction] {
+        return incomes
+    }
+
+    var groupedExpenses: [GroupedTransactionSection] {
+        return expenseSections
+    }
+
+    var groupedIncomes: [GroupedTransactionSection] {
+        return incomeSections
+    }
+
+    // MARK: - Cache Population
+
+    func populateCache(expenses: [NormalizedTransaction], incomes: [NormalizedTransaction]) {
+        print("[SessionCache] Cache population started")
+        self.expenses = expenses
+        self.incomes = incomes
+        self.expenseSections = groupTransactionsByDate(expenses)
+        self.incomeSections = groupTransactionsByDate(incomes)
+        print("[SessionCache] Cache population complete")
+    }
+
+    func setFetchedMonths(_ months: [MonthMetadata]) {
+        self.fetchedMonths = months
+    }
+
+    func getFetchedMonths() -> [MonthMetadata] {
+        return fetchedMonths
+    }
+
+    // MARK: - Grouping
+
+    private func groupTransactionsByDate(_ transactions: [NormalizedTransaction]) -> [GroupedTransactionSection] {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+
+        let displayFormatter = DateFormatter()
+        displayFormatter.dateStyle = .medium
+
+        let monthYearFormatter = DateFormatter()
+        monthYearFormatter.dateFormat = "MMMM yyyy"
+
+        var grouped: [String: [NormalizedTransaction]] = [:]
+
+        for transaction in transactions {
+            let key = dateFormatter.string(from: transaction.date)
+            if grouped[key] == nil {
+                grouped[key] = []
+            }
+            grouped[key]?.append(transaction)
+        }
+
+        var sections: [GroupedTransactionSection] = []
+
+        for (dateKey, txns) in grouped.sorted(by: { $0.key > $1.key }) {
+            if let date = dateFormatter.date(from: dateKey) {
+                let section = GroupedTransactionSection(
+                    date: dateKey,
+                    displayDate: displayFormatter.string(from: date),
+                    transactions: txns.sorted { $0.amount > $1.amount },
+                    totalAmount: txns.reduce(0) { $0 + $1.amount }
+                )
+                sections.append(section)
+            }
+        }
+
+        return sections
+    }
+
+    // MARK: - Cache Status
+
+    var hasExpenses: Bool {
+        return !expenses.isEmpty
+    }
+
+    var hasIncomes: Bool {
+        return !incomes.isEmpty
+    }
+
+    var isCachePopulated: Bool {
+        return hasExpenses || hasIncomes
+    }
+
+    func getTransactionSummary() -> String {
+        let expenseTotal = expenses.reduce(0) { $0 + $1.amount }
+        let incomeTotal = incomes.reduce(0) { $0 + $1.amount }
+        return "Expenses: \(expenses.count) (Total: $\(String(format: "%.2f", expenseTotal)))\nIncomes: \(incomes.count) (Total: $\(String(format: "%.2f", incomeTotal)))"
+    }
+
     var selectedPage: (id: String, title: String)? {
         get {
             lock.lock()

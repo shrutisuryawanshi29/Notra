@@ -56,6 +56,10 @@ final class ColumnMappingViewModel {
     }
 
     func setMapping(for field: ColumnField, columnName: String?) {
+        if field == .category, let columnName = columnName {
+            columnMapping.categoryRelationDatabaseId = database.properties[columnName]?.relationDatabaseId
+        }
+
         switch field {
         case .title:
             columnMapping.titleColumn = columnName

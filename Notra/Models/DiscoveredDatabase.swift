@@ -15,6 +15,7 @@ struct DiscoveredDatabase: Codable, Identifiable {
     struct DatabaseProperty: Codable {
         let name: String
         let type: String
+        var relationDatabaseId: String?  // For relation type, stores target database ID
     }
 }
 
@@ -35,5 +36,6 @@ struct ColumnMapping: Codable {
     var titleColumn: String?
     var amountColumn: String?
     var categoryColumn: String?
+    var categoryRelationDatabaseId: String?  // Target database ID if category is relation
     var dateColumn: String?
 }

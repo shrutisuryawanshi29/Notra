@@ -159,7 +159,7 @@ extension ColumnMappingViewController: ColumnMappingViewModelDelegate {
         } else if let pending = pendingIncome {
             showColumnMappingForDatabase(pending)
         } else {
-            showCompletionAlert()
+            navigateToDashboard()
         }
     }
 
@@ -201,7 +201,11 @@ extension ColumnMappingViewController: ColumnMappingViewModelDelegate {
                 var dbProperties: [String: DiscoveredDatabase.DatabaseProperty] = [:]
                 for (propName, propValue) in properties {
                     if let prop = propValue as? [String: Any], let propType = prop["type"] as? String {
-                        dbProperties[propName] = DiscoveredDatabase.DatabaseProperty(name: propName, type: propType)
+                        var relationDatabaseId: String? = nil
+                        if propType == "relation", let relationConfig = prop["relation"] as? [String: Any] {
+                            relationDatabaseId = relationConfig["data_source_id"] as? String
+                        }
+                        dbProperties[propName] = DiscoveredDatabase.DatabaseProperty(name: propName, type: propType, relationDatabaseId: relationDatabaseId)
                     }
                 }
                 
@@ -225,16 +229,10 @@ extension ColumnMappingViewController: ColumnMappingViewModelDelegate {
         present(alert, animated: true)
     }
 
-    private func showCompletionAlert() {
-        let mappings = ColumnMappingService.shared.loadDatabaseMappings()
-        let count = mappings.count
-        let message = "\(count) database(s) configured. Ready for Phase 3."
-        
-        let alert = UIAlertController(title: "Setup Complete", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Done", style: .default) { [weak self] _ in
-            self?.navigationController?.popToRootViewController(animated: true)
-        })
-        present(alert, animated: true)
+    private func navigateToDashboard() {
+        guard let token = UserDefaultsManager.shared.notionToken else { return }
+        let dashboardVC = DashboardViewController(token: token)
+        navigationController?.setViewControllers([dashboardVC], animated: true)
     }
 }
 

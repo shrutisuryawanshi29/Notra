@@ -60,12 +60,14 @@ class SetupCompleteViewController: UIViewController {
     }
 
     @objc private func continueLaterButtonTapped() {
-        let alert = UIAlertController(
-            title: "Setup Complete",
-            message: "Your Notion workspace is connected. More features coming soon!",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
+        guard let token = UserDefaultsManager.shared.notionToken else {
+            let alert = UIAlertController(title: "Error", message: "No token found", preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
+            return
+        }
+
+        let dashboardVC = DashboardViewController(token: token)
+        navigationController?.setViewControllers([dashboardVC], animated: true)
     }
 }

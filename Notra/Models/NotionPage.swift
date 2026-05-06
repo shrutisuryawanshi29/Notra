@@ -108,6 +108,48 @@ struct NotionPropertyValue: Codable {
     let type: String?
     let title: [NotionRichText]?
     let richText: [NotionRichText]?
+    let number: Double?
+    let select: NotionSelect?
+    let multiSelect: [NotionSelect]?
+    let date: NotionDate?
+    let checkbox: Bool?
+    let url: String?
+    let email: String?
+    let phoneNumber: String?
+    let people: [NotionPerson]?
+    let files: [NotionFileValue]?
+    let relation: [NotionRelation]?
+    let rollup: NotionRollup?
+}
+
+struct NotionSelect: Codable {
+    let name: String?
+}
+
+struct NotionPerson: Codable {
+    let id: String?
+    let name: String?
+}
+
+struct NotionFileValue: Codable {
+    let name: String?
+    let file: NotionFile?
+    let external: NotionExternal?
+}
+
+struct NotionRelation: Codable {
+    let id: String?
+}
+
+struct NotionRollup: Codable {
+    let type: String?
+    let number: Double?
+    let array: [NotionPropertyValue]?
+}
+
+struct NotionDate: Codable {
+    let start: String?
+    let end: String?
 }
 
 struct NotionRichText: Codable {
