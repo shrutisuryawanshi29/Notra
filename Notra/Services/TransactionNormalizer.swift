@@ -9,7 +9,6 @@ final class TransactionNormalizer {
     static let shared = TransactionNormalizer()
 
     private var token: String = ""
-    private var relationCache: [String: [String]] = [:]
     private var relationLookupMap: [String: [String: String]] = [:]  // [relationDbId: [pageId: title]]
 
     private init() {}
@@ -30,8 +29,6 @@ final class TransactionNormalizer {
         }
 
         print("[DEBUG] Normalizing \(rows.count) rows, mapping: title=\(columnMapping.titleColumn ?? "nil"), amount=\(columnMapping.amountColumn ?? "nil"), category=\(columnMapping.categoryColumn ?? "nil"), date=\(columnMapping.dateColumn ?? "nil")")
-
-        relationCache.removeAll()
 
         var transactions: [NormalizedTransaction] = []
         let group = DispatchGroup()
@@ -114,8 +111,6 @@ final class TransactionNormalizer {
         }
 
         print("[DEBUG] Normalizing \(rows.count) rows, mapping: title=\(columnMapping.titleColumn ?? "nil"), amount=\(columnMapping.amountColumn ?? "nil"), category=\(columnMapping.categoryColumn ?? "nil"), date=\(columnMapping.dateColumn ?? "nil")")
-
-        relationCache.removeAll()
 
         var transactions: [NormalizedTransaction] = []
 
