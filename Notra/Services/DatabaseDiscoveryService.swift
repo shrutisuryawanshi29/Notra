@@ -45,6 +45,7 @@ final class DatabaseDiscoveryService {
                 self.fetchDatabaseSchemas(databases: databases, token: token) { databasesWithProps in
                     DispatchQueue.main.async {
                         if self.debug { print("[DatabaseDiscovery] Total: \(databasesWithProps.count)") }
+                        SessionCacheManager.shared.saveDiscoveredDatabases(databasesWithProps)
                         completion(.success(databasesWithProps))
                     }
                 }
@@ -123,7 +124,11 @@ final class DatabaseDiscoveryService {
                 var dbProperties: [String: DiscoveredDatabase.DatabaseProperty] = [:]
                 for (propName, propValue) in properties {
                     if let prop = propValue as? [String: Any], let propType = prop["type"] as? String {
-                        dbProperties[propName] = DiscoveredDatabase.DatabaseProperty(name: propName, type: propType)
+                        var relationDbId: String? = nil
+                        if propType == "relation", let relationConfig = prop["relation"] as? [String: Any] {
+                            relationDbId = relationConfig["data_source_id"] as? String
+                        }
+                        dbProperties[propName] = DiscoveredDatabase.DatabaseProperty(name: propName, type: propType, relationDataSourceId: relationDbId)
                     }
                 }
                 
@@ -141,7 +146,7 @@ final class DatabaseDiscoveryService {
                 )
             }.resume()
         }
-        
+
         group.notify(queue: .main) { completion(result) }
     }
 }

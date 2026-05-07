@@ -48,15 +48,22 @@ final class TransactionNormalizer {
 
             if isRelation, let relation = prop?.relation, !relation.isEmpty {
                 let relationIds = relation.compactMap { $0.id }
-                let relationDbId = columnMapping.categoryRelationDatabaseId ?? ""
+                let relationDbId = columnMapping.categoryRelationDataSourceId ?? ""
+
+                print("[DEBUG] Relation: IDs=\(relationIds), targetDb=\(relationDbId)")
+                print("[DEBUG] Relation lookup map has \(relationLookupMap.count) databases")
 
                 var categoryNames: [String] = []
                 if let dbLookup = relationLookupMap[relationDbId] {
+                    print("[DEBUG] Found lookup for DB \(relationDbId) with \(dbLookup.count) items")
                     for relationId in relationIds {
                         if let name = dbLookup[relationId] {
+                            print("[DEBUG] Found category: \(name) for ID: \(relationId)")
                             categoryNames.append(name)
                         }
                     }
+                } else {
+                    print("[DEBUG] NO lookup found for DB: \(relationDbId)")
                 }
 
                 let category = categoryNames.isEmpty ? nil : categoryNames.joined(separator: ", ")

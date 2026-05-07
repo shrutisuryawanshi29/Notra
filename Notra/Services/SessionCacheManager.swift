@@ -269,18 +269,87 @@ final class SessionCacheManager {
 
         var summary = "Session Cache:\n"
         summary += "- Databases configured: \(mappings.count)\n"
-        
+
         let expenseCount = mappings.values.filter { $0.role == .expense }.count
         let incomeCount = mappings.values.filter { $0.role == .income }.count
         summary += "- Expense DBs: \(expenseCount)\n"
         summary += "- Income DBs: \(incomeCount)\n"
-        
+
         var totalCategories = 0
         for (_, cats) in categories {
             totalCategories += cats.count
         }
         summary += "- Total categories: \(totalCategories)\n"
-        
+
         return summary
+    }
+
+    // MARK: - Discovered Databases Cache
+
+    func saveDiscoveredDatabases(_ databases: [DiscoveredDatabase]) {
+        lock.lock()
+        var dbCache: [String: [String: String]] = [:]  // [dbId: [pageId: title]]
+        for db in databases {
+            dbCache[db.id] = ["__title__": db.title, "__properties__": ""]
+        }
+        cache["discoveredDatabases"] = dbCache
+        lock.unlock()
+        print("[SessionCache] Saved \(databases.count) discovered databases")
+    }
+
+    func saveRelationTargetData(databaseId: String, rows: [NotionPage]) {
+        lock.lock()
+        var relationData = cache["relationData"] as? [String: [String: String]] ?? [:]
+        var lookup: [String: String] = [:]
+        for row in rows {
+            let title = row.title.isEmpty ? String(row.id.prefix(8)) : row.title
+            lookup[row.id] = title
+        }
+        relationData[databaseId] = lookup
+        cache["relationData"] = relationData
+        lock.unlock()
+        print("[SessionCache] Cached \(lookup.count) rows for relation DB: \(databaseId)")
+    }
+
+    func getRelationTargetData(databaseId: String) -> [String: String]? {
+        lock.lock()
+        defer { lock.unlock() }
+        let relationData = cache["relationData"] as? [String: [String: String]] ?? [:]
+        if let data = relationData[databaseId] {
+            print("[SessionCache] Found cached data for relation DB: \(databaseId) with \(data.count) items")
+            return data
+        }
+        print("[SessionCache] No cached data for relation DB: \(databaseId)")
+        return nil
+    }
+
+    func isRelationTargetCached(databaseId: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let relationData = cache["relationData"] as? [String: [String: String]] ?? [:]
+        return relationData[databaseId] != nil
+    }
+
+    // MARK: - Category Lookup (for relation-based categories)
+
+    func setCategoryLookup(for dataSourceId: String, lookup: [String: String]) {
+        lock.lock()
+        var categoryLookups = cache["categoryLookups"] as? [String: [String: String]] ?? [:]
+        categoryLookups[dataSourceId] = lookup
+        cache["categoryLookups"] = categoryLookups
+        lock.unlock()
+        print("[SessionCache] Cached \(lookup.count) category entries for data source: \(dataSourceId)")
+    }
+
+    func getCategoryLookup(for dataSourceId: String) -> [String: String]? {
+        lock.lock()
+        defer { lock.unlock() }
+        let categoryLookups = cache["categoryLookups"] as? [String: [String: String]] ?? [:]
+        if let lookup = categoryLookups[dataSourceId] {
+            print("[SessionCache] Cache HIT for category lookup: \(dataSourceId) with \(lookup.count) entries")
+            return lookup
+        }
+        print("[SessionCache] Cache MISS for category lookup: \(dataSourceId)")
+        return nil
     }
 }

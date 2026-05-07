@@ -18,6 +18,7 @@ final class DashboardViewModel {
     private let columnMappingService = ColumnMappingService.shared
     private let dataFetcher = NotionDataFetcher.shared
     private let normalizer = TransactionNormalizer.shared
+    private let notionService = NotionService.shared
 
     private var expenseMappings: [DatabaseMappingData] = []
     private var incomeMappings: [DatabaseMappingData] = []
@@ -53,44 +54,60 @@ final class DashboardViewModel {
         }
     }
 
-    private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
-        var relationDatabaseIds: Set<String> = []
+private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
+        var relationDataSourceIds: Set<String> = []
 
         for mapping in expenseMappings {
-            if let relationDbId = mapping.columnMapping?.categoryRelationDatabaseId {
-                relationDatabaseIds.insert(relationDbId)
+            if let relationDataSourceId = mapping.columnMapping?.categoryRelationDataSourceId {
+                print("[DashboardViewModel] Found relation data source for expense: \(relationDataSourceId)")
+                relationDataSourceIds.insert(relationDataSourceId)
             }
         }
 
         for mapping in incomeMappings {
-            if let relationDbId = mapping.columnMapping?.categoryRelationDatabaseId {
-                relationDatabaseIds.insert(relationDbId)
+            if let relationDataSourceId = mapping.columnMapping?.categoryRelationDataSourceId {
+                print("[DashboardViewModel] Found relation data source for income: \(relationDataSourceId)")
+                relationDataSourceIds.insert(relationDataSourceId)
             }
         }
 
-        if relationDatabaseIds.isEmpty {
-            print("[DashboardViewModel] No relation target databases found")
+        print("[DashboardViewModel] Total relation data sources to fetch: \(relationDataSourceIds.count)")
+
+        if relationDataSourceIds.isEmpty {
+            print("[DashboardViewModel] No relation target data sources found")
             completion()
             return
         }
 
-        print("[DashboardViewModel] Fetching \(relationDatabaseIds.count) relation target databases")
-
         let group = DispatchGroup()
 
-        for dbId in relationDatabaseIds {
+        for dsId in relationDataSourceIds {
             group.enter()
-            dataFetcher.fetchAllRows(databaseId: dbId, token: token) { [weak self] result in
-                defer { group.leave() }
 
-                if case .success(let rows) = result {
-                    var lookup: [String: String] = [:]
-                    for row in rows {
-                        let title = row.title.isEmpty ? String(row.id.prefix(8)) : row.title
-                        lookup[row.id] = title
+            if let cachedData = SessionCacheManager.shared.getCategoryLookup(for: dsId) {
+                relationLookupMap[dsId] = cachedData
+                print("[DashboardViewModel] Using cached category lookup for data source: \(dsId)")
+                group.leave()
+            } else {
+                print("[DashboardViewModel] Cache miss, fetching category data source: \(dsId)")
+                print("[DashboardViewModel] Calling queryDataSource for: \(dsId)")
+                notionService.queryDataSource(dataSourceId: dsId, token: token) { [weak self] result in
+                    defer { group.leave() }
+
+                    switch result {
+                    case .success(let pages):
+                        var lookup: [String: String] = [:]
+                        for page in pages {
+                            let extractedTitle = self?.extractTitle(from: page) ?? String(page.id.prefix(8))
+                            print("[DashboardViewModel] Page ID: \(page.id), Extracted title: \(extractedTitle)")
+                            lookup[page.id] = extractedTitle
+                        }
+                        self?.relationLookupMap[dsId] = lookup
+                        SessionCacheManager.shared.setCategoryLookup(for: dsId, lookup: lookup)
+                        print("[DashboardViewModel] Fetched and cached \(lookup.count) items for data source: \(dsId)")
+                    case .failure(let error):
+                        print("[DashboardViewModel] FAILED to fetch data source \(dsId): \(error.localizedDescription)")
                     }
-                    self?.relationLookupMap[dbId] = lookup
-                    print("[DashboardViewModel] Cached \(lookup.count) items for relation DB: \(dbId)")
                 }
             }
         }
@@ -197,5 +214,23 @@ final class DashboardViewModel {
 
     func getCacheSummary() -> String {
         return SessionCacheManager.shared.getTransactionSummary()
+    }
+
+    private func extractTitle(from page: NotionPage) -> String {
+        if let props = page.properties {
+            for (key, value) in props {
+                if let titleArray = value.title, !titleArray.isEmpty {
+                    for item in titleArray {
+                        if let text = item.text?.content, !text.isEmpty {
+                            return text
+                        }
+                        if let text = item.plainText, !text.isEmpty {
+                            return text
+                        }
+                    }
+                }
+            }
+        }
+        return String(page.id.prefix(8))
     }
 }

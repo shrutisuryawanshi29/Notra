@@ -201,11 +201,11 @@ extension ColumnMappingViewController: ColumnMappingViewModelDelegate {
                 var dbProperties: [String: DiscoveredDatabase.DatabaseProperty] = [:]
                 for (propName, propValue) in properties {
                     if let prop = propValue as? [String: Any], let propType = prop["type"] as? String {
-                        var relationDatabaseId: String? = nil
+                        var relationDataSourceId: String? = nil
                         if propType == "relation", let relationConfig = prop["relation"] as? [String: Any] {
-                            relationDatabaseId = relationConfig["data_source_id"] as? String
+                            relationDataSourceId = relationConfig["data_source_id"] as? String
                         }
-                        dbProperties[propName] = DiscoveredDatabase.DatabaseProperty(name: propName, type: propType, relationDatabaseId: relationDatabaseId)
+                        dbProperties[propName] = DiscoveredDatabase.DatabaseProperty(name: propName, type: propType, relationDataSourceId: relationDataSourceId)
                     }
                 }
                 
