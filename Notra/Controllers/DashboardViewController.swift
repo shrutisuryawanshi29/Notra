@@ -328,9 +328,8 @@ class DashboardViewController: UIViewController {
     }
 
     @objc private func analyticsTapped() {
-        let alert = UIAlertController(title: "Coming Soon", message: "Analytics and charts are under development.", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
+        let vc = AnalyticsViewController(month: viewModel.selectedMonth)
+        navigationController?.pushViewController(vc, animated: true)
     }
 
     @objc private func settingsTapped() {
