@@ -56,13 +56,7 @@ class SettingsViewController: UIViewController {
     }
 
     private func performReset() {
-        UserDefaultsManager.shared.notionToken = nil
-        UserDefaultsManager.shared.selectedPageId = nil
-        UserDefaultsManager.shared.selectedPageTitle = nil
-        UserDefaults.standard.removeObject(forKey: AppConstants.UserDefaultsKeys.databaseMappings)
-        UserDefaults.standard.removeObject(forKey: AppConstants.UserDefaultsKeys.columnMappings)
-
-        SessionCacheManager.shared.clearAll()
+        SetupStateManager.shared.resetSetup()
 
         if let windowScene = view.window?.windowScene,
            let window = windowScene.windows.first {
