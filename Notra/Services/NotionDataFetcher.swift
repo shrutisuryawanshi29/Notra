@@ -114,8 +114,11 @@ final class NotionDataFetcher {
     }
 
     private func fetchDatabaseRowsDirect(databaseId: String, token: String, completion: @escaping (Result<[NotionPage], NotionError>) -> Void) {
-        print("[DataFetcher] Fetching directly from database: \(databaseId)")
-        
+        print("[DataFetcher] Fetching all rows from database: \(databaseId)")
+        fetchAllPages(databaseId: databaseId, token: token, existingResults: [], completion: completion)
+    }
+
+    private func fetchAllPages(databaseId: String, token: String, existingResults: [NotionPage], completion: @escaping (Result<[NotionPage], NotionError>) -> Void) {
         guard let url = URL(string: baseURL + "/databases/\(databaseId)/query") else {
             completion(.failure(.invalidResponse))
             return
@@ -126,9 +129,17 @@ final class NotionDataFetcher {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(notionVersion, forHTTPHeaderField: "Notion-Version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [:])
 
-        session.dataTask(with: request) { data, response, error in
+        let body: [String: Any] = ["page_size": 100]
+        if let lastResult = existingResults.last {
+            request.httpBody = try? JSONSerialization.data(withJSONObject: ["page_size": 100, "start_cursor": lastResult.id])
+        } else {
+            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        }
+
+        session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+
             if let error = error {
                 DispatchQueue.main.async { completion(.failure(.networkError(error))) }
                 return
@@ -151,8 +162,16 @@ final class NotionDataFetcher {
 
             do {
                 let searchResponse = try JSONDecoder().decode(NotionSearchResponse.self, from: data)
-                print("[DataFetcher] Successfully fetched \(searchResponse.results.count) rows")
-                DispatchQueue.main.async { completion(.success(searchResponse.results)) }
+                var allResults = existingResults
+                allResults.append(contentsOf: searchResponse.results)
+                print("[DataFetcher] Fetched page: \(searchResponse.results.count) rows, total: \(allResults.count)")
+
+                if searchResponse.hasMore, let lastPage = searchResponse.results.last {
+                    self.fetchAllPages(databaseId: databaseId, token: token, existingResults: allResults, completion: completion)
+                } else {
+                    print("[DataFetcher] Completed fetching \(allResults.count) total rows")
+                    DispatchQueue.main.async { completion(.success(allResults)) }
+                }
             } catch {
                 print("[DataFetcher] Decode error: \(error)")
                 DispatchQueue.main.async { completion(.failure(.decodingError(error))) }

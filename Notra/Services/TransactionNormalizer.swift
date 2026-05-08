@@ -40,6 +40,8 @@ final class TransactionNormalizer {
             let amount = extractAmount(from: row, column: columnMapping.amountColumn) ?? 0
             let date = extractDate(from: row, column: columnMapping.dateColumn) ?? Date()
 
+            print("[DEBUG] TRANSACTION: title='\(title)', amount=\(amount), date=\(date), monthKey=\(MonthMetadata(date: date).monthKey)")
+
             let prop = row.properties?[columnMapping.categoryColumn ?? ""]
             let isRelation = prop?.type == "relation"
 
@@ -100,7 +102,22 @@ final class TransactionNormalizer {
         }
 
         group.notify(queue: .main) {
-            completion(transactions)
+            var seen = Set<String>()
+            var uniqueTransactions: [NormalizedTransaction] = []
+            for t in transactions {
+                if !seen.contains(t.id) {
+                    seen.insert(t.id)
+                    uniqueTransactions.append(t)
+                }
+            }
+            let duplicateCount = transactions.count - uniqueTransactions.count
+            if duplicateCount > 0 {
+                print("[DEBUG] Removed \(duplicateCount) duplicate transactions")
+            }
+            print("[DEBUG] NORMALIZED: \(uniqueTransactions.count) transactions for role \(role)")
+            let total = uniqueTransactions.reduce(0) { $0 + $1.amount }
+            print("[DEBUG] TOTAL AMOUNT: $\(total)")
+            completion(uniqueTransactions)
         }
     }
 
@@ -121,6 +138,10 @@ final class TransactionNormalizer {
             let category = extractCategory(from: row, column: columnMapping.categoryColumn, mapping: mapping)
             let date = extractDate(from: row, column: columnMapping.dateColumn) ?? Date()
 
+            if columnMapping.dateColumn != nil && row.properties?[columnMapping.dateColumn!]?.date?.start == nil {
+                print("[DEBUG] Date column '\(columnMapping.dateColumn!)' has no date value for: \(title)")
+            }
+
             print("[DEBUG] Row: title=\(title), amount=\(amount), category=\(category ?? "NIL"), date=\(date)")
 
             let transaction = NormalizedTransaction(
@@ -135,7 +156,16 @@ final class TransactionNormalizer {
             transactions.append(transaction)
         }
 
-        return transactions
+        var seen = Set<String>()
+        var uniqueTransactions: [NormalizedTransaction] = []
+        for t in transactions {
+            if !seen.contains(t.id) {
+                seen.insert(t.id)
+                uniqueTransactions.append(t)
+            }
+        }
+
+        return uniqueTransactions
     }
 
     private func extractTitle(from row: NotionPage, column: String?) -> String? {
@@ -349,23 +379,44 @@ final class TransactionNormalizer {
         }
     }
 
-    private func extractDate(from row: NotionPage, column: String?) -> Date? {
+private func extractDate(from row: NotionPage, column: String?) -> Date? {
         guard let column = column, let props = row.properties else { return nil }
 
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
-
         if let prop = props[column], let dateObj = prop.date, let start = dateObj.start {
-            if let date = formatter.date(from: start) {
-                return date
+            if start.contains("T") {
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withFullDate, .withTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
+                if let date = isoFormatter.date(from: start) {
+                    return date
+                }
+            } else {
+                let parts = start.components(separatedBy: "-")
+                if parts.count == 3,
+                   let year = Int(parts[0]),
+                   let month = Int(parts[1]),
+                   let day = Int(parts[2]) {
+                    var components = DateComponents()
+                    components.year = year
+                    components.month = month
+                    components.day = day
+                    components.hour = 12
+                    components.minute = 0
+                    components.second = 0
+                    return Calendar.current.date(from: components)
+                }
             }
-            let dateOnlyFormatter = DateFormatter()
-            dateOnlyFormatter.dateFormat = "yyyy-MM-dd"
-            return dateOnlyFormatter.date(from: start)
         }
 
         if !row.createdTime.isEmpty {
-            if let date = formatter.date(from: row.createdTime) {
+            let isoFormatter = ISO8601DateFormatter()
+            isoFormatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
+            if let date = isoFormatter.date(from: row.createdTime) {
+                return date
+            }
+
+            let formatterWithTime = ISO8601DateFormatter()
+            formatterWithTime.formatOptions = [.withFullDate, .withTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
+            if let date = formatterWithTime.date(from: row.createdTime) {
                 return date
             }
         }

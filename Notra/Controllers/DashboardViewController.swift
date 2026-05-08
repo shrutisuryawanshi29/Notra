@@ -12,13 +12,10 @@ class DashboardViewController: UIViewController {
     private let scrollView = UIScrollView()
     private let contentView = UIView()
 
-    private let currentMonthLabel = UILabel()
+    private let monthSelectorButton = UIButton(type: .system)
     private let expenseCard = DashboardCardView(title: "Expenses", color: .systemRed)
     private let incomeCard = DashboardCardView(title: "Income", color: .systemGreen)
-
-    private let previousMonthLabel = UILabel()
-    private let previousExpenseCard = DashboardCardView(title: "Previous Month Expenses", color: .systemOrange)
-    private let previousIncomeCard = DashboardCardView(title: "Previous Month Income", color: .systemTeal)
+    private let balanceCard = DashboardCardView(title: "Balance", color: .systemBlue)
 
     private let expenseButton = UIButton(type: .system)
     private let incomeButton = UIButton(type: .system)
@@ -70,28 +67,36 @@ class DashboardViewController: UIViewController {
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor)
         ])
 
-        setupCurrentMonthSection()
-        setupPreviousMonthSection()
+        setupMonthSelector()
+        setupCards()
         setupButtons()
         setupActivityIndicator()
     }
 
-    private func setupCurrentMonthSection() {
-        currentMonthLabel.text = "This Month"
-        currentMonthLabel.font = .systemFont(ofSize: 20, weight: .bold)
-        currentMonthLabel.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(currentMonthLabel)
-
-        expenseCard.translatesAutoresizingMaskIntoConstraints = false
-        incomeCard.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(expenseCard)
-        contentView.addSubview(incomeCard)
+    private func setupMonthSelector() {
+        monthSelectorButton.setTitle("May 2026 \u{25BC}", for: .normal)
+        monthSelectorButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .semibold)
+        monthSelectorButton.setTitleColor(.label, for: .normal)
+        monthSelectorButton.translatesAutoresizingMaskIntoConstraints = false
+        monthSelectorButton.addTarget(self, action: #selector(monthSelectorTapped), for: .touchUpInside)
+        contentView.addSubview(monthSelectorButton)
 
         NSLayoutConstraint.activate([
-            currentMonthLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
-            currentMonthLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            monthSelectorButton.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
+            monthSelectorButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor)
+        ])
+    }
 
-            expenseCard.topAnchor.constraint(equalTo: currentMonthLabel.bottomAnchor, constant: 12),
+    private func setupCards() {
+        expenseCard.translatesAutoresizingMaskIntoConstraints = false
+        incomeCard.translatesAutoresizingMaskIntoConstraints = false
+        balanceCard.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(expenseCard)
+        contentView.addSubview(incomeCard)
+        contentView.addSubview(balanceCard)
+
+        NSLayoutConstraint.activate([
+            expenseCard.topAnchor.constraint(equalTo: monthSelectorButton.bottomAnchor, constant: 24),
             expenseCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             expenseCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             expenseCard.heightAnchor.constraint(equalToConstant: 100),
@@ -99,34 +104,12 @@ class DashboardViewController: UIViewController {
             incomeCard.topAnchor.constraint(equalTo: expenseCard.bottomAnchor, constant: 12),
             incomeCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             incomeCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            incomeCard.heightAnchor.constraint(equalToConstant: 100)
-        ])
-    }
+            incomeCard.heightAnchor.constraint(equalToConstant: 100),
 
-    private func setupPreviousMonthSection() {
-        previousMonthLabel.text = "Previous Month"
-        previousMonthLabel.font = .systemFont(ofSize: 18, weight: .semibold)
-        previousMonthLabel.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(previousMonthLabel)
-
-        previousExpenseCard.translatesAutoresizingMaskIntoConstraints = false
-        previousIncomeCard.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(previousExpenseCard)
-        contentView.addSubview(previousIncomeCard)
-
-        NSLayoutConstraint.activate([
-            previousMonthLabel.topAnchor.constraint(equalTo: incomeCard.bottomAnchor, constant: 32),
-            previousMonthLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-
-            previousExpenseCard.topAnchor.constraint(equalTo: previousMonthLabel.bottomAnchor, constant: 12),
-            previousExpenseCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            previousExpenseCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            previousExpenseCard.heightAnchor.constraint(equalToConstant: 80),
-
-            previousIncomeCard.topAnchor.constraint(equalTo: previousExpenseCard.bottomAnchor, constant: 12),
-            previousIncomeCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            previousIncomeCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            previousIncomeCard.heightAnchor.constraint(equalToConstant: 80)
+            balanceCard.topAnchor.constraint(equalTo: incomeCard.bottomAnchor, constant: 12),
+            balanceCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            balanceCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            balanceCard.heightAnchor.constraint(equalToConstant: 100)
         ])
     }
 
@@ -148,7 +131,7 @@ class DashboardViewController: UIViewController {
         contentView.addSubview(incomeButton)
 
         NSLayoutConstraint.activate([
-            expenseButton.topAnchor.constraint(equalTo: previousIncomeCard.bottomAnchor, constant: 32),
+            expenseButton.topAnchor.constraint(equalTo: balanceCard.bottomAnchor, constant: 32),
             expenseButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             expenseButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             expenseButton.heightAnchor.constraint(equalToConstant: 50),
@@ -184,6 +167,26 @@ class DashboardViewController: UIViewController {
         viewModel.loadData()
     }
 
+    @objc private func monthSelectorTapped() {
+        let alert = UIAlertController(title: "Select Month", message: nil, preferredStyle: .actionSheet)
+
+        for month in viewModel.availableMonths {
+            let monthName = viewModel.getMonthDisplayString(for: month)
+            alert.addAction(UIAlertAction(title: monthName, style: .default) { [weak self] _ in
+                self?.viewModel.selectMonth(month)
+            })
+        }
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = monthSelectorButton
+            popover.sourceRect = monthSelectorButton.bounds
+        }
+
+        present(alert, animated: true)
+    }
+
     @objc private func viewExpensesTapped() {
         let vc = ExpenseListViewController()
         navigationController?.pushViewController(vc, animated: true)
@@ -199,14 +202,21 @@ class DashboardViewController: UIViewController {
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
 
-        expenseCard.setValue(formatter.string(from: NSNumber(value: viewModel.currentMonthExpenses)) ?? "$0")
-        expenseCard.setSubtitle("\(viewModel.currentMonthExpensesCount) transactions")
+        let monthDisplay = viewModel.getMonthDisplayString(for: viewModel.selectedMonth)
+        monthSelectorButton.setTitle("\(monthDisplay) \u{25BC}", for: .normal)
 
-        incomeCard.setValue(formatter.string(from: NSNumber(value: viewModel.currentMonthIncomes)) ?? "$0")
-        incomeCard.setSubtitle("\(viewModel.currentMonthIncomesCount) transactions")
+        expenseCard.setValue(formatter.string(from: NSNumber(value: viewModel.selectedMonthExpenses)) ?? "$0")
+        expenseCard.setSubtitle("\(viewModel.selectedMonthExpensesCount) transactions")
 
-        previousExpenseCard.setValue(formatter.string(from: NSNumber(value: viewModel.previousMonthExpenses)) ?? "$0")
-        previousIncomeCard.setValue(formatter.string(from: NSNumber(value: viewModel.previousMonthIncomes)) ?? "$0")
+        incomeCard.setValue(formatter.string(from: NSNumber(value: viewModel.selectedMonthIncomes)) ?? "$0")
+        incomeCard.setSubtitle("\(viewModel.selectedMonthIncomesCount) transactions")
+
+        let balance = viewModel.balance
+        let balanceColor: UIColor = balance >= 0 ? .systemGreen : .systemRed
+        balanceCard.backgroundColor = balanceColor.withAlphaComponent(0.1)
+        balanceCard.titleLabel.textColor = balanceColor
+        balanceCard.setValue(formatter.string(from: NSNumber(value: abs(balance))) ?? "$0")
+        balanceCard.setSubtitle(balance >= 0 ? "Positive" : "Negative")
     }
 }
 
@@ -234,10 +244,14 @@ extension DashboardViewController: DashboardViewModelDelegate {
     func didUpdateProgress(current: Int, total: Int) {
         progressLabel.text = "Loading \(current) of \(total) databases..."
     }
+
+    func didUpdateMonthSelection() {
+        updateUI()
+    }
 }
 
 class DashboardCardView: UIView {
-    private let titleLabel = UILabel()
+    let titleLabel = UILabel()
     private let valueLabel = UILabel()
     private let subtitleLabel = UILabel()
 

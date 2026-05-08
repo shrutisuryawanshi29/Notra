@@ -9,6 +9,7 @@ protocol DashboardViewModelDelegate: AnyObject {
     func didStartLoading()
     func didFinishLoading(success: Bool, error: Error?)
     func didUpdateProgress(current: Int, total: Int)
+    func didUpdateMonthSelection()
 }
 
 final class DashboardViewModel {
@@ -23,18 +24,32 @@ final class DashboardViewModel {
     private var expenseMappings: [DatabaseMappingData] = []
     private var incomeMappings: [DatabaseMappingData] = []
 
-    private var relationLookupMap: [String: [String: String]] = [:]  // [relationDatabaseId: [pageId: title]]
+    private var relationLookupMap: [String: [String: String]] = [:]
 
-    var currentMonthExpenses: Double = 0
-    var currentMonthIncomes: Double = 0
-    var previousMonthExpenses: Double = 0
-    var previousMonthIncomes: Double = 0
+    private var allExpenses: [NormalizedTransaction] = []
+    private var allIncomes: [NormalizedTransaction] = []
 
-    var currentMonthExpensesCount: Int = 0
-    var currentMonthIncomesCount: Int = 0
+    var selectedMonth: MonthMetadata {
+        didSet {
+            updateSelectedMonthTotals()
+            delegate?.didUpdateMonthSelection()
+        }
+    }
+
+    var selectedMonthExpenses: Double = 0
+    var selectedMonthIncomes: Double = 0
+    var selectedMonthExpensesCount: Int = 0
+    var selectedMonthIncomesCount: Int = 0
+
+    var balance: Double {
+        return selectedMonthIncomes - selectedMonthExpenses
+    }
+
+    var availableMonths: [MonthMetadata] = []
 
     init(token: String) {
         self.token = token
+        self.selectedMonth = MonthMetadata(date: Date())
     }
 
     func loadData() {
@@ -50,7 +65,48 @@ final class DashboardViewModel {
         }
 
         fetchRelationTargetDatabases { [weak self] in
-            self?.fetchDataForCurrentAndPreviousMonth()
+            self?.fetchAllTransactionData()
+        }
+    }
+
+    func selectMonth(_ month: MonthMetadata) {
+        selectedMonth = month
+    }
+
+    private func updateSelectedMonthTotals() {
+        let filteredExpenses = allExpenses.filter { transaction in
+            let month = MonthMetadata(date: transaction.date)
+            return month.monthKey == selectedMonth.monthKey
+        }
+        selectedMonthExpenses = filteredExpenses.reduce(0) { $0 + $1.amount }
+        selectedMonthExpensesCount = filteredExpenses.count
+
+        let filteredIncomes = allIncomes.filter { transaction in
+            let month = MonthMetadata(date: transaction.date)
+            return month.monthKey == selectedMonth.monthKey
+        }
+        selectedMonthIncomes = filteredIncomes.reduce(0) { $0 + $1.amount }
+        selectedMonthIncomesCount = filteredIncomes.count
+    }
+
+    private func updateAvailableMonths() {
+        var monthKeys = Set<String>()
+
+        for transaction in allExpenses + allIncomes {
+            let month = MonthMetadata(date: transaction.date)
+            monthKeys.insert(month.monthKey)
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+
+        availableMonths = monthKeys.compactMap { key in
+            guard let date = formatter.date(from: key) else { return nil }
+            return MonthMetadata(date: date)
+        }.sorted { $0.monthKey > $1.monthKey }
+
+        if availableMonths.isEmpty {
+            availableMonths = [MonthMetadata(date: Date())]
         }
     }
 
@@ -117,28 +173,16 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
         }
     }
 
-    private func fetchDataForCurrentAndPreviousMonth() {
-        let calendar = Calendar.current
-        let now = Date()
-
-        let currentMonth = MonthMetadata(date: now)
-        let previousMonthDate = calendar.date(byAdding: .month, value: -1, to: now) ?? now
-        let previousMonth = MonthMetadata(date: previousMonthDate)
-
-        SessionCacheManager.shared.setFetchedMonths([currentMonth, previousMonth])
-
+    private func fetchAllTransactionData() {
         let totalDatabases = expenseMappings.count + incomeMappings.count
         var completed = 0
-
-        var allExpenses: [NormalizedTransaction] = []
-        var allIncomes: [NormalizedTransaction] = []
 
         let group = DispatchGroup()
 
         for mapping in expenseMappings {
             group.enter()
             fetchAndNormalize(database: mapping, role: .expense) { expenses in
-                allExpenses.append(contentsOf: expenses)
+                self.allExpenses.append(contentsOf: expenses)
                 completed += 1
                 self.delegate?.didUpdateProgress(current: completed, total: totalDatabases)
                 group.leave()
@@ -148,7 +192,7 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
         for mapping in incomeMappings {
             group.enter()
             fetchAndNormalize(database: mapping, role: .income) { incomes in
-                allIncomes.append(contentsOf: incomes)
+                self.allIncomes.append(contentsOf: incomes)
                 completed += 1
                 self.delegate?.didUpdateProgress(current: completed, total: totalDatabases)
                 group.leave()
@@ -156,7 +200,7 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
         }
 
         group.notify(queue: .main) { [weak self] in
-            self?.processResults(expenses: allExpenses, incomes: allIncomes, currentMonth: currentMonth, previousMonth: previousMonth)
+            self?.processResults()
         }
     }
 
@@ -177,36 +221,13 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
         }
     }
 
-    private func processResults(expenses: [NormalizedTransaction], incomes: [NormalizedTransaction], currentMonth: MonthMetadata, previousMonth: MonthMetadata) {
-        SessionCacheManager.shared.populateCache(expenses: expenses, incomes: incomes)
+    private func processResults() {
+        SessionCacheManager.shared.populateCache(expenses: allExpenses, incomes: allIncomes)
 
-        let calendar = Calendar.current
+        updateAvailableMonths()
+        updateSelectedMonthTotals()
 
-        let currentExpenses = expenses.filter { transaction in
-            let month = MonthMetadata(date: transaction.date)
-            return month.monthKey == currentMonth.monthKey
-        }
-        currentMonthExpenses = currentExpenses.reduce(0) { $0 + $1.amount }
-        currentMonthExpensesCount = currentExpenses.count
-
-        let previousExpenses = expenses.filter { transaction in
-            let month = MonthMetadata(date: transaction.date)
-            return month.monthKey == previousMonth.monthKey
-        }
-        previousMonthExpenses = previousExpenses.reduce(0) { $0 + $1.amount }
-
-        let currentIncomes = incomes.filter { transaction in
-            let month = MonthMetadata(date: transaction.date)
-            return month.monthKey == currentMonth.monthKey
-        }
-        currentMonthIncomes = currentIncomes.reduce(0) { $0 + $1.amount }
-        currentMonthIncomesCount = currentIncomes.count
-
-        let previousIncomes = incomes.filter { transaction in
-            let month = MonthMetadata(date: transaction.date)
-            return month.monthKey == previousMonth.monthKey
-        }
-        previousMonthIncomes = previousIncomes.reduce(0) { $0 + $1.amount }
+        selectedMonth = availableMonths.first ?? MonthMetadata(date: Date())
 
         print("[DashboardViewModel] Cache retrieval success")
         delegate?.didFinishLoading(success: true, error: nil)
@@ -214,6 +235,21 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
 
     func getCacheSummary() -> String {
         return SessionCacheManager.shared.getTransactionSummary()
+    }
+
+    func getMonthDisplayString(for month: MonthMetadata) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+
+        var components = DateComponents()
+        components.year = month.year
+        components.month = month.month
+        components.day = 1
+
+        if let date = Calendar.current.date(from: components) {
+            return formatter.string(from: date)
+        }
+        return month.monthKey
     }
 
     private func extractTitle(from page: NotionPage) -> String {
