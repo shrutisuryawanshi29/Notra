@@ -223,6 +223,7 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
 
     private func processResults() {
         SessionCacheManager.shared.populateCache(expenses: allExpenses, incomes: allIncomes)
+        SessionCacheManager.shared.setLastLoadedMonth(Date())
 
         updateAvailableMonths()
         updateSelectedMonthTotals()

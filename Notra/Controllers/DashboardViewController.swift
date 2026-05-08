@@ -7,7 +7,7 @@ import UIKit
 
 class DashboardViewController: UIViewController {
 
-    private let viewModel: DashboardViewModel
+    let viewModel: DashboardViewModel
     private var lastSyncDate: Date?
 
     private let scrollView = UIScrollView()
@@ -61,6 +61,13 @@ class DashboardViewController: UIViewController {
             style: .plain,
             target: self,
             action: #selector(refreshTapped)
+        )
+
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "gearshape"),
+            style: .plain,
+            target: self,
+            action: #selector(settingsTapped)
         )
 
         setupScrollView()
@@ -326,6 +333,11 @@ class DashboardViewController: UIViewController {
         present(alert, animated: true)
     }
 
+    @objc private func settingsTapped() {
+        let vc = SettingsViewController()
+        navigationController?.pushViewController(vc, animated: true)
+    }
+
     @objc private func goToSetup() {
         navigationController?.popToRootViewController(animated: true)
     }
@@ -387,15 +399,28 @@ extension DashboardViewController: DashboardViewModelDelegate {
             } else {
                 scrollView.isHidden = true
                 emptyStateView.isHidden = false
-                emptyStateLabel.text = "No transactions this month"
+                let monthName = viewModel.getMonthDisplayString(for: viewModel.selectedMonth)
+                emptyStateLabel.text = "No transactions for \(monthName)"
+                setupButton.setTitle("Select Different Month", for: .normal)
+                setupButton.removeTarget(self, action: #selector(goToSetup), for: .touchUpInside)
+                setupButton.addTarget(self, action: #selector(monthSelectorTapped), for: .touchUpInside)
             }
         } else {
             scrollView.isHidden = true
             emptyStateView.isHidden = false
-            emptyStateLabel.text = error?.localizedDescription ?? "Failed to load data"
-            setupButton.setTitle("Try Again", for: .normal)
-            setupButton.removeTarget(self, action: #selector(goToSetup), for: .touchUpInside)
-            setupButton.addTarget(self, action: #selector(refreshTapped), for: .touchUpInside)
+
+            let errorMessage = error?.localizedDescription ?? ""
+            if errorMessage.lowercased().contains("no configured") {
+                emptyStateLabel.text = "No databases configured.\n\nGo to Setup to add your finance databases."
+                setupButton.setTitle("Go to Setup", for: .normal)
+                setupButton.removeTarget(self, action: #selector(refreshTapped), for: .touchUpInside)
+                setupButton.addTarget(self, action: #selector(goToSetup), for: .touchUpInside)
+            } else {
+                emptyStateLabel.text = "Couldn't load your finances.\n\nPlease try again."
+                setupButton.setTitle("Try Again", for: .normal)
+                setupButton.removeTarget(self, action: #selector(goToSetup), for: .touchUpInside)
+                setupButton.addTarget(self, action: #selector(refreshTapped), for: .touchUpInside)
+            }
         }
     }
 

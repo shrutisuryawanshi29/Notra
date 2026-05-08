@@ -36,19 +36,19 @@ class PagePickerViewController: UIViewController {
         activityIndicator.hidesWhenStopped = true
         view.addSubview(activityIndicator)
 
-        errorLabel.font = .preferredFont(forTextStyle: .body)
-        errorLabel.textColor = .systemRed
+        errorLabel.font = .systemFont(ofSize: 16)
+        errorLabel.textColor = .secondaryLabel
         errorLabel.textAlignment = .center
         errorLabel.numberOfLines = 0
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
         errorLabel.isHidden = true
         view.addSubview(errorLabel)
 
-        retryButton.setTitle("Retry", for: .normal)
-        retryButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
-        retryButton.backgroundColor = .systemBlue
+        retryButton.setTitle("Try Again", for: .normal)
+        retryButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        retryButton.backgroundColor = .systemIndigo
         retryButton.setTitleColor(.white, for: .normal)
-        retryButton.layer.cornerRadius = 8
+        retryButton.layer.cornerRadius = 10
         retryButton.translatesAutoresizingMaskIntoConstraints = false
         retryButton.isHidden = true
         retryButton.addTarget(self, action: #selector(retryButtonTapped), for: .touchUpInside)
@@ -120,16 +120,34 @@ extension PagePickerViewController: PagePickerViewModelDelegate {
     func pagePickerDidFinishLoading(pages: [NotionPage]) {
         self.pages = pages
         activityIndicator.stopAnimating()
-        tableView.isHidden = false
-        errorLabel.isHidden = true
-        retryButton.isHidden = true
-        tableView.reloadData()
+
+        if pages.isEmpty {
+            tableView.isHidden = true
+            errorLabel.text = "No pages found.\n\nMake sure your Notion workspace has accessible pages."
+            errorLabel.isHidden = false
+            retryButton.isHidden = false
+        } else {
+            tableView.isHidden = false
+            errorLabel.isHidden = true
+            retryButton.isHidden = true
+            tableView.reloadData()
+        }
     }
 
     func pagePickerDidFail(_ error: String) {
         activityIndicator.stopAnimating()
         tableView.isHidden = true
-        errorLabel.text = error
+
+        let friendlyMessage: String
+        if error.lowercased().contains("unauthorized") || error.lowercased().contains("invalid") {
+            friendlyMessage = "Couldn't access your Notion.\n\nPlease check your token and try again."
+        } else if error.lowercased().contains("network") {
+            friendlyMessage = "Having trouble connecting to Notion.\n\nCheck your internet connection."
+        } else {
+            friendlyMessage = "Something went wrong.\n\nPlease try again."
+        }
+
+        errorLabel.text = friendlyMessage
         errorLabel.isHidden = false
         retryButton.isHidden = false
     }

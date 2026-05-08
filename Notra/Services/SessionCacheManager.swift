@@ -261,6 +261,27 @@ final class SessionCacheManager {
         lock.unlock()
     }
 
+    func clearAll() {
+        clearSession()
+    }
+
+    private(set) var lastLoadedMonth: Date? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return cache["lastLoadedMonth"] as? Date
+        }
+        set {
+            lock.lock()
+            cache["lastLoadedMonth"] = newValue
+            lock.unlock()
+        }
+    }
+
+    func setLastLoadedMonth(_ date: Date) {
+        lastLoadedMonth = date
+    }
+
     var setupSummary: String {
         lock.lock()
         let mappings = cache["databaseMappings"] as? [String: DatabaseMappingData] ?? [:]

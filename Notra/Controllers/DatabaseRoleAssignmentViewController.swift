@@ -9,8 +9,10 @@ class DatabaseRoleAssignmentViewController: UIViewController {
 
     private let viewModel = DatabaseRoleAssignmentViewModel()
 
-    private let tableView = UITableView(frame: .zero, style: .plain)
-    private let activityIndicator = UIActivityIndicatorView(style: .medium)
+    private let tableView = UITableView(frame: .zero, style: .insetGrouped)
+    private let activityIndicator = UIActivityIndicatorView(style: .large)
+    private let statusLabel = UILabel()
+    private let emptyLabel = UILabel()
     private let continueButton = UIButton(type: .system)
 
     override func viewDidLoad() {
@@ -20,25 +22,44 @@ class DatabaseRoleAssignmentViewController: UIViewController {
     }
 
     private func setupUI() {
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .systemGroupedBackground
         title = "Assign Database Roles"
 
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(RoleAssignmentCell.self, forCellReuseIdentifier: "RoleCell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.isHidden = true
         view.addSubview(tableView)
 
         activityIndicator.translatesAutoresizingMaskIntoConstraints = false
         activityIndicator.hidesWhenStopped = true
         view.addSubview(activityIndicator)
 
+        statusLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        statusLabel.textColor = .secondaryLabel
+        statusLabel.textAlignment = .center
+        statusLabel.numberOfLines = 0
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.isHidden = true
+        view.addSubview(statusLabel)
+
+        emptyLabel.font = .systemFont(ofSize: 16)
+        emptyLabel.textColor = .secondaryLabel
+        emptyLabel.textAlignment = .center
+        emptyLabel.numberOfLines = 0
+        emptyLabel.text = "No databases found in this page.\n\nMake sure your Notion page contains databases."
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        emptyLabel.isHidden = true
+        view.addSubview(emptyLabel)
+
         continueButton.setTitle("Continue", for: .normal)
-        continueButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
-        continueButton.backgroundColor = .systemBlue
+        continueButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        continueButton.backgroundColor = .systemIndigo
         continueButton.setTitleColor(.white, for: .normal)
-        continueButton.layer.cornerRadius = 10
+        continueButton.layer.cornerRadius = 12
         continueButton.translatesAutoresizingMaskIntoConstraints = false
+        continueButton.isHidden = true
         continueButton.addTarget(self, action: #selector(continueTapped), for: .touchUpInside)
         view.addSubview(continueButton)
 
@@ -49,7 +70,17 @@ class DatabaseRoleAssignmentViewController: UIViewController {
             tableView.bottomAnchor.constraint(equalTo: continueButton.topAnchor, constant: -16),
 
             activityIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            activityIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            activityIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -40),
+
+            statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            statusLabel.topAnchor.constraint(equalTo: activityIndicator.bottomAnchor, constant: 16),
+            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+
+            emptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            emptyLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+            emptyLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
 
             continueButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             continueButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
@@ -105,20 +136,36 @@ extension DatabaseRoleAssignmentViewController: UITableViewDelegate, UITableView
 extension DatabaseRoleAssignmentViewController: DatabaseRoleAssignmentViewModelDelegate {
     func roleAssignmentDidStartLoading() {
         activityIndicator.startAnimating()
+        statusLabel.text = "Scanning for databases..."
+        statusLabel.isHidden = false
         tableView.isHidden = true
+        emptyLabel.isHidden = true
+        continueButton.isHidden = true
     }
 
     func roleAssignmentDidFinishLoading(databases: [DiscoveredDatabase]) {
         activityIndicator.stopAnimating()
-        tableView.isHidden = false
-        tableView.reloadData()
+        statusLabel.isHidden = true
+
+        if databases.isEmpty {
+            tableView.isHidden = true
+            emptyLabel.isHidden = false
+            continueButton.isHidden = true
+        } else {
+            tableView.isHidden = false
+            emptyLabel.isHidden = true
+            continueButton.isHidden = false
+            tableView.reloadData()
+        }
     }
 
     func roleAssignmentDidFail(_ error: String) {
         activityIndicator.stopAnimating()
-        let alert = UIAlertController(title: "Error", message: error, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
+        statusLabel.isHidden = true
+        tableView.isHidden = true
+        emptyLabel.isHidden = false
+        emptyLabel.text = "Couldn't scan databases.\n\nPlease go back and try again."
+        continueButton.isHidden = true
     }
 }
 
