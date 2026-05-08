@@ -8,21 +8,32 @@ import UIKit
 class DashboardViewController: UIViewController {
 
     private let viewModel: DashboardViewModel
+    private var lastSyncDate: Date?
 
     private let scrollView = UIScrollView()
     private let contentView = UIView()
 
+    private let headerView = UIView()
+    private let greetingLabel = UILabel()
+    private let lastSyncLabel = UILabel()
+
     private let monthSelectorButton = UIButton(type: .system)
-    private let expenseCard = DashboardCardView(title: "Expenses", color: .systemRed)
-    private let incomeCard = DashboardCardView(title: "Income", color: .systemGreen)
-    private let balanceCard = DashboardCardView(title: "Balance", color: .systemBlue)
+
+    private let summaryStackView = UIStackView()
+    private let spentCard = SummaryCardView()
+    private let incomeCard = SummaryCardView()
+    private let balanceCard = SummaryCardView()
 
     private let expenseButton = UIButton(type: .system)
     private let incomeButton = UIButton(type: .system)
-    private let refreshButton = UIButton(type: .system)
 
+    private let loadingContainerView = UIView()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let progressLabel = UILabel()
+
+    private let emptyStateView = UIView()
+    private let emptyStateLabel = UILabel()
+    private let setupButton = UIButton(type: .system)
 
     init(token: String) {
         self.viewModel = DashboardViewModel(token: token)
@@ -42,16 +53,30 @@ class DashboardViewController: UIViewController {
 
     private func setupUI() {
         title = "Dashboard"
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .systemGroupedBackground
 
-        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: refreshButton)
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "arrow.clockwise"),
+            style: .plain,
+            target: self,
+            action: #selector(refreshTapped)
+        )
 
-        refreshButton.setTitle("Refresh", for: .normal)
-        refreshButton.addTarget(self, action: #selector(refreshTapped), for: .touchUpInside)
+        setupScrollView()
+        setupHeader()
+        setupMonthSelector()
+        setupSummaryCards()
+        setupButtons()
+        setupLoadingView()
+        setupEmptyState()
+    }
 
+    private func setupScrollView() {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
-        contentView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.showsVerticalScrollIndicator = false
         view.addSubview(scrollView)
+
+        contentView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.addSubview(contentView)
 
         NSLayoutConstraint.activate([
@@ -66,100 +91,192 @@ class DashboardViewController: UIViewController {
             contentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor)
         ])
+    }
 
-        setupMonthSelector()
-        setupCards()
-        setupButtons()
-        setupActivityIndicator()
+    private func setupHeader() {
+        headerView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(headerView)
+
+        greetingLabel.text = "Your Finances"
+        greetingLabel.font = .systemFont(ofSize: 28, weight: .bold)
+        greetingLabel.textColor = .label
+        greetingLabel.translatesAutoresizingMaskIntoConstraints = false
+        headerView.addSubview(greetingLabel)
+
+        lastSyncLabel.text = "Pull to refresh"
+        lastSyncLabel.font = .systemFont(ofSize: 13)
+        lastSyncLabel.textColor = .secondaryLabel
+        lastSyncLabel.translatesAutoresizingMaskIntoConstraints = false
+        headerView.addSubview(lastSyncLabel)
+
+        NSLayoutConstraint.activate([
+            headerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
+            headerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            headerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            greetingLabel.topAnchor.constraint(equalTo: headerView.topAnchor),
+            greetingLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor),
+
+            lastSyncLabel.topAnchor.constraint(equalTo: greetingLabel.bottomAnchor, constant: 4),
+            lastSyncLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor),
+            lastSyncLabel.bottomAnchor.constraint(equalTo: headerView.bottomAnchor)
+        ])
     }
 
     private func setupMonthSelector() {
-        monthSelectorButton.setTitle("May 2026 \u{25BC}", for: .normal)
-        monthSelectorButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .semibold)
-        monthSelectorButton.setTitleColor(.label, for: .normal)
+        monthSelectorButton.setImage(UIImage(systemName: "chevron.down"), for: .normal)
+        monthSelectorButton.semanticContentAttribute = .forceRightToLeft
+        monthSelectorButton.setTitle(" May 2026 ", for: .normal)
+        monthSelectorButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        monthSelectorButton.setTitleColor(.white, for: .normal)
+        monthSelectorButton.tintColor = .white
+        monthSelectorButton.backgroundColor = .systemIndigo
+        monthSelectorButton.layer.cornerRadius = 20
+        monthSelectorButton.contentEdgeInsets = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
         monthSelectorButton.translatesAutoresizingMaskIntoConstraints = false
         monthSelectorButton.addTarget(self, action: #selector(monthSelectorTapped), for: .touchUpInside)
         contentView.addSubview(monthSelectorButton)
 
         NSLayoutConstraint.activate([
-            monthSelectorButton.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
+            monthSelectorButton.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 20),
             monthSelectorButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor)
         ])
     }
 
-    private func setupCards() {
-        expenseCard.translatesAutoresizingMaskIntoConstraints = false
-        incomeCard.translatesAutoresizingMaskIntoConstraints = false
-        balanceCard.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(expenseCard)
-        contentView.addSubview(incomeCard)
-        contentView.addSubview(balanceCard)
+    private func setupSummaryCards() {
+        summaryStackView.axis = .vertical
+        summaryStackView.spacing = 12
+        summaryStackView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(summaryStackView)
+
+        spentCard.configure(title: "Total Spent", icon: "arrow.up.circle.fill", color: .systemRed)
+        incomeCard.configure(title: "Total Income", icon: "arrow.down.circle.fill", color: .systemGreen)
+        balanceCard.configure(title: "Net Balance", icon: "wallet.pass.fill", color: .systemBlue)
+
+        summaryStackView.addArrangedSubview(spentCard)
+        summaryStackView.addArrangedSubview(incomeCard)
+        summaryStackView.addArrangedSubview(balanceCard)
 
         NSLayoutConstraint.activate([
-            expenseCard.topAnchor.constraint(equalTo: monthSelectorButton.bottomAnchor, constant: 24),
-            expenseCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            expenseCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            expenseCard.heightAnchor.constraint(equalToConstant: 100),
-
-            incomeCard.topAnchor.constraint(equalTo: expenseCard.bottomAnchor, constant: 12),
-            incomeCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            incomeCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            incomeCard.heightAnchor.constraint(equalToConstant: 100),
-
-            balanceCard.topAnchor.constraint(equalTo: incomeCard.bottomAnchor, constant: 12),
-            balanceCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            balanceCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            balanceCard.heightAnchor.constraint(equalToConstant: 100)
+            summaryStackView.topAnchor.constraint(equalTo: monthSelectorButton.bottomAnchor, constant: 24),
+            summaryStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            summaryStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
         ])
     }
 
     private func setupButtons() {
-        expenseButton.setTitle("View Expenses", for: .normal)
-        expenseButton.backgroundColor = .systemRed.withAlphaComponent(0.1)
-        expenseButton.setTitleColor(.systemRed, for: .normal)
-        expenseButton.layer.cornerRadius = 12
-        expenseButton.translatesAutoresizingMaskIntoConstraints = false
-        expenseButton.addTarget(self, action: #selector(viewExpensesTapped), for: .touchUpInside)
-        contentView.addSubview(expenseButton)
+        let buttonStackView = UIStackView()
+        buttonStackView.axis = .horizontal
+        buttonStackView.spacing = 12
+        buttonStackView.distribution = .fillEqually
+        buttonStackView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(buttonStackView)
 
-        incomeButton.setTitle("View Income", for: .normal)
-        incomeButton.backgroundColor = .systemGreen.withAlphaComponent(0.1)
-        incomeButton.setTitleColor(.systemGreen, for: .normal)
-        incomeButton.layer.cornerRadius = 12
-        incomeButton.translatesAutoresizingMaskIntoConstraints = false
+        configureActionButton(expenseButton, title: "Expenses", icon: "creditcard.fill", color: .systemRed)
+        configureActionButton(incomeButton, title: "Income", icon: "banknote.fill", color: .systemGreen)
+
+        expenseButton.addTarget(self, action: #selector(viewExpensesTapped), for: .touchUpInside)
         incomeButton.addTarget(self, action: #selector(viewIncomeTapped), for: .touchUpInside)
-        contentView.addSubview(incomeButton)
+
+        buttonStackView.addArrangedSubview(expenseButton)
+        buttonStackView.addArrangedSubview(incomeButton)
 
         NSLayoutConstraint.activate([
-            expenseButton.topAnchor.constraint(equalTo: balanceCard.bottomAnchor, constant: 32),
-            expenseButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            expenseButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            expenseButton.heightAnchor.constraint(equalToConstant: 50),
-
-            incomeButton.topAnchor.constraint(equalTo: expenseButton.bottomAnchor, constant: 12),
-            incomeButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            incomeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            incomeButton.heightAnchor.constraint(equalToConstant: 50),
-            incomeButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
+            buttonStackView.topAnchor.constraint(equalTo: summaryStackView.bottomAnchor, constant: 32),
+            buttonStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            buttonStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            buttonStackView.heightAnchor.constraint(equalToConstant: 56),
+            buttonStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
         ])
     }
 
-    private func setupActivityIndicator() {
+    private func configureActionButton(_ button: UIButton, title: String, icon: String, color: UIColor) {
+        button.setTitle("  \(title)", for: .normal)
+        button.setImage(UIImage(systemName: icon), for: .normal)
+        button.backgroundColor = color.withAlphaComponent(0.12)
+        button.setTitleColor(color, for: .normal)
+        button.tintColor = color
+        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        button.layer.cornerRadius = 14
+    }
+
+    private func setupLoadingView() {
+        loadingContainerView.backgroundColor = .systemGroupedBackground
+        loadingContainerView.translatesAutoresizingMaskIntoConstraints = false
+        loadingContainerView.isHidden = true
+        view.addSubview(loadingContainerView)
+
         activityIndicator.translatesAutoresizingMaskIntoConstraints = false
         activityIndicator.hidesWhenStopped = true
-        view.addSubview(activityIndicator)
+        loadingContainerView.addSubview(activityIndicator)
 
         progressLabel.textAlignment = .center
-        progressLabel.font = .systemFont(ofSize: 14)
+        progressLabel.font = .systemFont(ofSize: 15, weight: .medium)
+        progressLabel.textColor = .secondaryLabel
         progressLabel.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(progressLabel)
+        loadingContainerView.addSubview(progressLabel)
 
         NSLayoutConstraint.activate([
-            activityIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            activityIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            loadingContainerView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            loadingContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            loadingContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            loadingContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
-            progressLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            activityIndicator.centerXAnchor.constraint(equalTo: loadingContainerView.centerXAnchor),
+            activityIndicator.centerYAnchor.constraint(equalTo: loadingContainerView.centerYAnchor, constant: -20),
+
+            progressLabel.centerXAnchor.constraint(equalTo: loadingContainerView.centerXAnchor),
             progressLabel.topAnchor.constraint(equalTo: activityIndicator.bottomAnchor, constant: 16)
+        ])
+    }
+
+    private func setupEmptyState() {
+        emptyStateView.translatesAutoresizingMaskIntoConstraints = false
+        emptyStateView.isHidden = true
+        view.addSubview(emptyStateView)
+
+        let emptyIcon = UIImageView(image: UIImage(systemName: "doc.text.magnifyingglass"))
+        emptyIcon.tintColor = .tertiaryLabel
+        emptyIcon.contentMode = .scaleAspectFit
+        emptyIcon.translatesAutoresizingMaskIntoConstraints = false
+        emptyStateView.addSubview(emptyIcon)
+
+        emptyStateLabel.text = "No data found"
+        emptyStateLabel.font = .systemFont(ofSize: 18, weight: .medium)
+        emptyStateLabel.textColor = .secondaryLabel
+        emptyStateLabel.textAlignment = .center
+        emptyStateLabel.translatesAutoresizingMaskIntoConstraints = false
+        emptyStateView.addSubview(emptyStateLabel)
+
+        setupButton.setTitle("Go to Setup", for: .normal)
+        setupButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        setupButton.backgroundColor = .systemIndigo
+        setupButton.setTitleColor(.white, for: .normal)
+        setupButton.layer.cornerRadius = 12
+        setupButton.translatesAutoresizingMaskIntoConstraints = false
+        setupButton.addTarget(self, action: #selector(goToSetup), for: .touchUpInside)
+        emptyStateView.addSubview(setupButton)
+
+        NSLayoutConstraint.activate([
+            emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -40),
+            emptyStateView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            emptyStateView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+
+            emptyIcon.topAnchor.constraint(equalTo: emptyStateView.topAnchor),
+            emptyIcon.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
+            emptyIcon.widthAnchor.constraint(equalToConstant: 60),
+            emptyIcon.heightAnchor.constraint(equalToConstant: 60),
+
+            emptyStateLabel.topAnchor.constraint(equalTo: emptyIcon.bottomAnchor, constant: 16),
+            emptyStateLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
+            emptyStateLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
+
+            setupButton.topAnchor.constraint(equalTo: emptyStateLabel.bottomAnchor, constant: 24),
+            setupButton.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
+            setupButton.widthAnchor.constraint(equalToConstant: 160),
+            setupButton.heightAnchor.constraint(equalToConstant: 48),
+            setupButton.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
         ])
     }
 
@@ -197,47 +314,76 @@ class DashboardViewController: UIViewController {
         navigationController?.pushViewController(vc, animated: true)
     }
 
+    @objc private func goToSetup() {
+        navigationController?.popToRootViewController(animated: true)
+    }
+
     private func updateUI() {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
 
         let monthDisplay = viewModel.getMonthDisplayString(for: viewModel.selectedMonth)
-        monthSelectorButton.setTitle("\(monthDisplay) \u{25BC}", for: .normal)
+        monthSelectorButton.setTitle(" \(monthDisplay) ", for: .normal)
 
-        expenseCard.setValue(formatter.string(from: NSNumber(value: viewModel.selectedMonthExpenses)) ?? "$0")
-        expenseCard.setSubtitle("\(viewModel.selectedMonthExpensesCount) transactions")
+        spentCard.setValue(formatter.string(from: NSNumber(value: viewModel.selectedMonthExpenses)) ?? "$0.00")
+        spentCard.setSubtitle("\(viewModel.selectedMonthExpensesCount) transactions")
 
-        incomeCard.setValue(formatter.string(from: NSNumber(value: viewModel.selectedMonthIncomes)) ?? "$0")
+        incomeCard.setValue(formatter.string(from: NSNumber(value: viewModel.selectedMonthIncomes)) ?? "$0.00")
         incomeCard.setSubtitle("\(viewModel.selectedMonthIncomesCount) transactions")
 
         let balance = viewModel.balance
         let balanceColor: UIColor = balance >= 0 ? .systemGreen : .systemRed
-        balanceCard.backgroundColor = balanceColor.withAlphaComponent(0.1)
-        balanceCard.titleLabel.textColor = balanceColor
-        balanceCard.setValue(formatter.string(from: NSNumber(value: abs(balance))) ?? "$0")
-        balanceCard.setSubtitle(balance >= 0 ? "Positive" : "Negative")
+        let balancePrefix = balance >= 0 ? "+" : "-"
+        let balanceValue = formatter.string(from: NSNumber(value: abs(balance))) ?? "$0.00"
+        balanceCard.setValue("\(balancePrefix)\(balanceValue)")
+        balanceCard.setValueColor(balanceColor)
+        balanceCard.setSubtitle(balance >= 0 ? "You saved this month" : "Over budget")
+
+        if let lastSync = lastSyncDate {
+            let timeFormatter = DateFormatter()
+            timeFormatter.timeStyle = .short
+            lastSyncLabel.text = "Last synced at \(timeFormatter.string(from: lastSync))"
+        }
     }
 }
 
 extension DashboardViewController: DashboardViewModelDelegate {
     func didStartLoading() {
-        activityIndicator.startAnimating()
-        progressLabel.text = "Loading..."
+        lastSyncDate = nil
+        loadingContainerView.isHidden = false
         scrollView.isHidden = true
+        emptyStateView.isHidden = true
+        activityIndicator.startAnimating()
+        progressLabel.text = "Loading your finances..."
     }
 
     func didFinishLoading(success: Bool, error: Error?) {
+        loadingContainerView.isHidden = true
         activityIndicator.stopAnimating()
         progressLabel.text = ""
-        scrollView.isHidden = false
 
         if success {
-            updateUI()
+            lastSyncDate = Date()
+
+            let hasData = viewModel.selectedMonthExpensesCount > 0 || viewModel.selectedMonthIncomesCount > 0
+
+            if hasData {
+                scrollView.isHidden = false
+                emptyStateView.isHidden = true
+                updateUI()
+            } else {
+                scrollView.isHidden = true
+                emptyStateView.isHidden = false
+                emptyStateLabel.text = "No transactions this month"
+            }
         } else {
-            let alert = UIAlertController(title: "Error", message: error?.localizedDescription ?? "Failed to load data", preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            present(alert, animated: true)
+            scrollView.isHidden = true
+            emptyStateView.isHidden = false
+            emptyStateLabel.text = error?.localizedDescription ?? "Failed to load data"
+            setupButton.setTitle("Try Again", for: .normal)
+            setupButton.removeTarget(self, action: #selector(goToSetup), for: .touchUpInside)
+            setupButton.addTarget(self, action: #selector(refreshTapped), for: .touchUpInside)
         }
     }
 
@@ -250,54 +396,90 @@ extension DashboardViewController: DashboardViewModelDelegate {
     }
 }
 
-class DashboardCardView: UIView {
-    let titleLabel = UILabel()
+class SummaryCardView: UIView {
+    private let iconContainer = UIView()
+    private let iconImageView = UIImageView()
+    private let titleLabel = UILabel()
     private let valueLabel = UILabel()
     private let subtitleLabel = UILabel()
 
-    init(title: String, color: UIColor) {
-        super.init(frame: .zero)
-
-        backgroundColor = color.withAlphaComponent(0.1)
-        layer.cornerRadius = 12
-
-        titleLabel.text = title
-        titleLabel.font = .systemFont(ofSize: 14, weight: .medium)
-        titleLabel.textColor = color
-
-        valueLabel.font = .systemFont(ofSize: 28, weight: .bold)
-        valueLabel.textColor = .label
-
-        subtitleLabel.font = .systemFont(ofSize: 12)
-        subtitleLabel.textColor = .secondaryLabel
-
-        addSubview(titleLabel)
-        addSubview(valueLabel)
-        addSubview(subtitleLabel)
-
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        valueLabel.translatesAutoresizingMaskIntoConstraints = false
-        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        NSLayoutConstraint.activate([
-            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 16),
-            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-
-            valueLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            valueLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-
-            subtitleLabel.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: 4),
-            subtitleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            subtitleLabel.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -16)
-        ])
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupView()
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
+    private func setupView() {
+        backgroundColor = .secondarySystemGroupedBackground
+        layer.cornerRadius = 16
+        layer.shadowColor = UIColor.black.cgColor
+        layer.shadowOpacity = 0.04
+        layer.shadowOffset = CGSize(width: 0, height: 2)
+        layer.shadowRadius = 8
+
+        iconContainer.layer.cornerRadius = 22
+        iconContainer.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(iconContainer)
+
+        iconImageView.contentMode = .scaleAspectFit
+        iconImageView.tintColor = .white
+        iconImageView.translatesAutoresizingMaskIntoConstraints = false
+        iconContainer.addSubview(iconImageView)
+
+        titleLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        titleLabel.textColor = .secondaryLabel
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        valueLabel.font = .systemFont(ofSize: 28, weight: .bold)
+        valueLabel.textColor = .label
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(valueLabel)
+
+        subtitleLabel.font = .systemFont(ofSize: 13)
+        subtitleLabel.textColor = .tertiaryLabel
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(subtitleLabel)
+
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 100),
+
+            iconContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            iconContainer.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconContainer.widthAnchor.constraint(equalToConstant: 44),
+            iconContainer.heightAnchor.constraint(equalToConstant: 44),
+
+            iconImageView.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
+            iconImageView.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
+            iconImageView.widthAnchor.constraint(equalToConstant: 22),
+            iconImageView.heightAnchor.constraint(equalToConstant: 22),
+
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 20),
+            titleLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 14),
+
+            valueLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            valueLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 14),
+
+            subtitleLabel.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: 2),
+            subtitleLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 14)
+        ])
+    }
+
+    func configure(title: String, icon: String, color: UIColor) {
+        titleLabel.text = title
+        iconImageView.image = UIImage(systemName: icon)
+        iconContainer.backgroundColor = color
+    }
+
     func setValue(_ value: String) {
         valueLabel.text = value
+    }
+
+    func setValueColor(_ color: UIColor) {
+        valueLabel.textColor = color
     }
 
     func setSubtitle(_ subtitle: String) {
