@@ -26,6 +26,7 @@ class DashboardViewController: UIViewController {
 
     private let expenseButton = UIButton(type: .system)
     private let incomeButton = UIButton(type: .system)
+    private let analyticsButton = UIButton(type: .system)
 
     private let loadingContainerView = UIView()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
@@ -166,28 +167,33 @@ class DashboardViewController: UIViewController {
 
     private func setupButtons() {
         let buttonStackView = UIStackView()
-        buttonStackView.axis = .horizontal
+        buttonStackView.axis = .vertical
         buttonStackView.spacing = 12
-        buttonStackView.distribution = .fillEqually
         buttonStackView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(buttonStackView)
 
-        configureActionButton(expenseButton, title: "Expenses", icon: "creditcard.fill", color: .systemRed)
-        configureActionButton(incomeButton, title: "Income", icon: "banknote.fill", color: .systemGreen)
+        configureActionButton(expenseButton, title: "View Expenses", icon: "creditcard.fill", color: .systemRed)
+        configureActionButton(incomeButton, title: "View Income", icon: "banknote.fill", color: .systemGreen)
+        configureActionButton(analyticsButton, title: "Analytics", icon: "chart.bar.fill", color: .systemIndigo)
 
         expenseButton.addTarget(self, action: #selector(viewExpensesTapped), for: .touchUpInside)
         incomeButton.addTarget(self, action: #selector(viewIncomeTapped), for: .touchUpInside)
+        analyticsButton.addTarget(self, action: #selector(analyticsTapped), for: .touchUpInside)
 
         buttonStackView.addArrangedSubview(expenseButton)
         buttonStackView.addArrangedSubview(incomeButton)
+        buttonStackView.addArrangedSubview(analyticsButton)
 
         NSLayoutConstraint.activate([
             buttonStackView.topAnchor.constraint(equalTo: summaryStackView.bottomAnchor, constant: 32),
             buttonStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             buttonStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            buttonStackView.heightAnchor.constraint(equalToConstant: 56),
             buttonStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
         ])
+
+        [expenseButton, incomeButton, analyticsButton].forEach { button in
+            button.heightAnchor.constraint(equalToConstant: 56).isActive = true
+        }
     }
 
     private func configureActionButton(_ button: UIButton, title: String, icon: String, color: UIColor) {
@@ -312,6 +318,12 @@ class DashboardViewController: UIViewController {
     @objc private func viewIncomeTapped() {
         let vc = IncomeListViewController()
         navigationController?.pushViewController(vc, animated: true)
+    }
+
+    @objc private func analyticsTapped() {
+        let alert = UIAlertController(title: "Coming Soon", message: "Analytics and charts are under development.", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 
     @objc private func goToSetup() {
