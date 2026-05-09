@@ -26,6 +26,9 @@ final class AddTransactionViewModel {
     private(set) var isFetchingFields = false
 
     private var mappings: [String: DatabaseMappingData] = [:]
+    private var prefillData: [String: String]
+    private var prefillApplied = false
+
     private var token: String {
         return UserDefaultsManager.shared.notionToken ?? ""
     }
@@ -38,13 +41,82 @@ final class AddTransactionViewModel {
         return mappings.values.first { $0.role == selectedRole }
     }
 
-    init() {
+    init(prefillData: [String: String] = [:], initialRole: DatabaseRole = .expense) {
+        self.prefillData = prefillData
+        self.selectedRole = initialRole
         loadMappings()
+        applyPrefillIfNeeded()
     }
 
     private func loadMappings() {
         mappings = ColumnMappingService.shared.loadDatabaseMappings()
         print("[AddTransactionVM] Loaded \(mappings.count) database mappings")
+    }
+
+    private func applyPrefillIfNeeded() {
+        guard !prefillData.isEmpty else {
+            print("[AddTransactionVM] No prefill data")
+            return
+        }
+        print("[AddTransactionVM] Has prefill data: \(prefillData)")
+    }
+
+    private func applyPrefillToFields(columnMapping: ColumnMapping?) {
+        guard !prefillData.isEmpty, !prefillApplied else { return }
+
+        prefillApplied = true
+        print("[AddTransactionVM] Applying prefill data...")
+
+        guard let mapping = columnMapping else {
+            print("[AddTransactionVM] No column mapping, cannot apply prefill")
+            return
+        }
+
+        if let title = prefillData["title"], !title.isEmpty, let titleColumn = mapping.titleColumn {
+            updateStringValue(propertyName: titleColumn, value: title)
+            print("[AddTransactionVM] Prefilled title: \(title)")
+        }
+
+        if let amount = prefillData["amount"], !amount.isEmpty {
+            let cleanAmount = amount.replacingOccurrences(of: ",", with: ".")
+            if let amountValue = Double(cleanAmount), let amountColumn = mapping.amountColumn {
+                updateNumberValue(propertyName: amountColumn, value: amountValue)
+                print("[AddTransactionVM] Prefilled amount: \(amountValue)")
+            } else {
+                print("[AddTransactionVM] Invalid amount: \(amount)")
+            }
+        }
+
+        if let dateString = prefillData["date"], !dateString.isEmpty, let dateColumn = mapping.dateColumn {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            if let date = formatter.date(from: dateString) {
+                updateDateValue(propertyName: dateColumn, value: date)
+                print("[AddTransactionVM] Prefilled date: \(dateString)")
+            } else {
+                print("[AddTransactionVM] Invalid date format: \(dateString)")
+            }
+        }
+
+        if let notes = prefillData["notes"], !notes.isEmpty {
+            let notesColumn = findNotesColumn()
+            if let column = notesColumn {
+                updateStringValue(propertyName: column, value: notes)
+                print("[AddTransactionVM] Prefilled notes: \(notes)")
+            }
+        }
+
+        print("[AddTransactionVM] Prefill applied successfully")
+    }
+
+    private func findNotesColumn() -> String? {
+        let notesVariants = ["Notes", "notes", "Description", "description", "Memo", "memo"]
+        for variant in notesVariants {
+            if fields.contains(where: { $0.propertyName.lowercased() == variant.lowercased() }) {
+                return fields.first { $0.propertyName.lowercased() == variant.lowercased() }?.propertyName
+            }
+        }
+        return nil
     }
 
     func switchMode(to role: DatabaseRole) {
@@ -162,6 +234,7 @@ final class AddTransactionViewModel {
         print("[AddTransactionVM] Writable fields generated: \(fields.count)")
         print("[AddTransactionVM] Writable fields: \(fields.map { "\($0.propertyName)(\($0.propertyType.rawValue))" }.joined(separator: ", "))")
 
+        applyPrefillToFields(columnMapping: columnMapping)
         delegate?.didLoadFields(fields)
 
         for field in fields where field.propertyType == .relation {

@@ -7,7 +7,9 @@ import UIKit
 
 final class AddTransactionViewController: UIViewController {
 
-    private let viewModel = AddTransactionViewModel()
+    private var viewModel: AddTransactionViewModel!
+    private var prefillData: [String: String] = [:]
+    private var initialRole: DatabaseRole = .expense
 
     private let segmentedControl: UISegmentedControl = {
         let sc = UISegmentedControl(items: ["Expense", "Income"])
@@ -109,10 +111,28 @@ final class AddTransactionViewController: UIViewController {
     private var switchControls: [String: UISwitch] = [:]
     private var pickerButtons: [String: UIButton] = [:]
 
+    init(prefillData: [String: String] = [:], initialRole: DatabaseRole = .expense) {
+        self.prefillData = prefillData
+        self.initialRole = initialRole
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+
+        viewModel = AddTransactionViewModel(prefillData: prefillData, initialRole: initialRole)
         viewModel.delegate = self
+
+        segmentedControl.selectedSegmentIndex = initialRole == .expense ? 0 : 1
+        let tint: UIColor = initialRole == .expense ? .systemRed : .systemGreen
+        segmentedControl.selectedSegmentTintColor = tint
+        saveButton.configuration?.baseBackgroundColor = tint
+
         viewModel.generateFields()
     }
 
