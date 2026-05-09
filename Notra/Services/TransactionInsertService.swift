@@ -7,7 +7,6 @@ import Foundation
 
 enum TransactionInsertError: LocalizedError {
     case invalidDatabaseId
-    case noToken
     case networkError(Error)
     case invalidResponse
     case apiError(String)
@@ -16,7 +15,6 @@ enum TransactionInsertError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidDatabaseId: return "Invalid database ID"
-        case .noToken: return "No Notion token found"
         case .networkError(let error): return "Network error: \(error.localizedDescription)"
         case .invalidResponse: return "Invalid response from Notion API"
         case .apiError(let message): return "API error: \(message)"
@@ -215,47 +213,7 @@ final class TransactionInsertService {
         return properties
     }
 
-    func loadSelectOptions(databaseId: String, propertyName: String, token: String, completion: @escaping (Result<[String], TransactionInsertError>) -> Void) {
-        print("[TransactionInsert] Loading select options for \(propertyName) from database: \(databaseId)")
-
-        guard let url = URL(string: baseURL + "/databases/\(databaseId)") else {
-            completion(.failure(.invalidDatabaseId))
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue(notionVersion, forHTTPHeaderField: "Notion-Version")
-
-        session.dataTask(with: request) { data, response, error in
-            if let error = error {
-                DispatchQueue.main.async { completion(.failure(.networkError(error))) }
-                return
-            }
-
-            guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let properties = json["properties"] as? [String: Any],
-                  let propConfig = properties[propertyName] as? [String: Any] else {
-                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
-                return
-            }
-
-            var options: [String] = []
-
-            if let selectConfig = propConfig["select"] as? [String: Any],
-               let selectOptions = selectConfig["options"] as? [[String: Any]] {
-                options = selectOptions.compactMap { $0["name"] as? String }
-            } else if let multiSelectConfig = propConfig["multi_select"] as? [String: Any],
-                      let multiOptions = multiSelectConfig["options"] as? [[String: Any]] {
-                options = multiOptions.compactMap { $0["name"] as? String }
-            }
-
-            print("[TransactionInsert] Found \(options.count) select options")
-            DispatchQueue.main.async { completion(.success(options)) }
-        }.resume()
-    }
+    
 
     func loadRelationOptions(databaseId: String, token: String, completion: @escaping (Result<[(id: String, title: String)], TransactionInsertError>) -> Void) {
         print("[TransactionInsert] Loading relation options for database: \(databaseId)")

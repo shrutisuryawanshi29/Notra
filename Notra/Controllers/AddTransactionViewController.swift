@@ -236,7 +236,7 @@ final class AddTransactionViewController: UIViewController {
     private func collectFieldValues() {
         for (propertyName, view) in fieldViews {
             if let tf = view as? UITextField {
-                let fieldType = viewModel.fields.first(where: { $0.propertyName == propertyName })?.propertyType
+                let fieldType = fieldsByName[propertyName]?.propertyType
                 if fieldType == .number {
                     let value = Double(tf.text?.replacingOccurrences(of: ",", with: ".") ?? "")
                     viewModel.updateNumberValue(propertyName: propertyName, value: value)
@@ -255,6 +255,10 @@ final class AddTransactionViewController: UIViewController {
         for (propertyName, switchControl) in switchControls {
             viewModel.updateBoolValue(propertyName: propertyName, value: switchControl.isOn)
         }
+    }
+
+    private var fieldsByName: [String: DynamicFormField] {
+        Dictionary(uniqueKeysWithValues: viewModel.fields.map { ($0.propertyName, $0) })
     }
 
     private func updateUIForFields() {
