@@ -213,13 +213,95 @@ final class TransactionInsertService {
         return properties
     }
 
-    
+    private func sortRelationOptions(_ options: [(id: String, title: String)]) -> [(id: String, title: String)] {
+        let monthYearPatterns = [
+            "^\\w+ \\d{4}$",
+            "^\\w+, \\d{4}$",
+            "^\\d{4} \\w+$",
+            "^\\d{4}-\\d{2}$",
+            "^\\d{2}/\\d{4}$"
+        ]
+
+        let allMatchMonthYear = options.allSatisfy { option in
+            monthYearPatterns.contains { pattern in
+                option.title.range(of: pattern, options: .regularExpression) != nil
+            }
+        }
+
+        if allMatchMonthYear && !options.isEmpty {
+            let monthOrder = ["January", "February", "March", "April", "May", "June",
+                              "July", "August", "September", "October", "November", "December"]
+            let shortMonthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+            let sorted = options.sorted { a, b in
+                let titleA = a.title
+                let titleB = b.title
+
+                let dateA = parseMonthYear(titleA, fullOrder: monthOrder, shortOrder: shortMonthOrder)
+                let dateB = parseMonthYear(titleB, fullOrder: monthOrder, shortOrder: shortMonthOrder)
+
+                if let dA = dateA, let dB = dateB {
+                    return dA > dB
+                }
+                return titleA < titleB
+            }
+            return sorted
+        }
+
+        return options.sorted { $0.title < $1.title }
+    }
+
+    private func parseMonthYear(_ title: String, fullOrder: [String], shortOrder: [String]) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+
+        let formats = [
+            "MMMM yyyy",
+            "MMM yyyy",
+            "MMMM, yyyy",
+            "yyyy MMMM",
+            "yyyy-MM",
+            "MM/yyyy"
+        ]
+
+        for format in formats {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: title) {
+                return date
+            }
+        }
+
+        let yearPattern = "(\\d{4})"
+        let monthFullPattern = "(January|February|March|April|May|June|July|August|September|October|November|December)"
+        let monthShortPattern = "(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+
+        if let yearMatch = title.range(of: yearPattern, options: .regularExpression) {
+            let yearStr = String(title[yearMatch])
+            if let year = Int(yearStr) {
+                if let monthMatch = title.range(of: monthFullPattern, options: .caseInsensitive) {
+                    let monthStr = String(title[monthMatch])
+                    if let monthIdx = fullOrder.firstIndex(of: monthStr) {
+                        return Calendar.current.date(from: DateComponents(year: year, month: monthIdx + 1))
+                    }
+                }
+                if let monthMatch = title.range(of: monthShortPattern, options: .caseInsensitive) {
+                    let monthStr = String(title[monthMatch])
+                    if let monthIdx = shortOrder.firstIndex(of: monthStr) {
+                        return Calendar.current.date(from: DateComponents(year: year, month: monthIdx + 1))
+                    }
+                }
+            }
+        }
+
+        return nil
+    }
 
     func loadRelationOptions(databaseId: String, token: String, completion: @escaping (Result<[(id: String, title: String)], TransactionInsertError>) -> Void) {
         print("[TransactionInsert] Loading relation options for database: \(databaseId)")
 
         if let cached = SessionCacheManager.shared.getRelationTargetData(databaseId: databaseId) {
-            let options = cached.map { (id: $0.key, title: $0.value) }.sorted { $0.title < $1.title }
+            let options = sortRelationOptions(cached.map { (id: $0.key, title: $0.value) })
             print("[TransactionInsert] Cache HIT (relationData) for \(databaseId): \(options.count) items")
             if let first = options.first, first.title.hasPrefix("355e") && first.title.count <= 12 {
                 print("[TransactionInsert] Cache has corrupt titles (stale data from before title fix), re-fetching from API")
@@ -231,7 +313,7 @@ final class TransactionInsertService {
         }
 
         if let categoryLookup = SessionCacheManager.shared.getCategoryLookup(for: databaseId) {
-            let options = categoryLookup.map { (id: $0.key, title: $0.value) }.sorted { $0.title < $1.title }
+            let options = sortRelationOptions(categoryLookup.map { (id: $0.key, title: $0.value) })
             print("[TransactionInsert] Cache HIT (categoryLookup) for \(databaseId): \(options.count) items")
             if let first = options.first, first.title.hasPrefix("355e") && first.title.count <= 12 {
                 print("[TransactionInsert] categoryLookup also has corrupt titles, clearing")
@@ -282,7 +364,7 @@ final class TransactionInsertService {
 
             do {
                 let searchResponse = try JSONDecoder().decode(NotionSearchResponse.self, from: data)
-                let options = searchResponse.results.map { (id: $0.id, title: $0.title) }.sorted { $0.title < $1.title }
+                let options = self.sortRelationOptions(searchResponse.results.map { (id: $0.id, title: $0.title) })
                 print("[TransactionInsert] API returned \(options.count) relation options: \(options.map { $0.title }.joined(separator: ", "))")
 
                 SessionCacheManager.shared.saveRelationTargetData(databaseId: databaseId, rows: searchResponse.results)
