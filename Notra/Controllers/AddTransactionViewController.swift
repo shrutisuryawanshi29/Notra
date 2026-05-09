@@ -13,7 +13,28 @@ final class AddTransactionViewController: UIViewController {
         let sc = UISegmentedControl(items: ["Expense", "Income"])
         sc.selectedSegmentIndex = 0
         sc.translatesAutoresizingMaskIntoConstraints = false
+        sc.selectedSegmentTintColor = .systemBlue
+        sc.setTitleTextAttributes([
+            .foregroundColor: UIColor.white,
+            .font: UIFont.systemFont(ofSize: 15, weight: .semibold)
+        ], for: .selected)
+        sc.setTitleTextAttributes([
+            .foregroundColor: UIColor.label,
+            .font: UIFont.systemFont(ofSize: 15, weight: .medium)
+        ], for: .normal)
         return sc
+    }()
+
+    private let segmentedContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = .systemGroupedBackground
+        view.layer.cornerRadius = 12
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.05
+        view.layer.shadowOffset = CGSize(width: 0, height: 2)
+        view.layer.shadowRadius = 4
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
     }()
 
     private let tableView: UITableView = {
@@ -24,22 +45,31 @@ final class AddTransactionViewController: UIViewController {
         return tv
     }()
 
-    private let contentContainer: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
+
 
     private let saveButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Save Transaction", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        button.backgroundColor = .systemBlue
-        button.setTitleColor(.white, for: .normal)
-        button.setTitleColor(.white.withAlphaComponent(0.5), for: .disabled)
-        button.layer.cornerRadius = 12
+        var config = UIButton.Configuration.filled()
+        config.title = "Save Transaction"
+        config.image = UIImage(systemName: "checkmark.circle.fill")
+        config.imagePadding = 8
+        config.imagePlacement = .leading
+        config.baseBackgroundColor = .systemBlue
+        config.baseForegroundColor = .white
+        config.cornerStyle = .large
+        let button = UIButton(configuration: config)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
+    }()
+
+    private let errorLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.textColor = .systemRed
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.isHidden = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     private let loadingView: UIView = {
@@ -107,9 +137,10 @@ final class AddTransactionViewController: UIViewController {
         tableView.register(FormSwitchCell.self, forCellReuseIdentifier: "FormSwitchCell")
         tableView.register(FormTextViewCell.self, forCellReuseIdentifier: "FormTextViewCell")
 
-        view.addSubview(contentContainer)
-        contentContainer.addSubview(segmentedControl)
+        view.addSubview(segmentedContainer)
+        segmentedContainer.addSubview(segmentedControl)
         view.addSubview(tableView)
+        view.addSubview(errorLabel)
         view.addSubview(saveButton)
         view.addSubview(loadingView)
         loadingView.addSubview(loadingIndicator)
@@ -118,25 +149,30 @@ final class AddTransactionViewController: UIViewController {
         setupEmptyState()
 
         NSLayoutConstraint.activate([
-            contentContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            contentContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            contentContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            contentContainer.heightAnchor.constraint(equalToConstant: 48),
+            segmentedContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            segmentedContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            segmentedContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            segmentedContainer.heightAnchor.constraint(equalToConstant: 44),
 
-            segmentedControl.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: 4),
-            segmentedControl.centerXAnchor.constraint(equalTo: contentContainer.centerXAnchor),
-            segmentedControl.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor, constant: -4),
-            segmentedControl.widthAnchor.constraint(equalToConstant: 240),
+            segmentedControl.topAnchor.constraint(equalTo: segmentedContainer.topAnchor),
+            segmentedControl.leadingAnchor.constraint(equalTo: segmentedContainer.leadingAnchor),
+            segmentedControl.trailingAnchor.constraint(equalTo: segmentedContainer.trailingAnchor),
+            segmentedControl.bottomAnchor.constraint(equalTo: segmentedContainer.bottomAnchor),
+            segmentedControl.widthAnchor.constraint(equalTo: segmentedContainer.widthAnchor, constant: -16),
 
-            tableView.topAnchor.constraint(equalTo: contentContainer.bottomAnchor),
+            tableView.topAnchor.constraint(equalTo: segmentedContainer.bottomAnchor, constant: 8),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: saveButton.topAnchor, constant: -12),
+            tableView.bottomAnchor.constraint(equalTo: errorLabel.topAnchor, constant: -8),
+
+            errorLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            errorLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            errorLabel.bottomAnchor.constraint(equalTo: saveButton.topAnchor, constant: -4),
 
             saveButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             saveButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             saveButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
-            saveButton.heightAnchor.constraint(equalToConstant: 50),
+            saveButton.heightAnchor.constraint(equalToConstant: 56),
 
             loadingView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             loadingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -149,7 +185,7 @@ final class AddTransactionViewController: UIViewController {
             loadingLabel.topAnchor.constraint(equalTo: loadingIndicator.bottomAnchor, constant: 16),
             loadingLabel.centerXAnchor.constraint(equalTo: loadingView.centerXAnchor),
 
-            emptyStateView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            emptyStateView.topAnchor.constraint(equalTo: segmentedContainer.bottomAnchor, constant: 8),
             emptyStateView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             emptyStateView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             emptyStateView.bottomAnchor.constraint(equalTo: saveButton.topAnchor)
@@ -213,6 +249,9 @@ final class AddTransactionViewController: UIViewController {
 
     @objc private func modeChanged() {
         let role: DatabaseRole = segmentedControl.selectedSegmentIndex == 0 ? .expense : .income
+        let tint: UIColor = role == .expense ? .systemRed : .systemGreen
+        segmentedControl.selectedSegmentTintColor = tint
+        saveButton.configuration?.baseBackgroundColor = tint
         print("[AddTransactionVC] Mode changed to: \(role.displayName)")
         dismissKeyboard()
         pickerButtons.removeAll()
@@ -224,12 +263,14 @@ final class AddTransactionViewController: UIViewController {
         loadingLabel.text = "Loading \(role.displayName) fields..."
         tableView.isHidden = true
         emptyStateView.isHidden = true
+        errorLabel.isHidden = true
         viewModel.switchMode(to: role)
     }
 
     @objc private func saveTapped() {
         dismissKeyboard()
         collectFieldValues()
+        errorLabel.isHidden = true
         viewModel.saveTransaction()
     }
 
@@ -271,6 +312,7 @@ final class AddTransactionViewController: UIViewController {
         } else {
             tableView.isHidden = false
             emptyStateView.isHidden = true
+            updateSaveButtonColor()
             tableView.reloadData()
         }
     }
@@ -289,17 +331,6 @@ final class AddTransactionViewController: UIViewController {
 
     private func showError(_ message: String) {
         let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-
-    private func showValidationErrors(_ missingFields: [String]) {
-        let names = missingFields.joined(separator: ", ")
-        let alert = UIAlertController(
-            title: "Missing Required Fields",
-            message: "Please fill in: \(names)",
-            preferredStyle: .alert
-        )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
@@ -509,9 +540,10 @@ extension AddTransactionViewController: AddTransactionViewModelDelegate {
 
     func didStartSaving() {
         print("[AddTransactionVC] Saving...")
+        errorLabel.isHidden = true
         saveButton.isEnabled = false
-        saveButton.backgroundColor = .systemGray
-        saveButton.setTitle("Saving...", for: .normal)
+        saveButton.configuration?.showsActivityIndicator = true
+        saveButton.configuration?.title = "Saving..."
         loadingIndicator.startAnimating()
     }
 
@@ -519,8 +551,9 @@ extension AddTransactionViewController: AddTransactionViewModelDelegate {
         print("[AddTransactionVC] Save successful")
         loadingIndicator.stopAnimating()
         saveButton.isEnabled = true
-        saveButton.backgroundColor = .systemBlue
-        saveButton.setTitle("Save Transaction", for: .normal)
+        saveButton.configuration?.showsActivityIndicator = false
+        saveButton.configuration?.title = "Save Transaction"
+        updateSaveButtonColor()
         showSuccess()
     }
 
@@ -528,16 +561,24 @@ extension AddTransactionViewController: AddTransactionViewModelDelegate {
         print("[AddTransactionVC] Save failed: \(error)")
         loadingIndicator.stopAnimating()
         saveButton.isEnabled = true
-        saveButton.backgroundColor = .systemBlue
-        saveButton.setTitle("Save Transaction", for: .normal)
+        saveButton.configuration?.showsActivityIndicator = false
+        saveButton.configuration?.title = "Save Transaction"
+        updateSaveButtonColor()
         showError(error)
     }
 
     func didValidateForm(isValid: Bool, missingFields: [String]) {
         print("[AddTransactionVC] Validation: isValid=\(isValid), missing=\(missingFields)")
         if !isValid {
-            showValidationErrors(missingFields)
+            let names = missingFields.joined(separator: ", ")
+            errorLabel.text = "Please fill in: \(names)"
+            errorLabel.isHidden = false
         }
+    }
+
+    private func updateSaveButtonColor() {
+        let tint: UIColor = viewModel.selectedRole == .expense ? .systemRed : .systemGreen
+        saveButton.configuration?.baseBackgroundColor = tint
     }
 }
 
@@ -558,15 +599,15 @@ private class FormFieldCell: UITableViewCell {
     private func setup() {
         selectionStyle = .none
 
-        nameLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         nameLabel.textColor = .secondaryLabel
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
         badgeLabel.text = "Required"
-        badgeLabel.font = .systemFont(ofSize: 9, weight: .semibold)
+        badgeLabel.font = .systemFont(ofSize: 9, weight: .bold)
         badgeLabel.textColor = .white
-        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.75)
+        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
         badgeLabel.layer.cornerRadius = 8
         badgeLabel.clipsToBounds = true
         badgeLabel.textAlignment = .center
@@ -579,18 +620,18 @@ private class FormFieldCell: UITableViewCell {
         contentView.addSubview(textField)
 
         NSLayoutConstraint.activate([
-            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 10),
-            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
 
             badgeLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
-            badgeLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 6),
-            badgeLabel.heightAnchor.constraint(equalToConstant: 16),
-            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            badgeLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 8),
+            badgeLabel.heightAnchor.constraint(equalToConstant: 18),
+            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 48),
 
-            textField.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 6),
-            textField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            textField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            textField.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10)
+            textField.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8),
+            textField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            textField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            textField.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -14)
         ])
     }
 
@@ -632,6 +673,7 @@ private class FormPickerCell: UITableViewCell {
     private let nameLabel = UILabel()
     private let badgeLabel = UILabel()
     private let loadingLabel = UILabel()
+    private let relationIcon = UIImageView()
     var onTap: (() -> Void)?
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -644,20 +686,25 @@ private class FormPickerCell: UITableViewCell {
     private func setup() {
         selectionStyle = .none
 
-        nameLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         nameLabel.textColor = .secondaryLabel
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
         badgeLabel.text = "Required"
-        badgeLabel.font = .systemFont(ofSize: 9, weight: .semibold)
+        badgeLabel.font = .systemFont(ofSize: 9, weight: .bold)
         badgeLabel.textColor = .white
-        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.75)
+        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
         badgeLabel.layer.cornerRadius = 8
         badgeLabel.clipsToBounds = true
         badgeLabel.textAlignment = .center
         badgeLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(badgeLabel)
+
+        relationIcon.image = UIImage(systemName: "arrow.triangle.swap")
+        relationIcon.tintColor = .tertiaryLabel
+        relationIcon.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(relationIcon)
 
         valueButton.contentHorizontalAlignment = .leading
         valueButton.titleLabel?.font = .systemFont(ofSize: 17)
@@ -677,26 +724,31 @@ private class FormPickerCell: UITableViewCell {
         contentView.addSubview(arrow)
 
         NSLayoutConstraint.activate([
-            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 10),
-            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
 
             badgeLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
-            badgeLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 6),
-            badgeLabel.heightAnchor.constraint(equalToConstant: 16),
-            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            badgeLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 8),
+            badgeLabel.heightAnchor.constraint(equalToConstant: 18),
+            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 48),
 
-            valueButton.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 6),
-            valueButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            valueButton.trailingAnchor.constraint(equalTo: arrow.leadingAnchor, constant: -4),
-            valueButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10),
+            relationIcon.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
+            relationIcon.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            relationIcon.widthAnchor.constraint(equalToConstant: 16),
+            relationIcon.heightAnchor.constraint(equalToConstant: 16),
+
+            valueButton.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8),
+            valueButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            valueButton.trailingAnchor.constraint(equalTo: arrow.leadingAnchor, constant: -8),
+            valueButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -14),
 
             arrow.centerYAnchor.constraint(equalTo: valueButton.centerYAnchor),
-            arrow.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            arrow.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             arrow.widthAnchor.constraint(equalToConstant: 10),
             arrow.heightAnchor.constraint(equalToConstant: 10),
 
             loadingLabel.centerYAnchor.constraint(equalTo: valueButton.centerYAnchor),
-            loadingLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
+            loadingLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20)
         ])
     }
 
@@ -707,6 +759,7 @@ private class FormPickerCell: UITableViewCell {
     func configure(with field: DynamicFormField, role: DatabaseRole, options: [String]) {
         nameLabel.text = field.displayName
         badgeLabel.isHidden = !field.isMappedCoreField
+        relationIcon.isHidden = true
         valueButton.isHidden = false
         loadingLabel.isHidden = true
         valueButton.setTitle("Select \(field.displayName)...", for: .normal)
@@ -716,6 +769,7 @@ private class FormPickerCell: UITableViewCell {
     func configure(with field: DynamicFormField, role: DatabaseRole, placeholder: String) {
         nameLabel.text = field.displayName
         badgeLabel.isHidden = !field.isMappedCoreField
+        relationIcon.isHidden = false
         valueButton.isHidden = true
         loadingLabel.isHidden = false
         loadingLabel.text = placeholder
@@ -724,6 +778,7 @@ private class FormPickerCell: UITableViewCell {
     func configure(with field: DynamicFormField, role: DatabaseRole, relationOptions: [(id: String, title: String)]) {
         nameLabel.text = field.displayName
         badgeLabel.isHidden = !field.isMappedCoreField
+        relationIcon.isHidden = false
         valueButton.isHidden = false
         loadingLabel.isHidden = true
         valueButton.setTitle("Select \(field.displayName)...", for: .normal)
@@ -748,15 +803,15 @@ private class FormDateCell: UITableViewCell {
     private func setup() {
         selectionStyle = .none
 
-        nameLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         nameLabel.textColor = .secondaryLabel
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
         badgeLabel.text = "Required"
-        badgeLabel.font = .systemFont(ofSize: 9, weight: .semibold)
+        badgeLabel.font = .systemFont(ofSize: 9, weight: .bold)
         badgeLabel.textColor = .white
-        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.75)
+        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
         badgeLabel.layer.cornerRadius = 8
         badgeLabel.clipsToBounds = true
         badgeLabel.textAlignment = .center
@@ -769,17 +824,17 @@ private class FormDateCell: UITableViewCell {
         contentView.addSubview(datePicker)
 
         NSLayoutConstraint.activate([
-            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 10),
-            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
 
             badgeLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
-            badgeLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 6),
-            badgeLabel.heightAnchor.constraint(equalToConstant: 16),
-            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            badgeLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 8),
+            badgeLabel.heightAnchor.constraint(equalToConstant: 18),
+            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 48),
 
-            datePicker.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 6),
-            datePicker.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            datePicker.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10)
+            datePicker.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8),
+            datePicker.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            datePicker.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -14)
         ])
     }
 
@@ -807,15 +862,15 @@ private class FormSwitchCell: UITableViewCell {
     private func setup() {
         selectionStyle = .none
 
-        nameLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         nameLabel.textColor = .secondaryLabel
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
         badgeLabel.text = "Required"
-        badgeLabel.font = .systemFont(ofSize: 9, weight: .semibold)
+        badgeLabel.font = .systemFont(ofSize: 9, weight: .bold)
         badgeLabel.textColor = .white
-        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.75)
+        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
         badgeLabel.layer.cornerRadius = 8
         badgeLabel.clipsToBounds = true
         badgeLabel.textAlignment = .center
@@ -826,17 +881,17 @@ private class FormSwitchCell: UITableViewCell {
         contentView.addSubview(switchControl)
 
         NSLayoutConstraint.activate([
-            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 10),
-            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
 
             badgeLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
-            badgeLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 6),
-            badgeLabel.heightAnchor.constraint(equalToConstant: 16),
-            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            badgeLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 8),
+            badgeLabel.heightAnchor.constraint(equalToConstant: 18),
+            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 48),
 
-            switchControl.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 6),
-            switchControl.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            switchControl.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10)
+            switchControl.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8),
+            switchControl.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            switchControl.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -14)
         ])
     }
 
@@ -863,15 +918,15 @@ private class FormTextViewCell: UITableViewCell {
     private func setup() {
         selectionStyle = .none
 
-        nameLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         nameLabel.textColor = .secondaryLabel
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
         badgeLabel.text = "Required"
-        badgeLabel.font = .systemFont(ofSize: 9, weight: .semibold)
+        badgeLabel.font = .systemFont(ofSize: 9, weight: .bold)
         badgeLabel.textColor = .white
-        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.75)
+        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
         badgeLabel.layer.cornerRadius = 8
         badgeLabel.clipsToBounds = true
         badgeLabel.textAlignment = .center
@@ -886,18 +941,18 @@ private class FormTextViewCell: UITableViewCell {
         contentView.addSubview(textView)
 
         NSLayoutConstraint.activate([
-            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 10),
-            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
 
             badgeLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
-            badgeLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 6),
-            badgeLabel.heightAnchor.constraint(equalToConstant: 16),
-            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            badgeLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 8),
+            badgeLabel.heightAnchor.constraint(equalToConstant: 18),
+            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 48),
 
             textView.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
-            textView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            textView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            textView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
+            textView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            textView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            textView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10),
             textView.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
         ])
     }
