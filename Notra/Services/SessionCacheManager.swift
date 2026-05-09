@@ -307,6 +307,18 @@ final class SessionCacheManager {
 
     // MARK: - Discovered Databases Cache
 
+    var discoveredDatabases: [DiscoveredDatabase] {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            guard let dbCache = cache["discoveredDatabases"] as? [String: [String: String]] else { return [] }
+            return dbCache.compactMap { id, data in
+                guard let title = data["__title__"] else { return nil }
+                return DiscoveredDatabase(id: id, title: title, parentPageId: "", properties: [:], assignedRole: nil)
+            }
+        }
+    }
+
     func saveDiscoveredDatabases(_ databases: [DiscoveredDatabase]) {
         lock.lock()
         var dbCache: [String: [String: String]] = [:]  // [dbId: [pageId: title]]
@@ -323,13 +335,40 @@ final class SessionCacheManager {
         var relationData = cache["relationData"] as? [String: [String: String]] ?? [:]
         var lookup: [String: String] = [:]
         for row in rows {
-            let title = row.title.isEmpty ? String(row.id.prefix(8)) : row.title
+            let title = extractTitle(from: row)
             lookup[row.id] = title
         }
         relationData[databaseId] = lookup
         cache["relationData"] = relationData
         lock.unlock()
         print("[SessionCache] Cached \(lookup.count) rows for relation DB: \(databaseId)")
+    }
+
+    func saveRelationTargetData(databaseId: String, lookup: [String: String]) {
+        lock.lock()
+        var relationData = cache["relationData"] as? [String: [String: String]] ?? [:]
+        relationData[databaseId] = lookup
+        cache["relationData"] = relationData
+        lock.unlock()
+        print("[SessionCache] Cached \(lookup.count) items for relation DB: \(databaseId) via lookup")
+    }
+
+    private func extractTitle(from page: NotionPage) -> String {
+        if let props = page.properties, let titleProp = props["title"], let titleArray = titleProp.title {
+            for item in titleArray {
+                if let text = item.text?.content, !text.isEmpty {
+                    return text
+                }
+                if let text = item.plainText, !text.isEmpty {
+                    return text
+                }
+            }
+        }
+        return String(page.id.prefix(8))
+    }
+
+    func extractDatabaseId(from page: NotionPage) -> String? {
+        return page.parent.databaseId
     }
 
     func getRelationTargetData(databaseId: String) -> [String: String]? {
@@ -372,5 +411,23 @@ final class SessionCacheManager {
         }
         print("[SessionCache] Cache MISS for category lookup: \(dataSourceId)")
         return nil
+    }
+
+    func deleteRelationTargetData(databaseId: String) {
+        lock.lock()
+        var relationData = cache["relationData"] as? [String: [String: String]] ?? [:]
+        relationData.removeValue(forKey: databaseId)
+        cache["relationData"] = relationData
+        lock.unlock()
+        print("[SessionCache] Deleted stale relation data for: \(databaseId)")
+    }
+
+    func clearCategoryLookup(for dataSourceId: String) {
+        lock.lock()
+        var categoryLookups = cache["categoryLookups"] as? [String: [String: String]] ?? [:]
+        categoryLookups.removeValue(forKey: dataSourceId)
+        cache["categoryLookups"] = categoryLookups
+        lock.unlock()
+        print("[SessionCache] Cleared stale category lookup for: \(dataSourceId)")
     }
 }

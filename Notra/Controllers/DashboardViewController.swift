@@ -36,6 +36,21 @@ class DashboardViewController: UIViewController {
     private let emptyStateLabel = UILabel()
     private let setupButton = UIButton(type: .system)
 
+    private let fabButton: UIButton = {
+        let button = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        button.setImage(UIImage(systemName: "plus", withConfiguration: config), for: .normal)
+        button.tintColor = .white
+        button.backgroundColor = .systemBlue
+        button.layer.cornerRadius = 28
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 4)
+        button.layer.shadowRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
     init(token: String) {
         self.viewModel = DashboardViewModel(token: token)
         super.init(nibName: nil, bundle: nil)
@@ -77,6 +92,7 @@ class DashboardViewController: UIViewController {
         setupButtons()
         setupLoadingView()
         setupEmptyState()
+        setupFAB()
     }
 
     private func setupScrollView() {
@@ -339,6 +355,24 @@ class DashboardViewController: UIViewController {
 
     @objc private func goToSetup() {
         navigationController?.popToRootViewController(animated: true)
+    }
+
+    @objc private func addTransactionTapped() {
+        let vc = AddTransactionViewController()
+        let nav = UINavigationController(rootViewController: vc)
+        present(nav, animated: true)
+    }
+
+    private func setupFAB() {
+        fabButton.addTarget(self, action: #selector(addTransactionTapped), for: .touchUpInside)
+        view.addSubview(fabButton)
+
+        NSLayoutConstraint.activate([
+            fabButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            fabButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            fabButton.widthAnchor.constraint(equalToConstant: 56),
+            fabButton.heightAnchor.constraint(equalToConstant: 56)
+        ])
     }
 
     private func updateUI() {

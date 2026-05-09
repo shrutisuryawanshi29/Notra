@@ -108,7 +108,7 @@ final class NotionService {
 
     func queryDataSource(dataSourceId: String, token: String, completion: @escaping (Result<[NotionPage], NotionError>) -> Void) {
         print("[NotionService] Querying data source: \(dataSourceId)")
-        
+
         guard let url = URL(string: baseURL + "/data_sources/\(dataSourceId)/query") else {
             completion(.failure(.invalidResponse))
             return
@@ -159,7 +159,7 @@ final class NotionService {
 
     func retrieveDataSource(dataSourceId: String, token: String, completion: @escaping (Result<[String: Any], NotionError>) -> Void) {
         print("[NotionService] Retrieving data source: \(dataSourceId)")
-        
+
         guard let url = URL(string: baseURL + "/data_sources/\(dataSourceId)") else {
             completion(.failure(.invalidResponse))
             return
@@ -184,18 +184,63 @@ final class NotionService {
             print("[NotionService] Data source retrieve status: \(httpResponse.statusCode)")
 
             if httpResponse.statusCode != 200 {
+                if let data = data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    print("[NotionService] Data source error: \(json)")
+                }
                 DispatchQueue.main.async { completion(.failure(.apiError("Status: \(httpResponse.statusCode)"))) }
                 return
             }
 
-            guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
+            guard let data = data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                completion(.failure(.invalidResponse))
                 return
             }
 
             print("[NotionService] Data source retrieve response keys: \(json.keys)")
             DispatchQueue.main.async { completion(.success(json)) }
+        }.resume()
+    }
+
+    // MARK: - Database Schema
+
+    func fetchDatabaseSchema(databaseId: String, token: String, completion: @escaping (Result<[String: Any], NotionError>) -> Void) {
+        print("[NotionService] Fetching database schema: \(databaseId)")
+
+        guard let url = URL(string: baseURL + "/databases/\(databaseId)") else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(notionVersion, forHTTPHeaderField: "Notion-Version")
+
+        session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                DispatchQueue.main.async { completion(.failure(.networkError(error))) }
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
+                return
+            }
+
+            if httpResponse.statusCode != 200 {
+                DispatchQueue.main.async { completion(.failure(.apiError("Status: \(httpResponse.statusCode)"))) }
+                return
+            }
+
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let properties = json["properties"] as? [String: Any] else {
+                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
+                return
+            }
+
+            print("[NotionService] Database schema has \(properties.count) properties")
+            DispatchQueue.main.async { completion(.success(properties)) }
         }.resume()
     }
 }

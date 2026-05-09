@@ -37,13 +37,17 @@ struct NotionPage: Codable {
     }
 
     var title: String {
-        if let props = properties, let titleProp = props["title"], let titleArray = titleProp.title {
-            for item in titleArray {
-                if let text = item.text?.content, !text.isEmpty {
-                    return text
-                }
-                if let text = item.plainText, !text.isEmpty {
-                    return text
+        if let props = properties {
+            for (_, value) in props {
+                if value.type == "title", let titleArray = value.title {
+                    for item in titleArray {
+                        if let text = item.text?.content, !text.isEmpty {
+                            return text
+                        }
+                        if let text = item.plainText, !text.isEmpty {
+                            return text
+                        }
+                    }
                 }
             }
         }

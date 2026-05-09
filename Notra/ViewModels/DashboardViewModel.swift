@@ -160,7 +160,8 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
                         }
                         self?.relationLookupMap[dsId] = lookup
                         SessionCacheManager.shared.setCategoryLookup(for: dsId, lookup: lookup)
-                        print("[DashboardViewModel] Fetched and cached \(lookup.count) items for data source: \(dsId)")
+                        SessionCacheManager.shared.saveRelationTargetData(databaseId: dsId, lookup: lookup)
+                        print("[DashboardViewModel] Cached \(lookup.count) items for data source: \(dsId)")
                     case .failure(let error):
                         print("[DashboardViewModel] FAILED to fetch data source \(dsId): \(error.localizedDescription)")
                     }
