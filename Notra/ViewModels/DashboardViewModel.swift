@@ -55,6 +55,9 @@ final class DashboardViewModel {
     func loadData() {
         delegate?.didStartLoading()
 
+        allExpenses = []
+        allIncomes = []
+
         let mappings = columnMappingService.loadDatabaseMappings()
         expenseMappings = mappings.values.filter { $0.role == .expense && $0.columnMapping != nil }
         incomeMappings = mappings.values.filter { $0.role == .income && $0.columnMapping != nil }
@@ -183,7 +186,17 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
         for mapping in expenseMappings {
             group.enter()
             fetchAndNormalize(database: mapping, role: .expense) { expenses in
-                self.allExpenses.append(contentsOf: expenses)
+                var seen = Set<String>()
+                var uniqueExpenses: [NormalizedTransaction] = []
+                for expense in expenses {
+                    if !seen.contains(expense.id) {
+                        seen.insert(expense.id)
+                        uniqueExpenses.append(expense)
+                    }
+                }
+                let existingIds = Set(self.allExpenses.map { $0.id })
+                let newExpenses = uniqueExpenses.filter { !existingIds.contains($0.id) }
+                self.allExpenses.append(contentsOf: newExpenses)
                 completed += 1
                 self.delegate?.didUpdateProgress(current: completed, total: totalDatabases)
                 group.leave()
@@ -193,7 +206,17 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
         for mapping in incomeMappings {
             group.enter()
             fetchAndNormalize(database: mapping, role: .income) { incomes in
-                self.allIncomes.append(contentsOf: incomes)
+                var seen = Set<String>()
+                var uniqueIncomes: [NormalizedTransaction] = []
+                for income in incomes {
+                    if !seen.contains(income.id) {
+                        seen.insert(income.id)
+                        uniqueIncomes.append(income)
+                    }
+                }
+                let existingIds = Set(self.allIncomes.map { $0.id })
+                let newIncomes = uniqueIncomes.filter { !existingIds.contains($0.id) }
+                self.allIncomes.append(contentsOf: newIncomes)
                 completed += 1
                 self.delegate?.didUpdateProgress(current: completed, total: totalDatabases)
                 group.leave()
