@@ -10,7 +10,11 @@ class PagePickerViewController: UIViewController {
     private let viewModel = PagePickerViewModel()
     private var pages: [NotionPage] = []
 
-    private let tableView = UITableView(frame: .zero, style: .plain)
+    private let tableView: UITableView = {
+        let tv = UITableView(frame: .zero, style: .plain)
+        tv.backgroundColor = AppTheme.Colors.background
+        return tv
+    }()
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
     private let errorLabel = UILabel()
     private let retryButton = UIButton(type: .system)
@@ -23,7 +27,7 @@ class PagePickerViewController: UIViewController {
     }
 
     private func setupUI() {
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = AppTheme.Colors.background
         title = "Select Notion Page"
 
         tableView.delegate = self
@@ -37,7 +41,7 @@ class PagePickerViewController: UIViewController {
         view.addSubview(activityIndicator)
 
         errorLabel.font = .systemFont(ofSize: 16)
-        errorLabel.textColor = .secondaryLabel
+        errorLabel.textColor = AppTheme.Colors.textSecondary
         errorLabel.textAlignment = .center
         errorLabel.numberOfLines = 0
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -46,7 +50,7 @@ class PagePickerViewController: UIViewController {
 
         retryButton.setTitle("Try Again", for: .normal)
         retryButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
-        retryButton.backgroundColor = .systemIndigo
+        retryButton.backgroundColor = AppTheme.Colors.accent
         retryButton.setTitleColor(.white, for: .normal)
         retryButton.layer.cornerRadius = 10
         retryButton.translatesAutoresizingMaskIntoConstraints = false

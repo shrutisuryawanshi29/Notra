@@ -15,7 +15,7 @@ final class AddTransactionViewController: UIViewController {
         let sc = UISegmentedControl(items: ["Expense", "Income"])
         sc.selectedSegmentIndex = 0
         sc.translatesAutoresizingMaskIntoConstraints = false
-        sc.selectedSegmentTintColor = .systemBlue
+        sc.selectedSegmentTintColor = AppTheme.Colors.expense
         sc.setTitleTextAttributes([
             .foregroundColor: UIColor.white,
             .font: UIFont.systemFont(ofSize: 15, weight: .semibold)
@@ -29,7 +29,7 @@ final class AddTransactionViewController: UIViewController {
 
     private let segmentedContainer: UIView = {
         let view = UIView()
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppTheme.Colors.background
         view.layer.cornerRadius = 12
         view.layer.shadowColor = UIColor.black.cgColor
         view.layer.shadowOpacity = 0.05
@@ -44,6 +44,7 @@ final class AddTransactionViewController: UIViewController {
         tv.translatesAutoresizingMaskIntoConstraints = false
         tv.keyboardDismissMode = .interactive
         tv.sectionHeaderTopPadding = 0
+        tv.backgroundColor = AppTheme.Colors.background
         return tv
     }()
 
@@ -55,7 +56,7 @@ final class AddTransactionViewController: UIViewController {
         config.image = UIImage(systemName: "checkmark.circle.fill")
         config.imagePadding = 8
         config.imagePlacement = .leading
-        config.baseBackgroundColor = .systemBlue
+        config.baseBackgroundColor = AppTheme.Colors.expense
         config.baseForegroundColor = .white
         config.cornerStyle = .large
         let button = UIButton(configuration: config)
@@ -66,7 +67,7 @@ final class AddTransactionViewController: UIViewController {
     private let errorLabel: UILabel = {
         let label = UILabel()
         label.font = .systemFont(ofSize: 13, weight: .medium)
-        label.textColor = .systemRed
+        label.textColor = AppTheme.Colors.expense.withAlphaComponent(0.8)
         label.textAlignment = .center
         label.numberOfLines = 0
         label.isHidden = true
@@ -76,7 +77,7 @@ final class AddTransactionViewController: UIViewController {
 
     private let loadingView: UIView = {
         let view = UIView()
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppTheme.Colors.background
         view.isHidden = true
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
@@ -93,7 +94,7 @@ final class AddTransactionViewController: UIViewController {
         let label = UILabel()
         label.text = "Loading form..."
         label.font = .systemFont(ofSize: 15)
-        label.textColor = .secondaryLabel
+        label.textColor = AppTheme.Colors.textSecondary
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -102,6 +103,7 @@ final class AddTransactionViewController: UIViewController {
     private let emptyStateView: UIView = {
         let view = UIView()
         view.isHidden = true
+        view.backgroundColor = AppTheme.Colors.background
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -129,7 +131,7 @@ final class AddTransactionViewController: UIViewController {
         viewModel.delegate = self
 
         segmentedControl.selectedSegmentIndex = initialRole == .expense ? 0 : 1
-        let tint: UIColor = initialRole == .expense ? .systemRed : .systemGreen
+        let tint: UIColor = initialRole == .expense ? AppTheme.Colors.expense : AppTheme.Colors.income
         segmentedControl.selectedSegmentTintColor = tint
         saveButton.configuration?.baseBackgroundColor = tint
 
@@ -138,7 +140,7 @@ final class AddTransactionViewController: UIViewController {
 
     private func setupUI() {
         title = "Add Transaction"
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppTheme.Colors.background
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .cancel,
@@ -269,7 +271,7 @@ final class AddTransactionViewController: UIViewController {
 
     @objc private func modeChanged() {
         let role: DatabaseRole = segmentedControl.selectedSegmentIndex == 0 ? .expense : .income
-        let tint: UIColor = role == .expense ? .systemRed : .systemGreen
+        let tint: UIColor = role == .expense ? AppTheme.Colors.expense : AppTheme.Colors.income
         segmentedControl.selectedSegmentTintColor = tint
         saveButton.configuration?.baseBackgroundColor = tint
         print("[AddTransactionVC] Mode changed to: \(role.displayName)")
@@ -597,7 +599,7 @@ extension AddTransactionViewController: AddTransactionViewModelDelegate {
     }
 
     private func updateSaveButtonColor() {
-        let tint: UIColor = viewModel.selectedRole == .expense ? .systemRed : .systemGreen
+        let tint: UIColor = viewModel.selectedRole == .expense ? AppTheme.Colors.expense : AppTheme.Colors.income
         saveButton.configuration?.baseBackgroundColor = tint
     }
 }
@@ -618,9 +620,10 @@ private class FormFieldCell: UITableViewCell {
 
     private func setup() {
         selectionStyle = .none
+        contentView.backgroundColor = AppTheme.Colors.cardBackground
 
         nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = .secondaryLabel
+        nameLabel.textColor = AppTheme.Colors.textSecondary
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
@@ -705,9 +708,10 @@ private class FormPickerCell: UITableViewCell {
 
     private func setup() {
         selectionStyle = .none
+        contentView.backgroundColor = AppTheme.Colors.cardBackground
 
         nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = .secondaryLabel
+        nameLabel.textColor = AppTheme.Colors.textSecondary
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
@@ -822,9 +826,10 @@ private class FormDateCell: UITableViewCell {
 
     private func setup() {
         selectionStyle = .none
+        contentView.backgroundColor = AppTheme.Colors.cardBackground
 
         nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = .secondaryLabel
+        nameLabel.textColor = AppTheme.Colors.textSecondary
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
@@ -881,9 +886,10 @@ private class FormSwitchCell: UITableViewCell {
 
     private func setup() {
         selectionStyle = .none
+        contentView.backgroundColor = AppTheme.Colors.cardBackground
 
         nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = .secondaryLabel
+        nameLabel.textColor = AppTheme.Colors.textSecondary
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
@@ -937,9 +943,10 @@ private class FormTextViewCell: UITableViewCell {
 
     private func setup() {
         selectionStyle = .none
+        contentView.backgroundColor = AppTheme.Colors.cardBackground
 
         nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = .secondaryLabel
+        nameLabel.textColor = AppTheme.Colors.textSecondary
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 

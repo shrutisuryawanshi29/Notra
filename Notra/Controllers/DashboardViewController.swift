@@ -10,8 +10,16 @@ class DashboardViewController: UIViewController {
     let viewModel: DashboardViewModel
     private var lastSyncDate: Date?
 
-    private let scrollView = UIScrollView()
-    private let contentView = UIView()
+    private let scrollView: UIScrollView = {
+        let sv = UIScrollView()
+        sv.backgroundColor = AppTheme.Colors.background
+        return sv
+    }()
+    private let contentView: UIView = {
+        let view = UIView()
+        view.backgroundColor = AppTheme.Colors.background
+        return view
+    }()
 
     private let headerView = UIView()
     private let greetingLabel = UILabel()
@@ -28,11 +36,19 @@ class DashboardViewController: UIViewController {
     private let incomeButton = UIButton(type: .system)
     private let analyticsButton = UIButton(type: .system)
 
-    private let loadingContainerView = UIView()
+    private let loadingContainerView: UIView = {
+        let view = UIView()
+        view.backgroundColor = AppTheme.Colors.background
+        return view
+    }()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let progressLabel = UILabel()
 
-    private let emptyStateView = UIView()
+    private let emptyStateView: UIView = {
+        let view = UIView()
+        view.backgroundColor = AppTheme.Colors.background
+        return view
+    }()
     private let emptyStateLabel = UILabel()
     private let setupButton = UIButton(type: .system)
 
@@ -41,10 +57,10 @@ class DashboardViewController: UIViewController {
         let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
         button.setImage(UIImage(systemName: "plus", withConfiguration: config), for: .normal)
         button.tintColor = .white
-        button.backgroundColor = .systemBlue
+        button.backgroundColor = AppTheme.Colors.accent
         button.layer.cornerRadius = 28
         button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOpacity = 0.15
         button.layer.shadowOffset = CGSize(width: 0, height: 4)
         button.layer.shadowRadius = 8
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -69,14 +85,16 @@ class DashboardViewController: UIViewController {
 
     private func setupUI() {
         title = "Dashboard"
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppTheme.Colors.background
 
+        navigationController?.navigationBar.prefersLargeTitles = false
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "arrow.clockwise"),
             style: .plain,
             target: self,
             action: #selector(refreshTapped)
         )
+        navigationItem.rightBarButtonItem?.tintColor = AppTheme.Colors.accent
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "gearshape"),
@@ -84,6 +102,7 @@ class DashboardViewController: UIViewController {
             target: self,
             action: #selector(settingsTapped)
         )
+        navigationItem.leftBarButtonItem?.tintColor = AppTheme.Colors.accent
 
         setupScrollView()
         setupHeader()
@@ -122,8 +141,8 @@ class DashboardViewController: UIViewController {
         contentView.addSubview(headerView)
 
         greetingLabel.text = "Your Finances"
-        greetingLabel.font = .systemFont(ofSize: 28, weight: .bold)
-        greetingLabel.textColor = .label
+        greetingLabel.font = AppTheme.Fonts.headingLarge
+        greetingLabel.textColor = AppTheme.Colors.textPrimary
         greetingLabel.translatesAutoresizingMaskIntoConstraints = false
         headerView.addSubview(greetingLabel)
 
@@ -154,7 +173,7 @@ class DashboardViewController: UIViewController {
         monthSelectorButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
         monthSelectorButton.setTitleColor(.white, for: .normal)
         monthSelectorButton.tintColor = .white
-        monthSelectorButton.backgroundColor = .systemIndigo
+        monthSelectorButton.backgroundColor = AppTheme.Colors.accent
         monthSelectorButton.layer.cornerRadius = 20
         monthSelectorButton.contentEdgeInsets = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
         monthSelectorButton.translatesAutoresizingMaskIntoConstraints = false
@@ -173,9 +192,9 @@ class DashboardViewController: UIViewController {
         summaryStackView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(summaryStackView)
 
-        spentCard.configure(title: "Total Spent", icon: "arrow.up.circle.fill", color: .systemRed)
-        incomeCard.configure(title: "Total Income", icon: "arrow.down.circle.fill", color: .systemGreen)
-        balanceCard.configure(title: "Net Balance", icon: "wallet.pass.fill", color: .systemBlue)
+        spentCard.configure(title: "Total Spent", icon: "arrow.up.circle.fill", color: AppTheme.Colors.expense)
+        incomeCard.configure(title: "Total Income", icon: "arrow.down.circle.fill", color: AppTheme.Colors.income)
+        balanceCard.configure(title: "Net Balance", icon: "wallet.pass.fill", color: AppTheme.Colors.accent)
 
         summaryStackView.addArrangedSubview(spentCard)
         summaryStackView.addArrangedSubview(incomeCard)
@@ -225,8 +244,8 @@ class DashboardViewController: UIViewController {
         button.backgroundColor = color.withAlphaComponent(0.12)
         button.setTitleColor(color, for: .normal)
         button.tintColor = color
-        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
-        button.layer.cornerRadius = 14
+        button.titleLabel?.font = AppTheme.Fonts.bodyBold
+        button.layer.cornerRadius = AppTheme.CornerRadius.button
     }
 
     private func setupLoadingView() {
@@ -483,8 +502,8 @@ class SummaryCardView: UIView {
     }
 
     private func setupView() {
-        backgroundColor = .secondarySystemGroupedBackground
-        layer.cornerRadius = 16
+        backgroundColor = AppTheme.Colors.cardBackground
+        layer.cornerRadius = AppTheme.CornerRadius.card
         layer.shadowColor = UIColor.black.cgColor
         layer.shadowOpacity = 0.04
         layer.shadowOffset = CGSize(width: 0, height: 2)
@@ -499,8 +518,8 @@ class SummaryCardView: UIView {
         iconImageView.translatesAutoresizingMaskIntoConstraints = false
         iconContainer.addSubview(iconImageView)
 
-        titleLabel.font = .systemFont(ofSize: 14, weight: .medium)
-        titleLabel.textColor = .secondaryLabel
+        titleLabel.font = AppTheme.Fonts.captionBold
+        titleLabel.textColor = AppTheme.Colors.textSecondary
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
 

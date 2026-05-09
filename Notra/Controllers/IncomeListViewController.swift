@@ -8,8 +8,16 @@ import UIKit
 class IncomeListViewController: UIViewController {
 
     private let viewModel = IncomeListViewModel()
-    private let tableView = UITableView(frame: .zero, style: .insetGrouped)
-    private let emptyView = UIView()
+    private let tableView: UITableView = {
+        let tv = UITableView(frame: .zero, style: .insetGrouped)
+        tv.backgroundColor = AppTheme.Colors.background
+        return tv
+    }()
+    private let emptyView: UIView = {
+        let view = UIView()
+        view.backgroundColor = AppTheme.Colors.background
+        return view
+    }()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -20,7 +28,7 @@ class IncomeListViewController: UIViewController {
 
     private func setupUI() {
         title = "Income"
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppTheme.Colors.background
 
         navigationController?.navigationBar.prefersLargeTitles = true
 
@@ -51,7 +59,7 @@ class IncomeListViewController: UIViewController {
         view.addSubview(emptyView)
 
         let iconView = UIImageView(image: UIImage(systemName: "tray"))
-        iconView.tintColor = .tertiaryLabel
+        iconView.tintColor = AppTheme.Colors.textTertiary
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
         emptyView.addSubview(iconView)
@@ -59,7 +67,7 @@ class IncomeListViewController: UIViewController {
         let label = UILabel()
         label.text = "No income for this month"
         label.font = .systemFont(ofSize: 18, weight: .medium)
-        label.textColor = .secondaryLabel
+        label.textColor = AppTheme.Colors.textSecondary
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         emptyView.addSubview(label)
@@ -67,7 +75,7 @@ class IncomeListViewController: UIViewController {
         let sublabel = UILabel()
         sublabel.text = "Transactions sync from your Notion databases. Select a different month from Dashboard to view more data."
         sublabel.font = .systemFont(ofSize: 14)
-        sublabel.textColor = .tertiaryLabel
+        sublabel.textColor = AppTheme.Colors.textTertiary
         sublabel.textAlignment = .center
         sublabel.numberOfLines = 0
         sublabel.translatesAutoresizingMaskIntoConstraints = false

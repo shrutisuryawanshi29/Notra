@@ -7,7 +7,11 @@ import UIKit
 
 class SettingsViewController: UIViewController {
 
-    private let tableView = UITableView(frame: .zero, style: .insetGrouped)
+    private let tableView: UITableView = {
+        let tv = UITableView(frame: .zero, style: .insetGrouped)
+        tv.backgroundColor = AppTheme.Colors.background
+        return tv
+    }()
 
     private enum Section: Int, CaseIterable {
         case notionConnection
@@ -24,7 +28,7 @@ class SettingsViewController: UIViewController {
 
     private func setupUI() {
         title = "Settings"
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppTheme.Colors.background
 
         tableView.delegate = self
         tableView.dataSource = self
@@ -111,7 +115,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         var content = cell.defaultContentConfiguration()
         content.textProperties.font = .systemFont(ofSize: 16)
         content.secondaryTextProperties.font = .systemFont(ofSize: 13)
-        content.secondaryTextProperties.color = .secondaryLabel
+        content.secondaryTextProperties.color = AppTheme.Colors.textSecondary
 
         guard let sectionType = Section(rawValue: indexPath.section) else { return cell }
 
@@ -139,7 +143,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
                 content.secondaryText = incomeDBs.isEmpty ? "None" : "\(incomeDBs.count) configured"
             } else {
                 content.text = "Edit Mapping"
-                content.textProperties.color = .systemIndigo
+                content.textProperties.color = AppTheme.Colors.accent
                 cell.accessoryType = .disclosureIndicator
                 cell.selectionStyle = .default
             }
@@ -156,7 +160,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
                 }
             } else {
                 content.text = "Refresh Dashboard Data"
-                content.textProperties.color = .systemIndigo
+                content.textProperties.color = AppTheme.Colors.accent
                 cell.accessoryType = .disclosureIndicator
                 cell.selectionStyle = .default
             }
@@ -164,11 +168,11 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case .debug:
             if indexPath.row == 0 {
                 content.text = "Print Mapping Summary"
-                content.textProperties.color = .systemBlue
+                content.textProperties.color = AppTheme.Colors.accent
                 cell.selectionStyle = .default
             } else {
                 content.text = "Print Cache Summary"
-                content.textProperties.color = .systemBlue
+                content.textProperties.color = AppTheme.Colors.accent
                 cell.selectionStyle = .default
             }
 

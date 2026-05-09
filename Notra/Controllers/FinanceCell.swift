@@ -39,7 +39,7 @@ class FinanceCell: UITableViewCell {
         contentView.addSubview(titleLabel)
 
         categoryLabel.font = .systemFont(ofSize: 13)
-        categoryLabel.textColor = .secondaryLabel
+        categoryLabel.textColor = AppTheme.Colors.textSecondary
         categoryLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(categoryLabel)
 
@@ -83,11 +83,11 @@ class FinanceCell: UITableViewCell {
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
         amountLabel.text = formatter.string(from: NSNumber(value: expense.amount))
-        amountLabel.textColor = .systemRed
+        amountLabel.textColor = AppTheme.Colors.expense
 
-        iconContainer.backgroundColor = .systemRed.withAlphaComponent(0.15)
+        iconContainer.backgroundColor = AppTheme.Colors.expense.withAlphaComponent(0.15)
         iconImageView.image = UIImage(systemName: "arrow.up.circle.fill")
-        iconImageView.tintColor = .systemRed
+        iconImageView.tintColor = AppTheme.Colors.expense
     }
 
     func configure(income: NormalizedTransaction) {
@@ -100,11 +100,11 @@ class FinanceCell: UITableViewCell {
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
         amountLabel.text = formatter.string(from: NSNumber(value: income.amount))
-        amountLabel.textColor = .systemGreen
+        amountLabel.textColor = AppTheme.Colors.income
 
-        iconContainer.backgroundColor = .systemGreen.withAlphaComponent(0.15)
+        iconContainer.backgroundColor = AppTheme.Colors.income.withAlphaComponent(0.15)
         iconImageView.image = UIImage(systemName: "arrow.down.circle.fill")
-        iconImageView.tintColor = .systemGreen
+        iconImageView.tintColor = AppTheme.Colors.income
     }
 
     override func prepareForReuse() {

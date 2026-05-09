@@ -36,6 +36,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.rootViewController = navigationController
         self.window = window
         self.navigationController = navigationController
+        
+        window.overrideUserInterfaceStyle = .light
+        
         window.makeKeyAndVisible()
 
         if let urlContext = connectionOptions.urlContexts.first {

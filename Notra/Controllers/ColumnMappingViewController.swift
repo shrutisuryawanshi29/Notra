@@ -8,7 +8,11 @@ import UIKit
 class ColumnMappingViewController: UIViewController {
 
     private let viewModel: ColumnMappingViewModel
-    private let tableView = UITableView(frame: .zero, style: .plain)
+    private let tableView: UITableView = {
+        let tv = UITableView(frame: .zero, style: .plain)
+        tv.backgroundColor = AppTheme.Colors.background
+        return tv
+    }()
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
 
     private var selectedCategoryColumn: String?
@@ -31,7 +35,7 @@ class ColumnMappingViewController: UIViewController {
     }
 
     private func setupUI() {
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = AppTheme.Colors.background
         title = "Map Columns - \(viewModel.role.displayName)"
 
         tableView.delegate = self
@@ -47,7 +51,7 @@ class ColumnMappingViewController: UIViewController {
         let saveButton = UIButton(type: .system)
         saveButton.setTitle("Save & Continue", for: .normal)
         saveButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
-        saveButton.backgroundColor = .systemBlue
+        saveButton.backgroundColor = AppTheme.Colors.accent
         saveButton.setTitleColor(.white, for: .normal)
         saveButton.layer.cornerRadius = 10
         saveButton.translatesAutoresizingMaskIntoConstraints = false
@@ -257,7 +261,7 @@ class MappingCell: UITableViewCell {
         contentView.addSubview(fieldLabel)
 
         valueLabel.font = .preferredFont(forTextStyle: .body)
-        valueLabel.textColor = .secondaryLabel
+        valueLabel.textColor = AppTheme.Colors.textSecondary
         valueLabel.numberOfLines = 0
         valueLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(valueLabel)

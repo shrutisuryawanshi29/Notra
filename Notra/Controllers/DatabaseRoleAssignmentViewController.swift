@@ -9,7 +9,11 @@ class DatabaseRoleAssignmentViewController: UIViewController {
 
     private let viewModel = DatabaseRoleAssignmentViewModel()
 
-    private let tableView = UITableView(frame: .zero, style: .insetGrouped)
+    private let tableView: UITableView = {
+        let tv = UITableView(frame: .zero, style: .insetGrouped)
+        tv.backgroundColor = AppTheme.Colors.background
+        return tv
+    }()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let statusLabel = UILabel()
     private let emptyLabel = UILabel()
@@ -22,7 +26,7 @@ class DatabaseRoleAssignmentViewController: UIViewController {
     }
 
     private func setupUI() {
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppTheme.Colors.background
         title = "Assign Database Roles"
 
         tableView.delegate = self
@@ -37,7 +41,7 @@ class DatabaseRoleAssignmentViewController: UIViewController {
         view.addSubview(activityIndicator)
 
         statusLabel.font = .systemFont(ofSize: 16, weight: .medium)
-        statusLabel.textColor = .secondaryLabel
+        statusLabel.textColor = AppTheme.Colors.textSecondary
         statusLabel.textAlignment = .center
         statusLabel.numberOfLines = 0
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -45,7 +49,7 @@ class DatabaseRoleAssignmentViewController: UIViewController {
         view.addSubview(statusLabel)
 
         emptyLabel.font = .systemFont(ofSize: 16)
-        emptyLabel.textColor = .secondaryLabel
+        emptyLabel.textColor = AppTheme.Colors.textSecondary
         emptyLabel.textAlignment = .center
         emptyLabel.numberOfLines = 0
         emptyLabel.text = "No databases found in this page.\n\nMake sure your Notion page contains databases."
@@ -55,7 +59,7 @@ class DatabaseRoleAssignmentViewController: UIViewController {
 
         continueButton.setTitle("Continue", for: .normal)
         continueButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        continueButton.backgroundColor = .systemIndigo
+        continueButton.backgroundColor = AppTheme.Colors.accent
         continueButton.setTitleColor(.white, for: .normal)
         continueButton.layer.cornerRadius = 12
         continueButton.translatesAutoresizingMaskIntoConstraints = false

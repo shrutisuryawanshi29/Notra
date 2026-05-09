@@ -21,7 +21,7 @@ class TokenEntryViewController: UIViewController {
     }
 
     private func setupUI() {
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = AppTheme.Colors.background
         title = "Notra"
         navigationController?.navigationBar.prefersLargeTitles = false
 
@@ -33,7 +33,7 @@ class TokenEntryViewController: UIViewController {
 
         subtitleLabel.text = "Connect your Notion workspace"
         subtitleLabel.font = .preferredFont(forTextStyle: .subheadline)
-        subtitleLabel.textColor = .secondaryLabel
+        subtitleLabel.textColor = AppTheme.Colors.textSecondary
         subtitleLabel.textAlignment = .center
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(subtitleLabel)
@@ -47,7 +47,7 @@ class TokenEntryViewController: UIViewController {
 
         continueButton.setTitle("Continue", for: .normal)
         continueButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
-        continueButton.backgroundColor = .systemBlue
+        continueButton.backgroundColor = AppTheme.Colors.accent
         continueButton.setTitleColor(.white, for: .normal)
         continueButton.layer.cornerRadius = 10
         continueButton.translatesAutoresizingMaskIntoConstraints = false

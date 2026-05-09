@@ -9,10 +9,22 @@ class AnalyticsViewController: UIViewController {
 
     private let viewModel: AnalyticsViewModel
 
-    private let scrollView = UIScrollView()
-    private let contentView = UIView()
+    private let scrollView: UIScrollView = {
+        let sv = UIScrollView()
+        sv.backgroundColor = AppTheme.Colors.background
+        return sv
+    }()
+    private let contentView: UIView = {
+        let view = UIView()
+        view.backgroundColor = AppTheme.Colors.background
+        return view
+    }()
 
-    private let emptyView = UIView()
+    private let emptyView: UIView = {
+        let view = UIView()
+        view.backgroundColor = AppTheme.Colors.background
+        return view
+    }()
     private let headerView = UIView()
     private let monthSelectorButton = UIButton(type: .system)
 
@@ -47,7 +59,7 @@ class AnalyticsViewController: UIViewController {
 
     private func setupUI() {
         title = "Analytics"
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = AppTheme.Colors.background
 
         navigationController?.navigationBar.prefersLargeTitles = true
 
@@ -88,7 +100,7 @@ class AnalyticsViewController: UIViewController {
         view.addSubview(emptyView)
 
         let iconView = UIImageView(image: UIImage(systemName: "chart.bar.xaxis"))
-        iconView.tintColor = .tertiaryLabel
+        iconView.tintColor = AppTheme.Colors.textTertiary
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
         emptyView.addSubview(iconView)
@@ -96,7 +108,7 @@ class AnalyticsViewController: UIViewController {
         let label = UILabel()
         label.text = "No analytics available"
         label.font = .systemFont(ofSize: 18, weight: .medium)
-        label.textColor = .secondaryLabel
+        label.textColor = AppTheme.Colors.textSecondary
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         emptyView.addSubview(label)
@@ -104,7 +116,7 @@ class AnalyticsViewController: UIViewController {
         let sublabel = UILabel()
         sublabel.text = "Load dashboard data or refresh from Notion to see insights."
         sublabel.font = .systemFont(ofSize: 14)
-        sublabel.textColor = .tertiaryLabel
+        sublabel.textColor = AppTheme.Colors.textTertiary
         sublabel.textAlignment = .center
         sublabel.numberOfLines = 0
         sublabel.translatesAutoresizingMaskIntoConstraints = false
@@ -148,9 +160,9 @@ class AnalyticsViewController: UIViewController {
         monthSelectorButton.semanticContentAttribute = .forceRightToLeft
         monthSelectorButton.setTitle(" \(formatter.string(from: displayDate)) ", for: .normal)
         monthSelectorButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        monthSelectorButton.setTitleColor(.label, for: .normal)
-        monthSelectorButton.tintColor = .label
-        monthSelectorButton.backgroundColor = .secondarySystemGroupedBackground
+        monthSelectorButton.setTitleColor(AppTheme.Colors.textPrimary, for: .normal)
+        monthSelectorButton.tintColor = AppTheme.Colors.textPrimary
+        monthSelectorButton.backgroundColor = AppTheme.Colors.cardBackground
         monthSelectorButton.layer.cornerRadius = 10
         monthSelectorButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         monthSelectorButton.translatesAutoresizingMaskIntoConstraints = false
@@ -228,9 +240,9 @@ class AnalyticsViewController: UIViewController {
         summaryStackView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(summaryStackView)
 
-        expenseSummaryCard.configure(title: "Total Expenses", icon: "arrow.up.circle.fill", color: .systemRed)
-        incomeSummaryCard.configure(title: "Total Income", icon: "arrow.down.circle.fill", color: .systemGreen)
-        balanceSummaryCard.configure(title: "Net Balance", icon: "wallet.pass.fill", color: .systemBlue)
+        expenseSummaryCard.configure(title: "Total Expenses", icon: "arrow.up.circle.fill", color: AppTheme.Colors.expense)
+        incomeSummaryCard.configure(title: "Total Income", icon: "arrow.down.circle.fill", color: AppTheme.Colors.income)
+        balanceSummaryCard.configure(title: "Net Balance", icon: "wallet.pass.fill", color: AppTheme.Colors.accent)
 
         summaryStackView.addArrangedSubview(expenseSummaryCard)
         summaryStackView.addArrangedSubview(incomeSummaryCard)
@@ -246,7 +258,7 @@ class AnalyticsViewController: UIViewController {
     private func setupExpenseSection() {
         expenseSectionLabel.text = "Expense Categories"
         expenseSectionLabel.font = .systemFont(ofSize: 20, weight: .bold)
-        expenseSectionLabel.textColor = .label
+        expenseSectionLabel.textColor = AppTheme.Colors.textPrimary
         expenseSectionLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(expenseSectionLabel)
 
@@ -269,7 +281,7 @@ class AnalyticsViewController: UIViewController {
     private func setupIncomeSection() {
         incomeSectionLabel.text = "Income Sources"
         incomeSectionLabel.font = .systemFont(ofSize: 20, weight: .bold)
-        incomeSectionLabel.textColor = .label
+        incomeSectionLabel.textColor = AppTheme.Colors.textPrimary
         incomeSectionLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(incomeSectionLabel)
 
@@ -292,7 +304,7 @@ class AnalyticsViewController: UIViewController {
     private func setupInsightsSection() {
         insightsSectionLabel.text = "Insights"
         insightsSectionLabel.font = .systemFont(ofSize: 20, weight: .bold)
-        insightsSectionLabel.textColor = .label
+        insightsSectionLabel.textColor = AppTheme.Colors.textPrimary
         insightsSectionLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(insightsSectionLabel)
 
@@ -333,7 +345,7 @@ class AnalyticsViewController: UIViewController {
         incomeSummaryCard.setValue(viewModel.formattedTotalIncomes)
         incomeSummaryCard.setSubtitle("\(viewModel.incomeTransactionCount) transactions")
 
-        let balanceColor: UIColor = viewModel.netBalance >= 0 ? .systemGreen : .systemRed
+        let balanceColor: UIColor = viewModel.netBalance >= 0 ? AppTheme.Colors.income : AppTheme.Colors.expense
         balanceSummaryCard.setValue(viewModel.formattedNetBalance)
         balanceSummaryCard.setValueColor(balanceColor)
         balanceSummaryCard.setSubtitle(viewModel.netBalance >= 0 ? "You saved" : "Over budget")
@@ -342,14 +354,14 @@ class AnalyticsViewController: UIViewController {
 
         if !viewModel.expenseCategories.isEmpty {
             let donutChart = DonutChartView()
-            donutChart.configure(with: viewModel.expenseCategories, totalAmount: viewModel.totalExpenses, color: .systemRed)
+            donutChart.configure(with: viewModel.expenseCategories, totalAmount: viewModel.totalExpenses, color: AppTheme.Colors.expense)
             expenseStackView.addArrangedSubview(donutChart)
             donutChart.heightAnchor.constraint(equalToConstant: 200).isActive = true
         } else {
             let emptyLabel = UILabel()
             emptyLabel.text = "No expenses this month"
             emptyLabel.font = .systemFont(ofSize: 14)
-            emptyLabel.textColor = .tertiaryLabel
+            emptyLabel.textColor = AppTheme.Colors.textTertiary
             expenseStackView.addArrangedSubview(emptyLabel)
         }
 
@@ -357,21 +369,21 @@ class AnalyticsViewController: UIViewController {
 
         if !viewModel.incomeCategories.isEmpty {
             let donutChart = DonutChartView()
-            donutChart.configure(with: viewModel.incomeCategories, totalAmount: viewModel.totalIncomes, color: .systemGreen)
+            donutChart.configure(with: viewModel.incomeCategories, totalAmount: viewModel.totalIncomes, color: AppTheme.Colors.income)
             incomeStackView.addArrangedSubview(donutChart)
             donutChart.heightAnchor.constraint(equalToConstant: 200).isActive = true
         } else {
             let emptyLabel = UILabel()
             emptyLabel.text = "No income this month"
             emptyLabel.font = .systemFont(ofSize: 14)
-            emptyLabel.textColor = .tertiaryLabel
+            emptyLabel.textColor = AppTheme.Colors.textTertiary
             incomeStackView.addArrangedSubview(emptyLabel)
         }
 
         insightsStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
         if let topCategory = viewModel.topSpendingCategory {
-            addInsightRow(icon: "arrow.up.circle.fill", title: "Top Spending", value: topCategory, color: .systemRed)
+            addInsightRow(icon: "arrow.up.circle.fill", title: "Top Spending", value: topCategory, color: AppTheme.Colors.expense)
         }
 
         if let highestDay = viewModel.highestSpendingDay {
@@ -379,11 +391,11 @@ class AnalyticsViewController: UIViewController {
             formatter.numberStyle = .currency
             formatter.currencyCode = "USD"
             let amountStr = formatter.string(from: NSNumber(value: viewModel.highestSpendingDayAmount)) ?? "$0"
-            addInsightRow(icon: "calendar", title: "Highest Spending Day", value: "\(highestDay) (\(amountStr))", color: .systemOrange)
+            addInsightRow(icon: "calendar", title: "Highest Spending Day", value: "\(highestDay) (\(amountStr))", color: AppTheme.Colors.accent)
         }
 
-        addInsightRow(icon: "list.bullet", title: "Total Expenses", value: "\(viewModel.expenseTransactionCount) transactions", color: .systemRed)
-        addInsightRow(icon: "plus.circle.fill", title: "Total Income", value: "\(viewModel.incomeTransactionCount) transactions", color: .systemGreen)
+        addInsightRow(icon: "list.bullet", title: "Total Expenses", value: "\(viewModel.expenseTransactionCount) transactions", color: AppTheme.Colors.expense)
+        addInsightRow(icon: "plus.circle.fill", title: "Total Income", value: "\(viewModel.incomeTransactionCount) transactions", color: AppTheme.Colors.income)
     }
 
     private func addInsightRow(icon: String, title: String, value: String, color: UIColor) {
@@ -411,22 +423,22 @@ class CategoryProgressBarView: UIView {
 
     private func setupViews() {
         categoryLabel.font = .systemFont(ofSize: 15, weight: .medium)
-        categoryLabel.textColor = .label
+        categoryLabel.textColor = AppTheme.Colors.textPrimary
         categoryLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(categoryLabel)
 
         amountLabel.font = .systemFont(ofSize: 14)
-        amountLabel.textColor = .secondaryLabel
+        amountLabel.textColor = AppTheme.Colors.textSecondary
         amountLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(amountLabel)
 
         percentageLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        percentageLabel.textColor = .secondaryLabel
+        percentageLabel.textColor = AppTheme.Colors.textSecondary
         percentageLabel.textAlignment = .right
         percentageLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(percentageLabel)
 
-        progressBar.backgroundColor = UIColor.systemGray5
+        progressBar.backgroundColor = AppTheme.Colors.textTertiary.withAlphaComponent(0.2)
         progressBar.layer.cornerRadius = 4
         progressBar.translatesAutoresizingMaskIntoConstraints = false
         addSubview(progressBar)
@@ -481,21 +493,21 @@ class InsightRowView: UIView {
     }
 
     private func setupViews() {
-        backgroundColor = .secondarySystemGroupedBackground
+        backgroundColor = AppTheme.Colors.cardBackground
         layer.cornerRadius = 12
 
         iconImageView.contentMode = .scaleAspectFit
-        iconImageView.tintColor = .systemIndigo
+        iconImageView.tintColor = AppTheme.Colors.accent
         iconImageView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(iconImageView)
 
         titleLabel.font = .systemFont(ofSize: 14)
-        titleLabel.textColor = .secondaryLabel
+        titleLabel.textColor = AppTheme.Colors.textSecondary
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
 
         valueLabel.font = .systemFont(ofSize: 15, weight: .semibold)
-        valueLabel.textColor = .label
+        valueLabel.textColor = AppTheme.Colors.textPrimary
         valueLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(valueLabel)
 
@@ -533,8 +545,8 @@ class DonutChartView: UIView {
     private var chartLayers: [CAShapeLayer] = []
 
     private let chartColors: [UIColor] = [
-        .systemRed, .systemOrange, .systemYellow, .systemGreen,
-        .systemTeal, .systemBlue, .systemIndigo, .systemPurple
+        AppTheme.Colors.expense, AppTheme.Colors.accent, AppTheme.Colors.income, UIColor(red: 250/255, green: 204/255, blue: 21/255, alpha: 1),
+        UIColor(red: 52/255, green: 211/255, blue: 153/255, alpha: 1), UIColor(red: 96/255, green: 165/255, blue: 250/255, alpha: 1), AppTheme.Colors.accent, UIColor(red: 192/255, green: 132/255, blue: 252/255, alpha: 1)
     ]
 
     override init(frame: CGRect) {
@@ -551,13 +563,13 @@ class DonutChartView: UIView {
         addSubview(chartContainer)
 
         centerLabel.font = .systemFont(ofSize: 18, weight: .bold)
-        centerLabel.textColor = .label
+        centerLabel.textColor = AppTheme.Colors.textPrimary
         centerLabel.textAlignment = .center
         centerLabel.translatesAutoresizingMaskIntoConstraints = false
         chartContainer.addSubview(centerLabel)
 
         centerSubtitleLabel.font = .systemFont(ofSize: 11)
-        centerSubtitleLabel.textColor = .secondaryLabel
+        centerSubtitleLabel.textColor = AppTheme.Colors.textSecondary
         centerSubtitleLabel.textAlignment = .center
         centerSubtitleLabel.translatesAutoresizingMaskIntoConstraints = false
         chartContainer.addSubview(centerSubtitleLabel)
@@ -663,14 +675,14 @@ class DonutChartView: UIView {
         let labelView = UILabel()
         labelView.text = label
         labelView.font = .systemFont(ofSize: 13, weight: .medium)
-        labelView.textColor = .label
+        labelView.textColor = AppTheme.Colors.textPrimary
         labelView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(labelView)
 
         let amountView = UILabel()
         amountView.text = "\(amount) (\(Int(percentage))%)"
         amountView.font = .systemFont(ofSize: 12)
-        amountView.textColor = .secondaryLabel
+        amountView.textColor = AppTheme.Colors.textSecondary
         amountView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(amountView)
 
