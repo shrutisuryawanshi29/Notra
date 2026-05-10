@@ -35,6 +35,8 @@ class IncomeListViewController: UIViewController {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(FinanceCell.self, forCellReuseIdentifier: "FinanceCell")
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 80
         tableView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(tableView)
 

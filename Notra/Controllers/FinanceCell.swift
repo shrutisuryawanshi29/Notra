@@ -34,7 +34,11 @@ class FinanceCell: UITableViewCell {
         iconContainer.addSubview(iconImageView)
 
         titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
-        titleLabel.textColor = .label
+        titleLabel.textColor = AppTheme.Colors.textPrimary
+        titleLabel.numberOfLines = 0
+        titleLabel.lineBreakMode = .byWordWrapping
+        titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(titleLabel)
 
@@ -45,12 +49,14 @@ class FinanceCell: UITableViewCell {
 
         amountLabel.font = .systemFont(ofSize: 16, weight: .bold)
         amountLabel.textAlignment = .right
+        amountLabel.setContentHuggingPriority(.required, for: .horizontal)
+        amountLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         amountLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(amountLabel)
 
         NSLayoutConstraint.activate([
             iconContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            iconContainer.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            iconContainer.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
             iconContainer.widthAnchor.constraint(equalToConstant: 40),
             iconContainer.heightAnchor.constraint(equalToConstant: 40),
 
@@ -63,13 +69,14 @@ class FinanceCell: UITableViewCell {
             titleLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 12),
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: amountLabel.leadingAnchor, constant: -12),
 
-            categoryLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            categoryLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
             categoryLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 12),
             categoryLabel.trailingAnchor.constraint(lessThanOrEqualTo: amountLabel.leadingAnchor, constant: -12),
             categoryLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12),
 
             amountLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            amountLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8)
+            amountLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            amountLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 8)
         ])
     }
 
