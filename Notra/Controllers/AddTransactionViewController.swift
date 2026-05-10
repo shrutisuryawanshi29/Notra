@@ -15,6 +15,7 @@ final class AddTransactionViewController: UIViewController {
         let sc = UISegmentedControl(items: ["Expense", "Income"])
         sc.selectedSegmentIndex = 0
         sc.translatesAutoresizingMaskIntoConstraints = false
+        sc.backgroundColor = .clear
         sc.selectedSegmentTintColor = AppTheme.Colors.expense
         sc.setTitleTextAttributes([
             .foregroundColor: UIColor.white,
@@ -30,7 +31,9 @@ final class AddTransactionViewController: UIViewController {
     private let segmentedContainer: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        AppTheme.applyCardStyle(to: view)
+        view.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        view.layer.cornerRadius = AppTheme.CornerRadius.card
+        AppTheme.Shadow.applyCard(to: view)
         return view
     }()
 
@@ -159,7 +162,8 @@ final class AddTransactionViewController: UIViewController {
         tableView.register(FormDateCell.self, forCellReuseIdentifier: "FormDateCell")
         tableView.register(FormSwitchCell.self, forCellReuseIdentifier: "FormSwitchCell")
         tableView.register(FormTextViewCell.self, forCellReuseIdentifier: "FormTextViewCell")
-        AppTheme.styleTableView(tableView)
+        tableView.separatorStyle = .none
+        tableView.backgroundColor = AppTheme.Colors.background
 
         view.addSubview(segmentedContainer)
         segmentedContainer.addSubview(segmentedControl)
@@ -178,11 +182,10 @@ final class AddTransactionViewController: UIViewController {
             segmentedContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             segmentedContainer.heightAnchor.constraint(equalToConstant: 44),
 
-            segmentedControl.topAnchor.constraint(equalTo: segmentedContainer.topAnchor),
-            segmentedControl.leadingAnchor.constraint(equalTo: segmentedContainer.leadingAnchor),
-            segmentedControl.trailingAnchor.constraint(equalTo: segmentedContainer.trailingAnchor),
-            segmentedControl.bottomAnchor.constraint(equalTo: segmentedContainer.bottomAnchor),
-            segmentedControl.widthAnchor.constraint(equalTo: segmentedContainer.widthAnchor, constant: -16),
+            segmentedControl.topAnchor.constraint(equalTo: segmentedContainer.topAnchor, constant: 4),
+            segmentedControl.leadingAnchor.constraint(equalTo: segmentedContainer.leadingAnchor, constant: 4),
+            segmentedControl.trailingAnchor.constraint(equalTo: segmentedContainer.trailingAnchor, constant: -4),
+            segmentedControl.bottomAnchor.constraint(equalTo: segmentedContainer.bottomAnchor, constant: -4),
 
             tableView.topAnchor.constraint(equalTo: segmentedContainer.bottomAnchor, constant: 8),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -448,6 +451,28 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
         }
         return nil
     }
+
+    func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
+        let footerView = UIView()
+        footerView.backgroundColor = AppTheme.Colors.background
+        let label = UILabel()
+        label.font = AppTheme.Fonts.caption
+        label.textColor = AppTheme.Colors.textMuted
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        footerView.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: footerView.topAnchor, constant: 8),
+            label.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: 20),
+            label.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -20),
+            label.bottomAnchor.constraint(equalTo: footerView.bottomAnchor, constant: -8)
+        ])
+        let requiredCount = viewModel.fields.filter { $0.isMappedCoreField }.count
+        label.text = requiredCount > 0 ? "Fields marked Required are used by Notra for core tracking." : nil
+        label.isHidden = requiredCount == 0
+        return footerView
+    }
 }
 
 // MARK: - Picker Alerts
@@ -623,9 +648,6 @@ private class FormFieldCell: UITableViewCell {
     private func setup() {
         selectionStyle = .none
         contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
-        contentView.layer.cornerRadius = AppTheme.CornerRadius.medium
-        contentView.layer.borderWidth = 1
-        contentView.layer.borderColor = AppTheme.Colors.border.cgColor
 
         nameLabel.font = AppTheme.Fonts.captionBold
         nameLabel.textColor = AppTheme.Colors.textPrimary
@@ -714,9 +736,6 @@ private class FormPickerCell: UITableViewCell {
     private func setup() {
         selectionStyle = .none
         contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
-        contentView.layer.cornerRadius = AppTheme.CornerRadius.medium
-        contentView.layer.borderWidth = 1
-        contentView.layer.borderColor = AppTheme.Colors.border.cgColor
 
         nameLabel.font = AppTheme.Fonts.captionBold
         nameLabel.textColor = AppTheme.Colors.textPrimary
@@ -835,9 +854,6 @@ private class FormDateCell: UITableViewCell {
     private func setup() {
         selectionStyle = .none
         contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
-        contentView.layer.cornerRadius = AppTheme.CornerRadius.medium
-        contentView.layer.borderWidth = 1
-        contentView.layer.borderColor = AppTheme.Colors.border.cgColor
 
         nameLabel.font = AppTheme.Fonts.captionBold
         nameLabel.textColor = AppTheme.Colors.textPrimary
@@ -898,9 +914,6 @@ private class FormSwitchCell: UITableViewCell {
     private func setup() {
         selectionStyle = .none
         contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
-        contentView.layer.cornerRadius = AppTheme.CornerRadius.medium
-        contentView.layer.borderWidth = 1
-        contentView.layer.borderColor = AppTheme.Colors.border.cgColor
 
         nameLabel.font = AppTheme.Fonts.captionBold
         nameLabel.textColor = AppTheme.Colors.textPrimary
@@ -958,9 +971,6 @@ private class FormTextViewCell: UITableViewCell {
     private func setup() {
         selectionStyle = .none
         contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
-        contentView.layer.cornerRadius = AppTheme.CornerRadius.medium
-        contentView.layer.borderWidth = 1
-        contentView.layer.borderColor = AppTheme.Colors.border.cgColor
 
         nameLabel.font = AppTheme.Fonts.captionBold
         nameLabel.textColor = AppTheme.Colors.textPrimary

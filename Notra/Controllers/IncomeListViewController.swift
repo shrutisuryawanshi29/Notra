@@ -37,8 +37,7 @@ class IncomeListViewController: UIViewController {
         tableView.register(FinanceCell.self, forCellReuseIdentifier: "FinanceCell")
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 80
-        tableView.separatorColor = AppTheme.Colors.border
-        tableView.separatorInset = UIEdgeInsets(top: 0, left: 68, bottom: 0, right: 0)
+        tableView.separatorStyle = .none
         tableView.sectionHeaderTopPadding = 0
         tableView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(tableView)
@@ -131,6 +130,14 @@ extension IncomeListViewController: UITableViewDataSource, UITableViewDelegate {
         header.contentView.backgroundColor = AppTheme.Colors.background
         header.textLabel?.font = AppTheme.Fonts.captionBold
         header.textLabel?.textColor = AppTheme.Colors.textMuted
+    }
+
+    func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        return 36
+    }
+
+    func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
+        return 4
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
