@@ -87,14 +87,14 @@ class DashboardViewController: UIViewController {
         title = "Dashboard"
         view.backgroundColor = AppTheme.Colors.background
 
-        navigationController?.navigationBar.prefersLargeTitles = false
+        AppTheme.styleNavigationBar(navigationController!.navigationBar)
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "arrow.clockwise"),
             style: .plain,
             target: self,
             action: #selector(refreshTapped)
         )
-        navigationItem.rightBarButtonItem?.tintColor = AppTheme.Colors.accent
+        navigationItem.rightBarButtonItem?.tintColor = AppTheme.Colors.primaryBrown
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "gearshape"),
@@ -102,7 +102,7 @@ class DashboardViewController: UIViewController {
             target: self,
             action: #selector(settingsTapped)
         )
-        navigationItem.leftBarButtonItem?.tintColor = AppTheme.Colors.accent
+        navigationItem.leftBarButtonItem?.tintColor = AppTheme.Colors.primaryBrown
 
         setupScrollView()
         setupHeader()
@@ -147,8 +147,8 @@ class DashboardViewController: UIViewController {
         headerView.addSubview(greetingLabel)
 
         lastSyncLabel.text = "Pull to refresh"
-        lastSyncLabel.font = .systemFont(ofSize: 13)
-        lastSyncLabel.textColor = .secondaryLabel
+        lastSyncLabel.font = AppTheme.Fonts.smallMedium
+        lastSyncLabel.textColor = AppTheme.Colors.textMuted
         lastSyncLabel.translatesAutoresizingMaskIntoConstraints = false
         headerView.addSubview(lastSyncLabel)
 
@@ -170,11 +170,11 @@ class DashboardViewController: UIViewController {
         monthSelectorButton.setImage(UIImage(systemName: "chevron.down"), for: .normal)
         monthSelectorButton.semanticContentAttribute = .forceRightToLeft
         monthSelectorButton.setTitle(" May 2026 ", for: .normal)
-        monthSelectorButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        monthSelectorButton.titleLabel?.font = AppTheme.Fonts.bodyBold
         monthSelectorButton.setTitleColor(.white, for: .normal)
         monthSelectorButton.tintColor = .white
-        monthSelectorButton.backgroundColor = AppTheme.Colors.accent
-        monthSelectorButton.layer.cornerRadius = 20
+        monthSelectorButton.backgroundColor = AppTheme.Colors.primaryBrown
+        monthSelectorButton.layer.cornerRadius = AppTheme.CornerRadius.pill
         monthSelectorButton.contentEdgeInsets = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
         monthSelectorButton.translatesAutoresizingMaskIntoConstraints = false
         monthSelectorButton.addTarget(self, action: #selector(monthSelectorTapped), for: .touchUpInside)
@@ -214,9 +214,9 @@ class DashboardViewController: UIViewController {
         buttonStackView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(buttonStackView)
 
-        configureActionButton(expenseButton, title: "View Expenses", icon: "creditcard.fill", color: .systemRed)
-        configureActionButton(incomeButton, title: "View Income", icon: "banknote.fill", color: .systemGreen)
-        configureActionButton(analyticsButton, title: "Analytics", icon: "chart.bar.fill", color: .systemIndigo)
+        configureActionButton(expenseButton, title: "View Expenses", icon: "creditcard.fill", color: AppTheme.Colors.expense)
+        configureActionButton(incomeButton, title: "View Income", icon: "banknote.fill", color: AppTheme.Colors.income)
+        configureActionButton(analyticsButton, title: "Analytics", icon: "chart.bar.fill", color: AppTheme.Colors.primaryBrown)
 
         expenseButton.addTarget(self, action: #selector(viewExpensesTapped), for: .touchUpInside)
         incomeButton.addTarget(self, action: #selector(viewIncomeTapped), for: .touchUpInside)
@@ -249,7 +249,7 @@ class DashboardViewController: UIViewController {
     }
 
     private func setupLoadingView() {
-        loadingContainerView.backgroundColor = .systemGroupedBackground
+        loadingContainerView.backgroundColor = AppTheme.Colors.background
         loadingContainerView.translatesAutoresizingMaskIntoConstraints = false
         loadingContainerView.isHidden = true
         view.addSubview(loadingContainerView)
@@ -259,8 +259,8 @@ class DashboardViewController: UIViewController {
         loadingContainerView.addSubview(activityIndicator)
 
         progressLabel.textAlignment = .center
-        progressLabel.font = .systemFont(ofSize: 15, weight: .medium)
-        progressLabel.textColor = .secondaryLabel
+        progressLabel.font = AppTheme.Fonts.bodyMedium
+        progressLabel.textColor = AppTheme.Colors.textSecondary
         progressLabel.translatesAutoresizingMaskIntoConstraints = false
         loadingContainerView.addSubview(progressLabel)
 
@@ -284,23 +284,21 @@ class DashboardViewController: UIViewController {
         view.addSubview(emptyStateView)
 
         let emptyIcon = UIImageView(image: UIImage(systemName: "doc.text.magnifyingglass"))
-        emptyIcon.tintColor = .tertiaryLabel
+        emptyIcon.tintColor = AppTheme.Colors.textMuted
         emptyIcon.contentMode = .scaleAspectFit
         emptyIcon.translatesAutoresizingMaskIntoConstraints = false
         emptyStateView.addSubview(emptyIcon)
 
         emptyStateLabel.text = "No data found"
-        emptyStateLabel.font = .systemFont(ofSize: 18, weight: .medium)
-        emptyStateLabel.textColor = .secondaryLabel
+        emptyStateLabel.font = AppTheme.Fonts.headingMedium
+        emptyStateLabel.textColor = AppTheme.Colors.textSecondary
         emptyStateLabel.textAlignment = .center
         emptyStateLabel.translatesAutoresizingMaskIntoConstraints = false
         emptyStateView.addSubview(emptyStateLabel)
 
         setupButton.setTitle("Go to Setup", for: .normal)
-        setupButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
-        setupButton.backgroundColor = .systemIndigo
-        setupButton.setTitleColor(.white, for: .normal)
-        setupButton.layer.cornerRadius = 12
+        setupButton.titleLabel?.font = AppTheme.Fonts.buttonMedium
+        AppTheme.applyPrimaryButtonStyle(to: setupButton)
         setupButton.translatesAutoresizingMaskIntoConstraints = false
         setupButton.addTarget(self, action: #selector(goToSetup), for: .touchUpInside)
         emptyStateView.addSubview(setupButton)
@@ -409,7 +407,7 @@ class DashboardViewController: UIViewController {
         incomeCard.setSubtitle("\(viewModel.selectedMonthIncomesCount) transactions")
 
         let balance = viewModel.balance
-        let balanceColor: UIColor = balance >= 0 ? .systemGreen : .systemRed
+        let balanceColor: UIColor = balance >= 0 ? AppTheme.Colors.income : AppTheme.Colors.expense
         let balancePrefix = balance >= 0 ? "+" : "-"
         let balanceValue = formatter.string(from: NSNumber(value: abs(balance))) ?? "$0.00"
         balanceCard.setValue("\(balancePrefix)\(balanceValue)")
@@ -502,12 +500,7 @@ class SummaryCardView: UIView {
     }
 
     private func setupView() {
-        backgroundColor = AppTheme.Colors.cardBackground
-        layer.cornerRadius = AppTheme.CornerRadius.card
-        layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.04
-        layer.shadowOffset = CGSize(width: 0, height: 2)
-        layer.shadowRadius = 8
+        AppTheme.applyCardStyle(to: self)
 
         iconContainer.layer.cornerRadius = 22
         iconContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -523,13 +516,13 @@ class SummaryCardView: UIView {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
 
-        valueLabel.font = .systemFont(ofSize: 28, weight: .bold)
-        valueLabel.textColor = .label
+        valueLabel.font = AppTheme.Fonts.headingLargeRounded
+        valueLabel.textColor = AppTheme.Colors.textPrimary
         valueLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(valueLabel)
 
-        subtitleLabel.font = .systemFont(ofSize: 13)
-        subtitleLabel.textColor = .tertiaryLabel
+        subtitleLabel.font = AppTheme.Fonts.smallMedium
+        subtitleLabel.textColor = AppTheme.Colors.textMuted
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(subtitleLabel)
 

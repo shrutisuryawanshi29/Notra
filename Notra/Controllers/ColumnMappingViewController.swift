@@ -8,12 +8,28 @@ import UIKit
 class ColumnMappingViewController: UIViewController {
 
     private let viewModel: ColumnMappingViewModel
+
+    // Header section
+    private let headerContainer = UIView()
+    private let iconView = UIImageView()
+    private let titleLabel = UILabel()
+    private let subtitleLabel = UILabel()
+
+    // Middle section - mapping card
+    private let cardView = UIView()
+    private let cardTitleLabel = UILabel()
+    private let helpButton = UIButton(type: .system)
+
     private let tableView: UITableView = {
         let tv = UITableView(frame: .zero, style: .plain)
-        tv.backgroundColor = AppTheme.Colors.background
+        tv.backgroundColor = .clear
         return tv
     }()
+
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
+
+    // Bottom section - save button
+    private let saveButton = UIButton(type: .system)
 
     private var selectedCategoryColumn: String?
     private var categoryValues: [CategoryValue] = []
@@ -36,42 +52,202 @@ class ColumnMappingViewController: UIViewController {
 
     private func setupUI() {
         view.backgroundColor = AppTheme.Colors.background
-        title = "Map Columns - \(viewModel.role.displayName)"
+        title = "Map Columns"
+        navigationController?.navigationBar.prefersLargeTitles = false
+        AppTheme.styleNavigationBar(navigationController!.navigationBar)
 
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+        tapGesture.cancelsTouchesInView = false
+        view.addGestureRecognizer(tapGesture)
+
+        setupHeader()
+        setupButton()
+        setupCard()
+    }
+
+    @objc private func dismissKeyboard() {
+        view.endEditing(true)
+    }
+
+    // MARK: - Header Section (Top)
+    private func setupHeader() {
+        headerContainer.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(headerContainer)
+
+        let iconName = viewModel.role == .expense ? "arrow.up.circle.fill" : "arrow.down.circle.fill"
+        iconView.image = UIImage(systemName: iconName)
+        iconView.tintColor = viewModel.role == .expense ? AppTheme.Colors.expense : AppTheme.Colors.income
+        iconView.contentMode = .scaleAspectFit
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.setContentHuggingPriority(.required, for: .vertical)
+        iconView.setContentCompressionResistancePriority(.required, for: .vertical)
+        headerContainer.addSubview(iconView)
+
+        titleLabel.text = "Map \(viewModel.role.displayName) Columns"
+        titleLabel.font = AppTheme.Fonts.headingLarge
+        titleLabel.textColor = AppTheme.Colors.textPrimary
+        titleLabel.textAlignment = .center
+        titleLabel.numberOfLines = 1
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.setContentHuggingPriority(.required, for: .vertical)
+        titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+        headerContainer.addSubview(titleLabel)
+
+        subtitleLabel.text = "Connect your Notion columns to Notra fields"
+        subtitleLabel.font = AppTheme.Fonts.body
+        subtitleLabel.textColor = AppTheme.Colors.textSecondary
+        subtitleLabel.textAlignment = .center
+        subtitleLabel.numberOfLines = 2
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        subtitleLabel.setContentHuggingPriority(.required, for: .vertical)
+        subtitleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+        headerContainer.addSubview(subtitleLabel)
+
+        headerContainer.setContentHuggingPriority(.required, for: .vertical)
+        headerContainer.setContentCompressionResistancePriority(.required, for: .vertical)
+
+        NSLayoutConstraint.activate([
+            // Header pinned to top - NO centerY
+            headerContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            headerContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            headerContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            // Icon at top of header
+            iconView.topAnchor.constraint(equalTo: headerContainer.topAnchor, constant: 16),
+            iconView.centerXAnchor.constraint(equalTo: headerContainer.centerXAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 40),
+            iconView.heightAnchor.constraint(equalToConstant: 40),
+
+            // Title below icon
+            titleLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: headerContainer.leadingAnchor, constant: 24),
+            titleLabel.trailingAnchor.constraint(equalTo: headerContainer.trailingAnchor, constant: -24),
+
+            // Subtitle below title - end of header
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            subtitleLabel.leadingAnchor.constraint(equalTo: headerContainer.leadingAnchor, constant: 24),
+            subtitleLabel.trailingAnchor.constraint(equalTo: headerContainer.trailingAnchor, constant: -24),
+            subtitleLabel.bottomAnchor.constraint(equalTo: headerContainer.bottomAnchor, constant: -16)
+        ])
+    }
+
+    // MARK: - Card Section (Middle)
+    private func setupCard() {
+        AppTheme.applyCardStyle(to: cardView)
+        cardView.translatesAutoresizingMaskIntoConstraints = false
+        // Card fills middle space (lower hugging priority)
+        cardView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        cardView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        view.addSubview(cardView)
+
+        // Card header - compact, required hugging
+        cardTitleLabel.text = "Column Mapping"
+        cardTitleLabel.font = AppTheme.Fonts.captionBold
+        cardTitleLabel.textColor = AppTheme.Colors.textPrimary
+        cardTitleLabel.numberOfLines = 1
+        cardTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        cardTitleLabel.setContentHuggingPriority(.required, for: .vertical)
+        cardTitleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+        cardView.addSubview(cardTitleLabel)
+
+        // Help button - compact
+        let helpConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        helpButton.setImage(UIImage(systemName: "questionmark.circle", withConfiguration: helpConfig), for: .normal)
+        helpButton.tintColor = AppTheme.Colors.textMuted
+        helpButton.translatesAutoresizingMaskIntoConstraints = false
+        helpButton.setContentHuggingPriority(.required, for: .vertical)
+        helpButton.setContentCompressionResistancePriority(.required, for: .vertical)
+        helpButton.addTarget(self, action: #selector(showHelpTapped), for: .touchUpInside)
+        cardView.addSubview(helpButton)
+
+        // Table view - fills remaining space
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(MappingCell.self, forCellReuseIdentifier: "MappingCell")
+        tableView.separatorStyle = .singleLine
+        tableView.separatorColor = AppTheme.Colors.border
+        tableView.separatorInset = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
+        tableView.backgroundColor = AppTheme.Colors.cardBackground
+        tableView.isScrollEnabled = true
         tableView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(tableView)
+        tableView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        cardView.addSubview(tableView)
 
         activityIndicator.translatesAutoresizingMaskIntoConstraints = false
         activityIndicator.hidesWhenStopped = true
-        view.addSubview(activityIndicator)
+        cardView.addSubview(activityIndicator)
 
-        let saveButton = UIButton(type: .system)
-        saveButton.setTitle("Save & Continue", for: .normal)
-        saveButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
-        saveButton.backgroundColor = AppTheme.Colors.accent
-        saveButton.setTitleColor(.white, for: .normal)
-        saveButton.layer.cornerRadius = 10
+        NSLayoutConstraint.activate([
+            // Card constrained between header and button
+            cardView.topAnchor.constraint(equalTo: headerContainer.bottomAnchor, constant: 16),
+            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            cardView.bottomAnchor.constraint(equalTo: saveButton.topAnchor, constant: -16),
+
+            cardTitleLabel.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 16),
+            cardTitleLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 16),
+
+            helpButton.centerYAnchor.constraint(equalTo: cardTitleLabel.centerYAnchor),
+            helpButton.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -16),
+
+            tableView.topAnchor.constraint(equalTo: cardTitleLabel.bottomAnchor, constant: 12),
+            tableView.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
+            tableView.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -8),
+
+            activityIndicator.centerXAnchor.constraint(equalTo: cardView.centerXAnchor),
+            activityIndicator.centerYAnchor.constraint(equalTo: cardView.centerYAnchor)
+        ])
+    }
+
+    // MARK: - Button Section (Bottom)
+    private func setupButton() {
+        var config = UIButton.Configuration.filled()
+        config.title = "Save & Continue"
+        config.image = UIImage(systemName: "checkmark.circle.fill")
+        config.imagePadding = 8
+        config.imagePlacement = .leading
+        config.baseBackgroundColor = viewModel.role == .expense ? AppTheme.Colors.expense : AppTheme.Colors.income
+        config.baseForegroundColor = .white
+        config.cornerStyle = .medium
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = AppTheme.Fonts.buttonLarge
+            return outgoing
+        }
+
+        saveButton.configuration = config
         saveButton.translatesAutoresizingMaskIntoConstraints = false
         saveButton.addTarget(self, action: #selector(saveButtonTapped), for: .touchUpInside)
         view.addSubview(saveButton)
 
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: saveButton.topAnchor, constant: -16),
-
-            activityIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            activityIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-
-            saveButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            saveButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
-            saveButton.widthAnchor.constraint(equalToConstant: 200),
-            saveButton.heightAnchor.constraint(equalToConstant: 50)
+            // Save button pinned to bottom
+            saveButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            saveButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            saveButton.heightAnchor.constraint(equalToConstant: 56),
+            saveButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20)
         ])
+    }
+
+    @objc private func showHelpTapped() {
+        let alert = UIAlertController(
+            title: "Column Mapping",
+            message: """
+            Map your Notion columns to Notra fields:
+
+            • **Title** - Transaction description
+            • **Amount** - Money value (positive for income, negative for expense)
+            • **Category** - Expense/income category
+            • **Date** - Transaction date
+
+            Auto-suggestions are based on column names.
+            Tap any row to change the mapping.
+            """,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Got it", style: .default))
+        present(alert, animated: true)
     }
 
     @objc private func saveButtonTapped() {
@@ -107,21 +283,13 @@ extension ColumnMappingViewController: UITableViewDelegate, UITableViewDataSourc
     }
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return UITableView.automaticDimension
-    }
-
-    func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 80
+        return 70
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         let field = ColumnField.allCases[indexPath.row]
         showColumnPicker(for: field)
-    }
-
-    func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        return "Tap a row to select the corresponding Notion column. Auto-suggestions are shown."
     }
 }
 
@@ -243,8 +411,10 @@ extension ColumnMappingViewController: ColumnMappingViewModelDelegate {
 // MARK: - Mapping Cell
 
 class MappingCell: UITableViewCell {
+    private let fieldIconView = UIImageView()
     private let fieldLabel = UILabel()
     private let valueLabel = UILabel()
+    private let arrowImageView = UIImageView()
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -256,31 +426,78 @@ class MappingCell: UITableViewCell {
     }
 
     private func setupUI() {
-        fieldLabel.font = .preferredFont(forTextStyle: .headline)
+        backgroundColor = AppTheme.Colors.cardBackground
+        selectionStyle = .default
+        selectedBackgroundView = {
+            let view = UIView()
+            view.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+            return view
+        }()
+
+        let fieldIconConfig = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        fieldIconView.preferredSymbolConfiguration = fieldIconConfig
+        fieldIconView.tintColor = AppTheme.Colors.primaryBrown
+        fieldIconView.contentMode = .scaleAspectFit
+        fieldIconView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(fieldIconView)
+
+        fieldLabel.font = AppTheme.Fonts.bodyBold
+        fieldLabel.textColor = AppTheme.Colors.textPrimary
         fieldLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(fieldLabel)
 
-        valueLabel.font = .preferredFont(forTextStyle: .body)
+        valueLabel.font = AppTheme.Fonts.body
         valueLabel.textColor = AppTheme.Colors.textSecondary
-        valueLabel.numberOfLines = 0
         valueLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(valueLabel)
 
-        NSLayoutConstraint.activate([
-            fieldLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
-            fieldLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            fieldLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+        arrowImageView.image = UIImage(systemName: "chevron.right")
+        arrowImageView.tintColor = AppTheme.Colors.textMuted
+        arrowImageView.contentMode = .scaleAspectFit
+        arrowImageView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(arrowImageView)
 
-            valueLabel.topAnchor.constraint(equalTo: fieldLabel.bottomAnchor, constant: 8),
-            valueLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            valueLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            valueLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16)
+        NSLayoutConstraint.activate([
+            fieldIconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
+            fieldIconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            fieldIconView.widthAnchor.constraint(equalToConstant: 24),
+            fieldIconView.heightAnchor.constraint(equalToConstant: 24),
+
+            fieldLabel.leadingAnchor.constraint(equalTo: fieldIconView.trailingAnchor, constant: 12),
+            fieldLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            fieldLabel.widthAnchor.constraint(equalToConstant: 90),
+
+            valueLabel.leadingAnchor.constraint(equalTo: fieldLabel.trailingAnchor, constant: 8),
+            valueLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            valueLabel.trailingAnchor.constraint(equalTo: arrowImageView.leadingAnchor, constant: -8),
+
+            arrowImageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
+            arrowImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            arrowImageView.widthAnchor.constraint(equalToConstant: 12),
+            arrowImageView.heightAnchor.constraint(equalToConstant: 12)
         ])
     }
 
     func configure(field: ColumnField, selectedColumn: String?) {
         fieldLabel.text = field.rawValue
+
+        let iconConfig = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        switch field {
+        case .title:
+            fieldIconView.image = UIImage(systemName: "text.alignleft", withConfiguration: iconConfig)
+            fieldIconView.tintColor = AppTheme.Colors.primaryBrown
+        case .amount:
+            fieldIconView.image = UIImage(systemName: "dollarsign.circle", withConfiguration: iconConfig)
+            fieldIconView.tintColor = AppTheme.Colors.expense
+        case .category:
+            fieldIconView.image = UIImage(systemName: "tag", withConfiguration: iconConfig)
+            fieldIconView.tintColor = AppTheme.Colors.secondaryBrown
+        case .date:
+            fieldIconView.image = UIImage(systemName: "calendar", withConfiguration: iconConfig)
+            fieldIconView.tintColor = AppTheme.Colors.income
+        }
+
         valueLabel.text = selectedColumn ?? "Not selected"
-        accessoryType = .disclosureIndicator
+        valueLabel.textColor = selectedColumn != nil ? AppTheme.Colors.textPrimary : AppTheme.Colors.textMuted
     }
 }

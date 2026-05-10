@@ -30,13 +30,16 @@ class IncomeListViewController: UIViewController {
         title = "Income"
         view.backgroundColor = AppTheme.Colors.background
 
-        navigationController?.navigationBar.prefersLargeTitles = true
+        AppTheme.styleNavigationBar(navigationController!.navigationBar)
 
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(FinanceCell.self, forCellReuseIdentifier: "FinanceCell")
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 80
+        tableView.separatorColor = AppTheme.Colors.border
+        tableView.separatorInset = UIEdgeInsets(top: 0, left: 68, bottom: 0, right: 0)
+        tableView.sectionHeaderTopPadding = 0
         tableView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(tableView)
 
@@ -61,14 +64,14 @@ class IncomeListViewController: UIViewController {
         view.addSubview(emptyView)
 
         let iconView = UIImageView(image: UIImage(systemName: "tray"))
-        iconView.tintColor = AppTheme.Colors.textTertiary
+        iconView.tintColor = AppTheme.Colors.textMuted
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
         emptyView.addSubview(iconView)
 
         let label = UILabel()
         label.text = "No income for this month"
-        label.font = .systemFont(ofSize: 18, weight: .medium)
+        label.font = AppTheme.Fonts.bodyMedium
         label.textColor = AppTheme.Colors.textSecondary
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -76,8 +79,8 @@ class IncomeListViewController: UIViewController {
 
         let sublabel = UILabel()
         sublabel.text = "Transactions sync from your Notion databases. Select a different month from Dashboard to view more data."
-        sublabel.font = .systemFont(ofSize: 14)
-        sublabel.textColor = AppTheme.Colors.textTertiary
+        sublabel.font = AppTheme.Fonts.caption
+        sublabel.textColor = AppTheme.Colors.textMuted
         sublabel.textAlignment = .center
         sublabel.numberOfLines = 0
         sublabel.translatesAutoresizingMaskIntoConstraints = false
@@ -121,6 +124,13 @@ extension IncomeListViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         let sectionData = viewModel.sections[section]
         return sectionData.displayDate
+    }
+
+    func tableView(_ tableView: UITableView, willDisplayHeaderView view: UIView, forSection section: Int) {
+        guard let header = view as? UITableViewHeaderFooterView else { return }
+        header.contentView.backgroundColor = AppTheme.Colors.background
+        header.textLabel?.font = AppTheme.Fonts.captionBold
+        header.textLabel?.textColor = AppTheme.Colors.textMuted
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {

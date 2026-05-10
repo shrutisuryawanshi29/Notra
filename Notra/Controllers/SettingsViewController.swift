@@ -34,6 +34,8 @@ class SettingsViewController: UIViewController {
         tableView.dataSource = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Cell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.separatorColor = AppTheme.Colors.border
+        tableView.sectionHeaderTopPadding = 0
         view.addSubview(tableView)
 
         NSLayoutConstraint.activate([
@@ -113,8 +115,9 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         cell.selectionStyle = .none
 
         var content = cell.defaultContentConfiguration()
-        content.textProperties.font = .systemFont(ofSize: 16)
-        content.secondaryTextProperties.font = .systemFont(ofSize: 13)
+        content.textProperties.font = AppTheme.Fonts.body
+        content.textProperties.color = AppTheme.Colors.textPrimary
+        content.secondaryTextProperties.font = AppTheme.Fonts.caption
         content.secondaryTextProperties.color = AppTheme.Colors.textSecondary
 
         guard let sectionType = Section(rawValue: indexPath.section) else { return cell }

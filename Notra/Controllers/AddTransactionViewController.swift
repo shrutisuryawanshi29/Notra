@@ -18,24 +18,19 @@ final class AddTransactionViewController: UIViewController {
         sc.selectedSegmentTintColor = AppTheme.Colors.expense
         sc.setTitleTextAttributes([
             .foregroundColor: UIColor.white,
-            .font: UIFont.systemFont(ofSize: 15, weight: .semibold)
+            .font: AppTheme.Fonts.buttonMedium
         ], for: .selected)
         sc.setTitleTextAttributes([
-            .foregroundColor: UIColor.label,
-            .font: UIFont.systemFont(ofSize: 15, weight: .medium)
+            .foregroundColor: AppTheme.Colors.textPrimary,
+            .font: AppTheme.Fonts.buttonMedium
         ], for: .normal)
         return sc
     }()
 
     private let segmentedContainer: UIView = {
         let view = UIView()
-        view.backgroundColor = AppTheme.Colors.background
-        view.layer.cornerRadius = 12
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.05
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
         view.translatesAutoresizingMaskIntoConstraints = false
+        AppTheme.applyCardStyle(to: view)
         return view
     }()
 
@@ -58,7 +53,12 @@ final class AddTransactionViewController: UIViewController {
         config.imagePlacement = .leading
         config.baseBackgroundColor = AppTheme.Colors.expense
         config.baseForegroundColor = .white
-        config.cornerStyle = .large
+        config.cornerStyle = .medium
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = AppTheme.Fonts.buttonLarge
+            return outgoing
+        }
         let button = UIButton(configuration: config)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -66,8 +66,8 @@ final class AddTransactionViewController: UIViewController {
 
     private let errorLabel: UILabel = {
         let label = UILabel()
-        label.font = .systemFont(ofSize: 13, weight: .medium)
-        label.textColor = AppTheme.Colors.expense.withAlphaComponent(0.8)
+        label.font = AppTheme.Fonts.captionMedium
+        label.textColor = AppTheme.Colors.expense
         label.textAlignment = .center
         label.numberOfLines = 0
         label.isHidden = true
@@ -93,7 +93,7 @@ final class AddTransactionViewController: UIViewController {
     private let loadingLabel: UILabel = {
         let label = UILabel()
         label.text = "Loading form..."
-        label.font = .systemFont(ofSize: 15)
+        label.font = AppTheme.Fonts.caption
         label.textColor = AppTheme.Colors.textSecondary
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -141,6 +141,7 @@ final class AddTransactionViewController: UIViewController {
     private func setupUI() {
         title = "Add Transaction"
         view.backgroundColor = AppTheme.Colors.background
+        AppTheme.styleNavigationBar(navigationController?.navigationBar ?? UINavigationBar())
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .cancel,
@@ -158,6 +159,7 @@ final class AddTransactionViewController: UIViewController {
         tableView.register(FormDateCell.self, forCellReuseIdentifier: "FormDateCell")
         tableView.register(FormSwitchCell.self, forCellReuseIdentifier: "FormSwitchCell")
         tableView.register(FormTextViewCell.self, forCellReuseIdentifier: "FormTextViewCell")
+        AppTheme.styleTableView(tableView)
 
         view.addSubview(segmentedContainer)
         segmentedContainer.addSubview(segmentedControl)
@@ -223,23 +225,23 @@ final class AddTransactionViewController: UIViewController {
 
     private func setupEmptyState() {
         let icon = UIImageView(image: UIImage(systemName: "tray"))
-        icon.tintColor = .tertiaryLabel
+        icon.tintColor = AppTheme.Colors.textMuted
         icon.contentMode = .scaleAspectFit
         icon.translatesAutoresizingMaskIntoConstraints = false
         emptyStateView.addSubview(icon)
 
         let label = UILabel()
         label.text = "No editable fields"
-        label.font = .systemFont(ofSize: 18, weight: .medium)
-        label.textColor = .secondaryLabel
+        label.font = AppTheme.Fonts.headingMedium
+        label.textColor = AppTheme.Colors.textSecondary
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         emptyStateView.addSubview(label)
 
         let sublabel = UILabel()
         sublabel.text = "This database has no writable properties."
-        sublabel.font = .systemFont(ofSize: 14)
-        sublabel.textColor = .tertiaryLabel
+        sublabel.font = AppTheme.Fonts.caption
+        sublabel.textColor = AppTheme.Colors.textMuted
         sublabel.textAlignment = .center
         sublabel.numberOfLines = 0
         sublabel.translatesAutoresizingMaskIntoConstraints = false
@@ -556,7 +558,7 @@ extension AddTransactionViewController: AddTransactionViewModelDelegate {
         print("[AddTransactionVC] Failed to load relation options for '\(propertyName)': \(error)")
         if let button = pickerButtons[propertyName] {
             button.setTitle("Unable to load options", for: .normal)
-            button.setTitleColor(.systemRed.withAlphaComponent(0.6), for: .normal)
+            button.setTitleColor(AppTheme.Colors.expense.withAlphaComponent(0.6), for: .normal)
         }
     }
 
@@ -620,25 +622,28 @@ private class FormFieldCell: UITableViewCell {
 
     private func setup() {
         selectionStyle = .none
-        contentView.backgroundColor = AppTheme.Colors.cardBackground
+        contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        contentView.layer.cornerRadius = AppTheme.CornerRadius.medium
+        contentView.layer.borderWidth = 1
+        contentView.layer.borderColor = AppTheme.Colors.border.cgColor
 
-        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = AppTheme.Colors.textSecondary
+        nameLabel.font = AppTheme.Fonts.captionBold
+        nameLabel.textColor = AppTheme.Colors.textPrimary
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
         badgeLabel.text = "Required"
         badgeLabel.font = .systemFont(ofSize: 9, weight: .bold)
         badgeLabel.textColor = .white
-        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
+        badgeLabel.backgroundColor = AppTheme.Colors.secondaryBrown
         badgeLabel.layer.cornerRadius = 8
         badgeLabel.clipsToBounds = true
         badgeLabel.textAlignment = .center
         badgeLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(badgeLabel)
 
-        textField.font = .systemFont(ofSize: 17)
-        textField.textColor = .label
+        textField.font = AppTheme.Fonts.body
+        textField.textColor = AppTheme.Colors.textPrimary
         textField.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(textField)
 
@@ -708,17 +713,20 @@ private class FormPickerCell: UITableViewCell {
 
     private func setup() {
         selectionStyle = .none
-        contentView.backgroundColor = AppTheme.Colors.cardBackground
+        contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        contentView.layer.cornerRadius = AppTheme.CornerRadius.medium
+        contentView.layer.borderWidth = 1
+        contentView.layer.borderColor = AppTheme.Colors.border.cgColor
 
-        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = AppTheme.Colors.textSecondary
+        nameLabel.font = AppTheme.Fonts.captionBold
+        nameLabel.textColor = AppTheme.Colors.textPrimary
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
         badgeLabel.text = "Required"
         badgeLabel.font = .systemFont(ofSize: 9, weight: .bold)
         badgeLabel.textColor = .white
-        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
+        badgeLabel.backgroundColor = AppTheme.Colors.secondaryBrown
         badgeLabel.layer.cornerRadius = 8
         badgeLabel.clipsToBounds = true
         badgeLabel.textAlignment = .center
@@ -726,24 +734,24 @@ private class FormPickerCell: UITableViewCell {
         contentView.addSubview(badgeLabel)
 
         relationIcon.image = UIImage(systemName: "arrow.triangle.swap")
-        relationIcon.tintColor = .tertiaryLabel
+        relationIcon.tintColor = AppTheme.Colors.textMuted
         relationIcon.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(relationIcon)
 
         valueButton.contentHorizontalAlignment = .leading
-        valueButton.titleLabel?.font = .systemFont(ofSize: 17)
-        valueButton.setTitleColor(.label, for: .normal)
+        valueButton.titleLabel?.font = AppTheme.Fonts.body
+        valueButton.setTitleColor(AppTheme.Colors.textPrimary, for: .normal)
         valueButton.translatesAutoresizingMaskIntoConstraints = false
         valueButton.addTarget(self, action: #selector(buttonTapped), for: .touchUpInside)
         contentView.addSubview(valueButton)
 
-        loadingLabel.font = .systemFont(ofSize: 15)
-        loadingLabel.textColor = .tertiaryLabel
+        loadingLabel.font = AppTheme.Fonts.caption
+        loadingLabel.textColor = AppTheme.Colors.textMuted
         loadingLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(loadingLabel)
 
         let arrow = UIImageView(image: UIImage(systemName: "chevron.down"))
-        arrow.tintColor = .tertiaryLabel
+        arrow.tintColor = AppTheme.Colors.textMuted
         arrow.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(arrow)
 
@@ -787,7 +795,7 @@ private class FormPickerCell: UITableViewCell {
         valueButton.isHidden = false
         loadingLabel.isHidden = true
         valueButton.setTitle("Select \(field.displayName)...", for: .normal)
-        valueButton.setTitleColor(.placeholderText, for: .normal)
+        valueButton.setTitleColor(AppTheme.Colors.textMuted, for: .normal)
     }
 
     func configure(with field: DynamicFormField, role: DatabaseRole, placeholder: String) {
@@ -806,7 +814,7 @@ private class FormPickerCell: UITableViewCell {
         valueButton.isHidden = false
         loadingLabel.isHidden = true
         valueButton.setTitle("Select \(field.displayName)...", for: .normal)
-        valueButton.setTitleColor(.placeholderText, for: .normal)
+        valueButton.setTitleColor(AppTheme.Colors.textMuted, for: .normal)
     }
 }
 
@@ -826,17 +834,20 @@ private class FormDateCell: UITableViewCell {
 
     private func setup() {
         selectionStyle = .none
-        contentView.backgroundColor = AppTheme.Colors.cardBackground
+        contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        contentView.layer.cornerRadius = AppTheme.CornerRadius.medium
+        contentView.layer.borderWidth = 1
+        contentView.layer.borderColor = AppTheme.Colors.border.cgColor
 
-        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = AppTheme.Colors.textSecondary
+        nameLabel.font = AppTheme.Fonts.captionBold
+        nameLabel.textColor = AppTheme.Colors.textPrimary
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
         badgeLabel.text = "Required"
         badgeLabel.font = .systemFont(ofSize: 9, weight: .bold)
         badgeLabel.textColor = .white
-        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
+        badgeLabel.backgroundColor = AppTheme.Colors.secondaryBrown
         badgeLabel.layer.cornerRadius = 8
         badgeLabel.clipsToBounds = true
         badgeLabel.textAlignment = .center
@@ -886,17 +897,20 @@ private class FormSwitchCell: UITableViewCell {
 
     private func setup() {
         selectionStyle = .none
-        contentView.backgroundColor = AppTheme.Colors.cardBackground
+        contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        contentView.layer.cornerRadius = AppTheme.CornerRadius.medium
+        contentView.layer.borderWidth = 1
+        contentView.layer.borderColor = AppTheme.Colors.border.cgColor
 
-        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = AppTheme.Colors.textSecondary
+        nameLabel.font = AppTheme.Fonts.captionBold
+        nameLabel.textColor = AppTheme.Colors.textPrimary
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
         badgeLabel.text = "Required"
         badgeLabel.font = .systemFont(ofSize: 9, weight: .bold)
         badgeLabel.textColor = .white
-        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
+        badgeLabel.backgroundColor = AppTheme.Colors.secondaryBrown
         badgeLabel.layer.cornerRadius = 8
         badgeLabel.clipsToBounds = true
         badgeLabel.textAlignment = .center
@@ -943,25 +957,29 @@ private class FormTextViewCell: UITableViewCell {
 
     private func setup() {
         selectionStyle = .none
-        contentView.backgroundColor = AppTheme.Colors.cardBackground
+        contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        contentView.layer.cornerRadius = AppTheme.CornerRadius.medium
+        contentView.layer.borderWidth = 1
+        contentView.layer.borderColor = AppTheme.Colors.border.cgColor
 
-        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = AppTheme.Colors.textSecondary
+        nameLabel.font = AppTheme.Fonts.captionBold
+        nameLabel.textColor = AppTheme.Colors.textPrimary
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(nameLabel)
 
         badgeLabel.text = "Required"
         badgeLabel.font = .systemFont(ofSize: 9, weight: .bold)
         badgeLabel.textColor = .white
-        badgeLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
+        badgeLabel.backgroundColor = AppTheme.Colors.secondaryBrown
         badgeLabel.layer.cornerRadius = 8
         badgeLabel.clipsToBounds = true
         badgeLabel.textAlignment = .center
         badgeLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(badgeLabel)
 
-        textView.font = .systemFont(ofSize: 17)
+        textView.font = AppTheme.Fonts.body
         textView.backgroundColor = .clear
+        textView.textColor = AppTheme.Colors.textPrimary
         textView.isScrollEnabled = false
         textView.textContainerInset = UIEdgeInsets(top: 4, left: -2, bottom: 4, right: -2)
         textView.translatesAutoresizingMaskIntoConstraints = false

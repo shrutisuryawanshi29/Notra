@@ -62,6 +62,9 @@ class AnalyticsViewController: UIViewController {
         view.backgroundColor = AppTheme.Colors.background
 
         navigationController?.navigationBar.prefersLargeTitles = true
+        if let navBar = navigationController?.navigationBar {
+            AppTheme.styleNavigationBar(navBar)
+        }
 
         setupScrollView()
         setupEmptyState()
@@ -100,23 +103,23 @@ class AnalyticsViewController: UIViewController {
         view.addSubview(emptyView)
 
         let iconView = UIImageView(image: UIImage(systemName: "chart.bar.xaxis"))
-        iconView.tintColor = AppTheme.Colors.textTertiary
+        iconView.tintColor = AppTheme.Colors.textMuted
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
         emptyView.addSubview(iconView)
 
         let label = UILabel()
         label.text = "No analytics available"
-        label.font = .systemFont(ofSize: 18, weight: .medium)
-        label.textColor = AppTheme.Colors.textSecondary
+        label.font = AppTheme.Fonts.headingMedium
+        label.textColor = AppTheme.Colors.textPrimary
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         emptyView.addSubview(label)
 
         let sublabel = UILabel()
         sublabel.text = "Load dashboard data or refresh from Notion to see insights."
-        sublabel.font = .systemFont(ofSize: 14)
-        sublabel.textColor = AppTheme.Colors.textTertiary
+        sublabel.font = AppTheme.Fonts.body
+        sublabel.textColor = AppTheme.Colors.textMuted
         sublabel.textAlignment = .center
         sublabel.numberOfLines = 0
         sublabel.translatesAutoresizingMaskIntoConstraints = false
@@ -159,11 +162,11 @@ class AnalyticsViewController: UIViewController {
         monthSelectorButton.setImage(UIImage(systemName: "chevron.down"), for: .normal)
         monthSelectorButton.semanticContentAttribute = .forceRightToLeft
         monthSelectorButton.setTitle(" \(formatter.string(from: displayDate)) ", for: .normal)
-        monthSelectorButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        monthSelectorButton.setTitleColor(AppTheme.Colors.textPrimary, for: .normal)
-        monthSelectorButton.tintColor = AppTheme.Colors.textPrimary
-        monthSelectorButton.backgroundColor = AppTheme.Colors.cardBackground
-        monthSelectorButton.layer.cornerRadius = 10
+        monthSelectorButton.titleLabel?.font = AppTheme.Fonts.bodyMedium
+        monthSelectorButton.setTitleColor(AppTheme.Colors.primaryBrown, for: .normal)
+        monthSelectorButton.tintColor = AppTheme.Colors.primaryBrown
+        monthSelectorButton.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        monthSelectorButton.layer.cornerRadius = AppTheme.CornerRadius.pill
         monthSelectorButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         monthSelectorButton.translatesAutoresizingMaskIntoConstraints = false
         monthSelectorButton.addTarget(self, action: #selector(monthSelectorTapped), for: .touchUpInside)
@@ -257,7 +260,7 @@ class AnalyticsViewController: UIViewController {
 
     private func setupExpenseSection() {
         expenseSectionLabel.text = "Expense Categories"
-        expenseSectionLabel.font = .systemFont(ofSize: 20, weight: .bold)
+        expenseSectionLabel.font = AppTheme.Fonts.sectionHeader
         expenseSectionLabel.textColor = AppTheme.Colors.textPrimary
         expenseSectionLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(expenseSectionLabel)
@@ -280,7 +283,7 @@ class AnalyticsViewController: UIViewController {
 
     private func setupIncomeSection() {
         incomeSectionLabel.text = "Income Sources"
-        incomeSectionLabel.font = .systemFont(ofSize: 20, weight: .bold)
+        incomeSectionLabel.font = AppTheme.Fonts.sectionHeader
         incomeSectionLabel.textColor = AppTheme.Colors.textPrimary
         incomeSectionLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(incomeSectionLabel)
@@ -303,7 +306,7 @@ class AnalyticsViewController: UIViewController {
 
     private func setupInsightsSection() {
         insightsSectionLabel.text = "Insights"
-        insightsSectionLabel.font = .systemFont(ofSize: 20, weight: .bold)
+        insightsSectionLabel.font = AppTheme.Fonts.sectionHeader
         insightsSectionLabel.textColor = AppTheme.Colors.textPrimary
         insightsSectionLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(insightsSectionLabel)
@@ -360,8 +363,8 @@ class AnalyticsViewController: UIViewController {
         } else {
             let emptyLabel = UILabel()
             emptyLabel.text = "No expenses this month"
-            emptyLabel.font = .systemFont(ofSize: 14)
-            emptyLabel.textColor = AppTheme.Colors.textTertiary
+            emptyLabel.font = AppTheme.Fonts.caption
+            emptyLabel.textColor = AppTheme.Colors.textMuted
             expenseStackView.addArrangedSubview(emptyLabel)
         }
 
@@ -375,8 +378,8 @@ class AnalyticsViewController: UIViewController {
         } else {
             let emptyLabel = UILabel()
             emptyLabel.text = "No income this month"
-            emptyLabel.font = .systemFont(ofSize: 14)
-            emptyLabel.textColor = AppTheme.Colors.textTertiary
+            emptyLabel.font = AppTheme.Fonts.caption
+            emptyLabel.textColor = AppTheme.Colors.textMuted
             incomeStackView.addArrangedSubview(emptyLabel)
         }
 
@@ -422,28 +425,28 @@ class CategoryProgressBarView: UIView {
     }
 
     private func setupViews() {
-        categoryLabel.font = .systemFont(ofSize: 15, weight: .medium)
+        categoryLabel.font = AppTheme.Fonts.bodyMedium
         categoryLabel.textColor = AppTheme.Colors.textPrimary
         categoryLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(categoryLabel)
 
-        amountLabel.font = .systemFont(ofSize: 14)
+        amountLabel.font = AppTheme.Fonts.caption
         amountLabel.textColor = AppTheme.Colors.textSecondary
         amountLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(amountLabel)
 
-        percentageLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        percentageLabel.font = AppTheme.Fonts.captionBold
         percentageLabel.textColor = AppTheme.Colors.textSecondary
         percentageLabel.textAlignment = .right
         percentageLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(percentageLabel)
 
-        progressBar.backgroundColor = AppTheme.Colors.textTertiary.withAlphaComponent(0.2)
-        progressBar.layer.cornerRadius = 4
+        progressBar.backgroundColor = AppTheme.Colors.border
+        progressBar.layer.cornerRadius = AppTheme.CornerRadius.small
         progressBar.translatesAutoresizingMaskIntoConstraints = false
         addSubview(progressBar)
 
-        progressFill.layer.cornerRadius = 4
+        progressFill.layer.cornerRadius = AppTheme.CornerRadius.small
         progressFill.translatesAutoresizingMaskIntoConstraints = false
         progressBar.addSubview(progressFill)
 
@@ -493,20 +496,19 @@ class InsightRowView: UIView {
     }
 
     private func setupViews() {
-        backgroundColor = AppTheme.Colors.cardBackground
-        layer.cornerRadius = 12
+        AppTheme.applyCardStyle(to: self)
 
         iconImageView.contentMode = .scaleAspectFit
         iconImageView.tintColor = AppTheme.Colors.accent
         iconImageView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(iconImageView)
 
-        titleLabel.font = .systemFont(ofSize: 14)
+        titleLabel.font = AppTheme.Fonts.caption
         titleLabel.textColor = AppTheme.Colors.textSecondary
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
 
-        valueLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        valueLabel.font = AppTheme.Fonts.bodyMedium
         valueLabel.textColor = AppTheme.Colors.textPrimary
         valueLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(valueLabel)
@@ -545,8 +547,8 @@ class DonutChartView: UIView {
     private var chartLayers: [CAShapeLayer] = []
 
     private let chartColors: [UIColor] = [
-        AppTheme.Colors.expense, AppTheme.Colors.accent, AppTheme.Colors.income, UIColor(red: 250/255, green: 204/255, blue: 21/255, alpha: 1),
-        UIColor(red: 52/255, green: 211/255, blue: 153/255, alpha: 1), UIColor(red: 96/255, green: 165/255, blue: 250/255, alpha: 1), AppTheme.Colors.accent, UIColor(red: 192/255, green: 132/255, blue: 252/255, alpha: 1)
+        AppTheme.Colors.expense, AppTheme.Colors.expenseLight, AppTheme.Colors.income, AppTheme.Colors.incomeLight,
+        AppTheme.Colors.secondaryBrown, AppTheme.Colors.secondaryTan, AppTheme.Colors.accent, AppTheme.Colors.accentSecondary
     ]
 
     override init(frame: CGRect) {
@@ -559,16 +561,18 @@ class DonutChartView: UIView {
     }
 
     private func setupViews() {
+        AppTheme.applyCardStyle(to: self)
+
         chartContainer.translatesAutoresizingMaskIntoConstraints = false
         addSubview(chartContainer)
 
-        centerLabel.font = .systemFont(ofSize: 18, weight: .bold)
+        centerLabel.font = AppTheme.Fonts.headingMedium
         centerLabel.textColor = AppTheme.Colors.textPrimary
         centerLabel.textAlignment = .center
         centerLabel.translatesAutoresizingMaskIntoConstraints = false
         chartContainer.addSubview(centerLabel)
 
-        centerSubtitleLabel.font = .systemFont(ofSize: 11)
+        centerSubtitleLabel.font = AppTheme.Fonts.small
         centerSubtitleLabel.textColor = AppTheme.Colors.textSecondary
         centerSubtitleLabel.textAlignment = .center
         centerSubtitleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -674,14 +678,14 @@ class DonutChartView: UIView {
 
         let labelView = UILabel()
         labelView.text = label
-        labelView.font = .systemFont(ofSize: 13, weight: .medium)
+        labelView.font = AppTheme.Fonts.captionMedium
         labelView.textColor = AppTheme.Colors.textPrimary
         labelView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(labelView)
 
         let amountView = UILabel()
         amountView.text = "\(amount) (\(Int(percentage))%)"
-        amountView.font = .systemFont(ofSize: 12)
+        amountView.font = AppTheme.Fonts.small
         amountView.textColor = AppTheme.Colors.textSecondary
         amountView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(amountView)
