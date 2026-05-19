@@ -5,6 +5,13 @@
 
 import Foundation
 
+private func formatCurrency(_ amount: Double) -> String {
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .currency
+    formatter.currencyCode = "USD"
+    return formatter.string(from: NSNumber(value: amount)) ?? "$0.00"
+}
+
 struct CategoryBreakdown {
     let category: String
     let amount: Double
@@ -21,6 +28,38 @@ struct CategoryBreakdown {
     var formattedPercentage: String {
         return String(format: "%.0f%%", percentage)
     }
+}
+
+struct DailySpendingData {
+    let day: Int
+    let amount: Double
+
+    var formattedAmount: String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        return formatter.string(from: NSNumber(value: amount)) ?? "$0"
+    }
+}
+
+struct IncomeVsExpenseData {
+    let totalIncome: Double
+    let totalExpenses: Double
+    var netDifference: Double { totalIncome - totalExpenses }
+
+    var formattedIncome: String { formatCurrency(totalIncome) }
+    var formattedExpenses: String { formatCurrency(totalExpenses) }
+    var formattedNet: String { formatCurrency(abs(netDifference)) }
+    var isPositive: Bool { netDifference >= 0 }
+}
+
+struct MonthlyTrendData {
+    let month: String
+    let expenses: Double
+    let incomes: Double
+
+    var formattedExpenses: String { formatCurrency(expenses) }
+    var formattedIncomes: String { formatCurrency(incomes) }
 }
 
 final class AnalyticsViewModel {
@@ -40,8 +79,20 @@ final class AnalyticsViewModel {
     private(set) var expenseTransactionCount: Int = 0
     private(set) var incomeTransactionCount: Int = 0
 
+    private(set) var dailySpendingData: [DailySpendingData] = []
+    private(set) var incomeVsExpenseData: IncomeVsExpenseData?
+    private(set) var monthlyTrendData: [MonthlyTrendData] = []
+
     var hasData: Bool {
         return expenseTransactionCount > 0 || incomeTransactionCount > 0
+    }
+
+    var hasDailySpending: Bool {
+        return !dailySpendingData.isEmpty
+    }
+
+    var hasMonthlyTrend: Bool {
+        return monthlyTrendData.count > 1
     }
 
     init(month: MonthMetadata? = nil) {
@@ -89,6 +140,15 @@ final class AnalyticsViewModel {
             highestSpendingDayAmount = amount
             print("[Analytics] Highest spending day: \(day)")
         }
+
+        dailySpendingData = computeDailySpending(from: monthExpenses)
+
+        incomeVsExpenseData = IncomeVsExpenseData(
+            totalIncome: totalIncomes,
+            totalExpenses: totalExpenses
+        )
+
+        monthlyTrendData = computeMonthlyTrend()
     }
 
     private func computeCategoryBreakdown(from transactions: [NormalizedTransaction]) -> [CategoryBreakdown] {
@@ -133,6 +193,62 @@ final class AnalyticsViewModel {
         }
 
         return (displayFormatter.string(from: date), maxDay.value)
+    }
+
+    private func computeDailySpending(from transactions: [NormalizedTransaction]) -> [DailySpendingData] {
+        var dayTotals: [Int: Double] = [:]
+
+        for transaction in transactions {
+            let day = Calendar.current.component(.day, from: transaction.date)
+            dayTotals[day] = (dayTotals[day] ?? 0) + transaction.amount
+        }
+
+        let daysInMonth = Calendar.current.range(of: .day, in: .month, for: Calendar.current.date(from: DateComponents(year: selectedMonth.year, month: selectedMonth.month, day: 1))!)?.count ?? 30
+
+        var result: [DailySpendingData] = []
+        for day in 1...max(daysInMonth, 31) {
+            let amount = dayTotals[day] ?? 0
+            result.append(DailySpendingData(day: day, amount: amount))
+        }
+
+        return result
+    }
+
+    private func computeMonthlyTrend() -> [MonthlyTrendData] {
+        let allExpenses = SessionCacheManager.shared.allExpenses
+        let allIncomes = SessionCacheManager.shared.allIncomes
+        let cachedMonths = SessionCacheManager.shared.getFetchedMonths()
+
+        var result: [MonthlyTrendData] = []
+
+        for month in cachedMonths.sorted(by: { $0.monthKey < $1.monthKey }) {
+            let monthExpenses = allExpenses.filter {
+                MonthMetadata(date: $0.date).monthKey == month.monthKey
+            }
+            let monthIncomes = allIncomes.filter {
+                MonthMetadata(date: $0.date).monthKey == month.monthKey
+            }
+
+            let expenseTotal = monthExpenses.reduce(0) { $0 + $1.amount }
+            let incomeTotal = monthIncomes.reduce(0) { $0 + $1.amount }
+
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM"
+            var components = DateComponents()
+            components.year = month.year
+            components.month = month.month
+            components.day = 1
+            let displayDate = Calendar.current.date(from: components) ?? Date()
+            let monthName = formatter.string(from: displayDate)
+
+            result.append(MonthlyTrendData(
+                month: monthName,
+                expenses: expenseTotal,
+                incomes: incomeTotal
+            ))
+        }
+
+        return result
     }
 
     private func formatCurrency(_ amount: Double) -> String {
