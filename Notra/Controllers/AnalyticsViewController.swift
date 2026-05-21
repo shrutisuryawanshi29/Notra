@@ -30,7 +30,22 @@ class AnalyticsViewController: UIViewController {
         return view
     }()
     private let headerView = UIView()
+    private let viewModeSegmentedControl: UISegmentedControl = {
+        let items = AnalyticsViewMode.allCases.map { $0.title }
+        let control = UISegmentedControl(items: items)
+        control.selectedSegmentIndex = 0
+        return control
+    }()
     private let monthSelectorButton = UIButton(type: .system)
+
+    private let categoryBreakdownSectionLabel = UILabel()
+    private let categoryBreakdownStackView = UIStackView()
+
+    private let dailySpendingDetailSectionLabel = UILabel()
+    private let dailySpendingDetailStackView = UIStackView()
+
+    private let incomeSourceDetailSectionLabel = UILabel()
+    private let incomeSourceDetailStackView = UIStackView()
 
     private let summaryContainer = UIView()
     private let expenseColumn = UIView()
@@ -123,9 +138,12 @@ class AnalyticsViewController: UIViewController {
         setupHeader()
         setupSummaryCards()
         setupExpenseSection()
+        setupCategoryBreakdownSection()
         setupDailySpendingSection()
+        setupDailySpendingDetailSection()
         setupIncomeVsExpenseSection()
         setupIncomeSection()
+        setupIncomeSourceDetailSection()
         setupMonthlyTrendSection()
         setupInsightsSection()
 
@@ -135,13 +153,19 @@ class AnalyticsViewController: UIViewController {
     private func setupCustomSpacing() {
         contentStackView.setCustomSpacing(12, after: headerView)
         contentStackView.setCustomSpacing(16, after: expenseSectionLabel)
-        contentStackView.setCustomSpacing(32, after: expenseStackView)
+        contentStackView.setCustomSpacing(12, after: expenseStackView)
+        contentStackView.setCustomSpacing(16, after: categoryBreakdownSectionLabel)
+        contentStackView.setCustomSpacing(32, after: categoryBreakdownStackView)
         contentStackView.setCustomSpacing(16, after: dailySpendingSectionLabel)
-        contentStackView.setCustomSpacing(32, after: dailySpendingStackView)
+        contentStackView.setCustomSpacing(12, after: dailySpendingStackView)
+        contentStackView.setCustomSpacing(16, after: dailySpendingDetailSectionLabel)
+        contentStackView.setCustomSpacing(32, after: dailySpendingDetailStackView)
         contentStackView.setCustomSpacing(16, after: incomeVsExpenseSectionLabel)
         contentStackView.setCustomSpacing(32, after: incomeVsExpenseStackView)
         contentStackView.setCustomSpacing(16, after: incomeSectionLabel)
-        contentStackView.setCustomSpacing(32, after: incomeStackView)
+        contentStackView.setCustomSpacing(12, after: incomeStackView)
+        contentStackView.setCustomSpacing(16, after: incomeSourceDetailSectionLabel)
+        contentStackView.setCustomSpacing(32, after: incomeSourceDetailStackView)
         contentStackView.setCustomSpacing(16, after: monthlyTrendSectionLabel)
         contentStackView.setCustomSpacing(32, after: monthlyTrendStackView)
         contentStackView.setCustomSpacing(16, after: insightsSectionLabel)
@@ -225,17 +249,13 @@ class AnalyticsViewController: UIViewController {
         headerView.translatesAutoresizingMaskIntoConstraints = false
         contentStackView.addArrangedSubview(headerView)
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        var components = DateComponents()
-        components.year = viewModel.selectedMonth.year
-        components.month = viewModel.selectedMonth.month
-        components.day = 1
+        viewModeSegmentedControl.translatesAutoresizingMaskIntoConstraints = false
+        viewModeSegmentedControl.addTarget(self, action: #selector(viewModeChanged), for: .valueChanged)
+        styleSegmentedControl(viewModeSegmentedControl)
+        headerView.addSubview(viewModeSegmentedControl)
 
-        let displayDate = Calendar.current.date(from: components) ?? Date()
         monthSelectorButton.setImage(UIImage(systemName: "chevron.down"), for: .normal)
         monthSelectorButton.semanticContentAttribute = .forceRightToLeft
-        monthSelectorButton.setTitle(" \(formatter.string(from: displayDate)) ", for: .normal)
         monthSelectorButton.titleLabel?.font = AppTheme.Fonts.bodyMedium
         monthSelectorButton.setTitleColor(AppTheme.Colors.primaryBrown, for: .normal)
         monthSelectorButton.tintColor = AppTheme.Colors.primaryBrown
@@ -246,14 +266,55 @@ class AnalyticsViewController: UIViewController {
         monthSelectorButton.addTarget(self, action: #selector(monthSelectorTapped), for: .touchUpInside)
         headerView.addSubview(monthSelectorButton)
 
-        NSLayoutConstraint.activate([
-            headerView.leadingAnchor.constraint(equalTo: contentStackView.leadingAnchor, constant: 20),
-            headerView.trailingAnchor.constraint(equalTo: contentStackView.trailingAnchor, constant: -20),
+        updateMonthButton()
 
-            monthSelectorButton.topAnchor.constraint(equalTo: headerView.topAnchor),
-            monthSelectorButton.leadingAnchor.constraint(equalTo: headerView.leadingAnchor),
+        NSLayoutConstraint.activate([
+            headerView.leadingAnchor.constraint(equalTo: contentStackView.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: contentStackView.trailingAnchor),
+
+            viewModeSegmentedControl.topAnchor.constraint(equalTo: headerView.topAnchor),
+            viewModeSegmentedControl.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 20),
+            viewModeSegmentedControl.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -20),
+            viewModeSegmentedControl.heightAnchor.constraint(equalToConstant: 36),
+
+            monthSelectorButton.topAnchor.constraint(equalTo: viewModeSegmentedControl.bottomAnchor, constant: 12),
+            monthSelectorButton.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 20),
             monthSelectorButton.bottomAnchor.constraint(equalTo: headerView.bottomAnchor)
         ])
+    }
+
+    private func styleSegmentedControl(_ control: UISegmentedControl) {
+        control.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        control.selectedSegmentTintColor = AppTheme.Colors.primaryBrown
+
+        let normalAttributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: AppTheme.Colors.textPrimary,
+            .font: AppTheme.Fonts.captionMedium
+        ]
+        let selectedAttributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: UIColor.white,
+            .font: AppTheme.Fonts.captionMedium
+        ]
+
+        control.setTitleTextAttributes(normalAttributes, for: .normal)
+        control.setTitleTextAttributes(selectedAttributes, for: .selected)
+    }
+
+    @objc private func viewModeChanged() {
+        guard let mode = AnalyticsViewMode(rawValue: viewModeSegmentedControl.selectedSegmentIndex) else { return }
+        viewModel.setViewMode(mode)
+        updateUI()
+    }
+
+    private func updateMonthButton() {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        var components = DateComponents()
+        components.year = viewModel.selectedMonth.year
+        components.month = viewModel.selectedMonth.month
+        components.day = 1
+        let displayDate = Calendar.current.date(from: components) ?? Date()
+        monthSelectorButton.setTitle(" \(formatter.string(from: displayDate)) ", for: .normal)
     }
 
     @objc private func monthSelectorTapped() {
@@ -297,17 +358,6 @@ class AnalyticsViewController: UIViewController {
             return formatter.string(from: date)
         }
         return month.monthKey
-    }
-
-    private func updateMonthButton() {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        var components = DateComponents()
-        components.year = viewModel.selectedMonth.year
-        components.month = viewModel.selectedMonth.month
-        components.day = 1
-        let displayDate = Calendar.current.date(from: components) ?? Date()
-        monthSelectorButton.setTitle(" \(formatter.string(from: displayDate)) ", for: .normal)
     }
 
     private func setupSummaryCards() {
@@ -471,7 +521,7 @@ class AnalyticsViewController: UIViewController {
         contentStackView.addArrangedSubview(expenseSectionLabel)
 
         expenseStackView.axis = .vertical
-        expenseStackView.spacing = 12
+        expenseStackView.spacing = 16
         expenseStackView.translatesAutoresizingMaskIntoConstraints = false
         contentStackView.addArrangedSubview(expenseStackView)
 
@@ -485,14 +535,14 @@ class AnalyticsViewController: UIViewController {
     }
 
     private func setupDailySpendingSection() {
-        dailySpendingSectionLabel.text = ""
+        dailySpendingSectionLabel.text = "Daily Spending"
         dailySpendingSectionLabel.font = AppTheme.Fonts.sectionHeader
         dailySpendingSectionLabel.textColor = AppTheme.Colors.textPrimary
         dailySpendingSectionLabel.translatesAutoresizingMaskIntoConstraints = false
         contentStackView.addArrangedSubview(dailySpendingSectionLabel)
 
         dailySpendingStackView.axis = .vertical
-        dailySpendingStackView.spacing = 12
+        dailySpendingStackView.spacing = 16
         dailySpendingStackView.translatesAutoresizingMaskIntoConstraints = false
         contentStackView.addArrangedSubview(dailySpendingStackView)
 
@@ -536,7 +586,7 @@ class AnalyticsViewController: UIViewController {
         contentStackView.addArrangedSubview(incomeSectionLabel)
 
         incomeStackView.axis = .vertical
-        incomeStackView.spacing = 12
+        incomeStackView.spacing = 16
         incomeStackView.translatesAutoresizingMaskIntoConstraints = false
         contentStackView.addArrangedSubview(incomeStackView)
 
@@ -592,6 +642,69 @@ class AnalyticsViewController: UIViewController {
         ])
     }
 
+    private func setupCategoryBreakdownSection() {
+        categoryBreakdownSectionLabel.text = "Category Breakdown"
+        categoryBreakdownSectionLabel.font = AppTheme.Fonts.sectionHeader
+        categoryBreakdownSectionLabel.textColor = AppTheme.Colors.textPrimary
+        categoryBreakdownSectionLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentStackView.addArrangedSubview(categoryBreakdownSectionLabel)
+
+        categoryBreakdownStackView.axis = .vertical
+        categoryBreakdownStackView.spacing = 8
+        categoryBreakdownStackView.translatesAutoresizingMaskIntoConstraints = false
+        contentStackView.addArrangedSubview(categoryBreakdownStackView)
+
+        NSLayoutConstraint.activate([
+            categoryBreakdownSectionLabel.leadingAnchor.constraint(equalTo: contentStackView.leadingAnchor, constant: 20),
+            categoryBreakdownSectionLabel.trailingAnchor.constraint(equalTo: contentStackView.trailingAnchor, constant: -20),
+
+            categoryBreakdownStackView.leadingAnchor.constraint(equalTo: contentStackView.leadingAnchor, constant: 20),
+            categoryBreakdownStackView.trailingAnchor.constraint(equalTo: contentStackView.trailingAnchor, constant: -20)
+        ])
+    }
+
+    private func setupDailySpendingDetailSection() {
+        dailySpendingDetailSectionLabel.text = "Spending Details"
+        dailySpendingDetailSectionLabel.font = AppTheme.Fonts.sectionHeader
+        dailySpendingDetailSectionLabel.textColor = AppTheme.Colors.textPrimary
+        dailySpendingDetailSectionLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentStackView.addArrangedSubview(dailySpendingDetailSectionLabel)
+
+        dailySpendingDetailStackView.axis = .vertical
+        dailySpendingDetailStackView.spacing = 12
+        dailySpendingDetailStackView.translatesAutoresizingMaskIntoConstraints = false
+        contentStackView.addArrangedSubview(dailySpendingDetailStackView)
+
+        NSLayoutConstraint.activate([
+            dailySpendingDetailSectionLabel.leadingAnchor.constraint(equalTo: contentStackView.leadingAnchor, constant: 20),
+            dailySpendingDetailSectionLabel.trailingAnchor.constraint(equalTo: contentStackView.trailingAnchor, constant: -20),
+
+            dailySpendingDetailStackView.leadingAnchor.constraint(equalTo: contentStackView.leadingAnchor, constant: 20),
+            dailySpendingDetailStackView.trailingAnchor.constraint(equalTo: contentStackView.trailingAnchor, constant: -20)
+        ])
+    }
+
+    private func setupIncomeSourceDetailSection() {
+        incomeSourceDetailSectionLabel.text = "Income Sources"
+        incomeSourceDetailSectionLabel.font = AppTheme.Fonts.sectionHeader
+        incomeSourceDetailSectionLabel.textColor = AppTheme.Colors.textPrimary
+        incomeSourceDetailSectionLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentStackView.addArrangedSubview(incomeSourceDetailSectionLabel)
+
+        incomeSourceDetailStackView.axis = .vertical
+        incomeSourceDetailStackView.spacing = 8
+        incomeSourceDetailStackView.translatesAutoresizingMaskIntoConstraints = false
+        contentStackView.addArrangedSubview(incomeSourceDetailStackView)
+
+        NSLayoutConstraint.activate([
+            incomeSourceDetailSectionLabel.leadingAnchor.constraint(equalTo: contentStackView.leadingAnchor, constant: 20),
+            incomeSourceDetailSectionLabel.trailingAnchor.constraint(equalTo: contentStackView.trailingAnchor, constant: -20),
+
+            incomeSourceDetailStackView.leadingAnchor.constraint(equalTo: contentStackView.leadingAnchor, constant: 20),
+            incomeSourceDetailStackView.trailingAnchor.constraint(equalTo: contentStackView.trailingAnchor, constant: -20)
+        ])
+    }
+
     private func loadData() {
         viewModel.loadAnalytics()
 
@@ -606,8 +719,14 @@ class AnalyticsViewController: UIViewController {
     }
 
     private func updateUI() {
+        updateSummaryCards()
+        updateSectionsForViewMode()
+        view.layoutIfNeeded()
+    }
+
+    private func updateSummaryCards() {
         guard let mainStack = summaryContainer.subviews.first as? UIStackView else { return }
-        
+
         if mainStack.arrangedSubviews.count >= 3 {
             if let expenseContainer = mainStack.arrangedSubviews[0].viewWithTag(200) as? UILabel {
                 expenseContainer.text = viewModel.formattedTotalExpenses
@@ -615,14 +734,14 @@ class AnalyticsViewController: UIViewController {
             if let expenseSubtitle = mainStack.arrangedSubviews[0].subviews.last as? UILabel {
                 expenseSubtitle.text = "\(viewModel.expenseTransactionCount)"
             }
-            
+
             if let incomeContainer = mainStack.arrangedSubviews[1].viewWithTag(200) as? UILabel {
                 incomeContainer.text = viewModel.formattedTotalIncomes
             }
             if let incomeSubtitle = mainStack.arrangedSubviews[1].subviews.last as? UILabel {
                 incomeSubtitle.text = "\(viewModel.incomeTransactionCount)"
             }
-            
+
             let netLabel = viewModel.netBalance >= 0 ? "Saved" : "Over"
             let netColor: UIColor = viewModel.netBalance >= 0 ? AppTheme.Colors.income : AppTheme.Colors.expense
             if let netContainer = mainStack.arrangedSubviews[2].viewWithTag(200) as? UILabel {
@@ -633,39 +752,164 @@ class AnalyticsViewController: UIViewController {
                 netSubtitle.text = netLabel
             }
         }
+    }
 
+    private func updateSectionsForViewMode() {
+        let mode = viewModel.viewMode
+
+        summaryContainer.isHidden = mode != .overview
+        expenseSectionLabel.isHidden = !showExpenseSection(for: mode)
+        expenseStackView.isHidden = !showExpenseSection(for: mode)
+        categoryBreakdownSectionLabel.isHidden = mode != .expenses || viewModel.expenseCategories.isEmpty
+        categoryBreakdownStackView.isHidden = mode != .expenses || viewModel.expenseCategories.isEmpty
+        dailySpendingSectionLabel.isHidden = !showDailySpendingSection(for: mode)
+        dailySpendingStackView.isHidden = !showDailySpendingSection(for: mode)
+        dailySpendingDetailSectionLabel.isHidden = mode != .expenses || viewModel.dailySpendingStats == nil
+        dailySpendingDetailStackView.isHidden = mode != .expenses || viewModel.dailySpendingStats == nil
+        incomeVsExpenseSectionLabel.isHidden = !showIncomeVsExpenseSection(for: mode)
+        incomeVsExpenseStackView.isHidden = !showIncomeVsExpenseSection(for: mode)
+        incomeSectionLabel.isHidden = !showIncomeSection(for: mode)
+        incomeStackView.isHidden = !showIncomeSection(for: mode)
+        incomeSourceDetailSectionLabel.isHidden = mode != .income || viewModel.incomeCategories.isEmpty
+        incomeSourceDetailStackView.isHidden = mode != .income || viewModel.incomeCategories.isEmpty
+        monthlyTrendSectionLabel.isHidden = mode != .trends
+        monthlyTrendStackView.isHidden = mode != .trends
+        insightsSectionLabel.isHidden = mode != .overview
+        insightsStackView.isHidden = mode != .overview
+
+        updateExpenseSection()
+        updateCategoryBreakdownSection()
+        updateDailySpendingSection()
+        updateDailySpendingDetailSection()
+        updateIncomeVsExpenseSection()
+        updateIncomeSection()
+        updateIncomeSourceDetailSection()
+        updateMonthlyTrendSection()
+        updateInsightsSection()
+    }
+
+    private func showExpenseSection(for mode: AnalyticsViewMode) -> Bool {
+        switch mode {
+        case .overview, .expenses:
+            return true
+        case .income, .trends:
+            return false
+        }
+    }
+
+    private func showDailySpendingSection(for mode: AnalyticsViewMode) -> Bool {
+        switch mode {
+        case .overview, .expenses, .trends:
+            return viewModel.hasDailySpending || mode == .overview
+        case .income:
+            return false
+        }
+    }
+
+    private func showIncomeVsExpenseSection(for mode: AnalyticsViewMode) -> Bool {
+        switch mode {
+        case .overview, .income:
+            return true
+        case .expenses, .trends:
+            return false
+        }
+    }
+
+    private func showIncomeSection(for mode: AnalyticsViewMode) -> Bool {
+        switch mode {
+        case .overview, .income:
+            return true
+        case .expenses, .trends:
+            return false
+        }
+    }
+
+    private func updateExpenseSection() {
         expenseStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
-        if !viewModel.expenseCategories.isEmpty {
+        if viewModel.expenseCategories.isEmpty {
+            addEmptyState(to: expenseStackView, message: viewModel.viewMode == .expenses ? "No expenses found for this month." : "No expense data")
+        } else {
+            let cardView = createChartCardView(title: "Expense Categories")
             let donutChart = DonutChartView()
             donutChart.configure(with: viewModel.expenseCategories, totalAmount: viewModel.totalExpenses, color: AppTheme.Colors.expense)
-            expenseStackView.addArrangedSubview(donutChart)
-            donutChart.heightAnchor.constraint(equalToConstant: 280).isActive = true
-        } else {
-            let emptyLabel = UILabel()
-            emptyLabel.text = "No expenses this month"
-            emptyLabel.font = AppTheme.Fonts.caption
-            emptyLabel.textColor = AppTheme.Colors.textMuted
-            expenseStackView.addArrangedSubview(emptyLabel)
-            emptyLabel.heightAnchor.constraint(equalToConstant: 100).isActive = true
-        }
+            cardView.addSubview(donutChart)
+            donutChart.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                donutChart.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 16),
+                donutChart.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 16),
+                donutChart.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -16),
+                donutChart.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -16)
+            ])
+            expenseStackView.addArrangedSubview(cardView)
 
+            cardView.heightAnchor.constraint(greaterThanOrEqualToConstant: 280).isActive = true
+
+            if viewModel.viewMode == .expenses || viewModel.viewMode == .overview {
+                let actionButton = createCardActionButton(title: "View Expenses", icon: "list.bullet")
+                actionButton.addTarget(self, action: #selector(viewExpensesTapped), for: .touchUpInside)
+                expenseStackView.addArrangedSubview(actionButton)
+            }
+        }
+    }
+
+    private func updateCategoryBreakdownSection() {
+        categoryBreakdownStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        let categories = viewModel.topExpenseCategories(limit: 5)
+        for (index, category) in categories.enumerated() {
+            let detailView = createCategoryDetailRow(category: category, color: chartColorForIndex(index))
+            categoryBreakdownStackView.addArrangedSubview(detailView)
+        }
+    }
+
+    private func updateDailySpendingSection() {
         dailySpendingStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
         if viewModel.hasDailySpending {
+            let cardView = createChartCardView(title: "Daily Spending")
             let dailyChart = DailySpendingChartView()
             dailyChart.configure(with: viewModel.dailySpendingData)
-            dailySpendingStackView.addArrangedSubview(dailyChart)
-            dailyChart.heightAnchor.constraint(equalToConstant: 300).isActive = true
-        } else {
-            let emptyLabel = UILabel()
-            emptyLabel.text = "No expenses for this month yet."
-            emptyLabel.font = AppTheme.Fonts.caption
-            emptyLabel.textColor = AppTheme.Colors.textMuted
-            dailySpendingStackView.addArrangedSubview(emptyLabel)
-            emptyLabel.heightAnchor.constraint(equalToConstant: 100).isActive = true
-        }
+            cardView.addSubview(dailyChart)
+            dailyChart.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                dailyChart.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 60),
+                dailyChart.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 16),
+                dailyChart.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -16),
+                dailyChart.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -16)
+            ])
+            dailySpendingStackView.addArrangedSubview(cardView)
 
+            cardView.heightAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
+
+            if viewModel.viewMode == .expenses || viewModel.viewMode == .trends {
+                let actionButton = createCardActionButton(title: "View Transactions", icon: "doc.text")
+                actionButton.addTarget(self, action: #selector(viewTransactionsTapped), for: .touchUpInside)
+                dailySpendingStackView.addArrangedSubview(actionButton)
+            }
+        } else if viewModel.viewMode != .income {
+            addEmptyState(to: dailySpendingStackView, message: "No expenses for this month yet.")
+        }
+    }
+
+    private func updateDailySpendingDetailSection() {
+        dailySpendingDetailStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        guard let stats = viewModel.dailySpendingStats else { return }
+
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+
+        addDetailRow(to: dailySpendingDetailStackView, icon: "arrow.up.circle.fill", title: "Highest day", value: "\(stats.highestDay) · \(formatter.string(from: NSNumber(value: stats.highestAmount)) ?? "$0")")
+        addDetailRow(to: dailySpendingDetailStackView, icon: "chart.bar.fill", title: "Average per day", value: formatter.string(from: NSNumber(value: stats.average)) ?? "$0")
+        addDetailRow(to: dailySpendingDetailStackView, icon: "calendar.badge.clock", title: "Spending days", value: "\(stats.spendingDays)")
+        if let lowestDay = stats.lowestDay, stats.spendingDays > 1 {
+            addDetailRow(to: dailySpendingDetailStackView, icon: "arrow.down.circle.fill", title: "Lowest day", value: "\(lowestDay) · \(formatter.string(from: NSNumber(value: stats.lowestAmount)) ?? "$0")")
+        }
+    }
+
+    private func updateIncomeVsExpenseSection() {
         incomeVsExpenseStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
         if let incomeVsData = viewModel.incomeVsExpenseData {
@@ -674,46 +918,63 @@ class AnalyticsViewController: UIViewController {
             incomeVsExpenseStackView.addArrangedSubview(comparisonChart)
             comparisonChart.heightAnchor.constraint(equalToConstant: 280).isActive = true
         } else {
-            let emptyLabel = UILabel()
-            emptyLabel.text = "No data available"
-            emptyLabel.font = AppTheme.Fonts.caption
-            emptyLabel.textColor = AppTheme.Colors.textMuted
-            incomeVsExpenseStackView.addArrangedSubview(emptyLabel)
-            emptyLabel.heightAnchor.constraint(equalToConstant: 100).isActive = true
+            addEmptyState(to: incomeVsExpenseStackView, message: "No data available")
         }
+    }
 
+    private func updateIncomeSection() {
         incomeStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
-        if !viewModel.incomeCategories.isEmpty {
+        if viewModel.incomeCategories.isEmpty {
+            addEmptyState(to: incomeStackView, message: viewModel.viewMode == .income ? "No income found for this month." : "No income data")
+        } else {
+            let cardView = createChartCardView(title: "Income Sources")
             let donutChart = DonutChartView()
             donutChart.configure(with: viewModel.incomeCategories, totalAmount: viewModel.totalIncomes, color: AppTheme.Colors.income)
-            incomeStackView.addArrangedSubview(donutChart)
-            donutChart.heightAnchor.constraint(equalToConstant: 280).isActive = true
-        } else {
-            let emptyLabel = UILabel()
-            emptyLabel.text = "No income this month"
-            emptyLabel.font = AppTheme.Fonts.caption
-            emptyLabel.textColor = AppTheme.Colors.textMuted
-            incomeStackView.addArrangedSubview(emptyLabel)
-            emptyLabel.heightAnchor.constraint(equalToConstant: 100).isActive = true
-        }
+            cardView.addSubview(donutChart)
+            donutChart.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                donutChart.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 16),
+                donutChart.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 16),
+                donutChart.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -16),
+                donutChart.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -16)
+            ])
+            incomeStackView.addArrangedSubview(cardView)
 
+            cardView.heightAnchor.constraint(greaterThanOrEqualToConstant: 280).isActive = true
+
+            if viewModel.viewMode == .income || viewModel.viewMode == .overview {
+                let actionButton = createCardActionButton(title: "View Income", icon: "list.bullet")
+                actionButton.addTarget(self, action: #selector(viewIncomeTapped), for: .touchUpInside)
+                incomeStackView.addArrangedSubview(actionButton)
+            }
+        }
+    }
+
+    private func updateIncomeSourceDetailSection() {
+        incomeSourceDetailStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        let sources = viewModel.topIncomeSources(limit: 5)
+        for (index, source) in sources.enumerated() {
+            let detailView = createIncomeSourceDetailRow(source: source, color: incomeChartColorForIndex(index))
+            incomeSourceDetailStackView.addArrangedSubview(detailView)
+        }
+    }
+
+    private func updateMonthlyTrendSection() {
         monthlyTrendStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
-        if viewModel.hasMonthlyTrend {
+        if viewModel.canShowTrend {
             let trendChart = MonthlyTrendChartView()
             trendChart.configure(with: viewModel.monthlyTrendData)
             monthlyTrendStackView.addArrangedSubview(trendChart)
             trendChart.heightAnchor.constraint(equalToConstant: 300).isActive = true
         } else {
-            let emptyLabel = UILabel()
-            emptyLabel.text = "Load more months to view trends."
-            emptyLabel.font = AppTheme.Fonts.caption
-            emptyLabel.textColor = AppTheme.Colors.textMuted
-            monthlyTrendStackView.addArrangedSubview(emptyLabel)
-            emptyLabel.heightAnchor.constraint(equalToConstant: 100).isActive = true
+            addEmptyState(to: monthlyTrendStackView, message: "Load another month to compare trends.")
         }
+    }
 
+    private func updateInsightsSection() {
         insightsStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
         if let topCategory = viewModel.topSpendingCategory {
@@ -730,8 +991,229 @@ class AnalyticsViewController: UIViewController {
 
         addInsightRow(icon: "list.bullet", title: "Total Expenses", value: "\(viewModel.expenseTransactionCount) transactions", color: AppTheme.Colors.expense)
         addInsightRow(icon: "plus.circle.fill", title: "Total Income", value: "\(viewModel.incomeTransactionCount) transactions", color: AppTheme.Colors.income)
+    }
 
-        view.layoutIfNeeded()
+    private func createChartCardView(title: String) -> UIView {
+        let card = UIView()
+        AppTheme.applyCardStyle(to: card)
+        card.backgroundColor = AppTheme.Colors.cardBackground
+        card.layer.cornerRadius = AppTheme.CornerRadius.card
+        return card
+    }
+
+    private func createCardActionButton(title: String, icon: String) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setTitle("  \(title)", for: .normal)
+        button.setImage(UIImage(systemName: icon), for: .normal)
+        button.titleLabel?.font = AppTheme.Fonts.captionMedium
+        button.setTitleColor(AppTheme.Colors.primaryBrown, for: .normal)
+        button.tintColor = AppTheme.Colors.primaryBrown
+        button.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        button.layer.cornerRadius = AppTheme.CornerRadius.medium
+        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.heightAnchor.constraint(equalToConstant: 40).isActive = true
+        return button
+    }
+
+    private func createCategoryDetailRow(category: CategoryBreakdown, color: UIColor) -> UIView {
+        let container = UIView()
+        container.backgroundColor = AppTheme.Colors.cardBackground
+        container.layer.cornerRadius = AppTheme.CornerRadius.medium
+
+        let colorDot = UIView()
+        colorDot.backgroundColor = color
+        colorDot.layer.cornerRadius = 5
+        colorDot.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(colorDot)
+
+        let nameLabel = UILabel()
+        nameLabel.text = category.category
+        nameLabel.font = AppTheme.Fonts.bodyMedium
+        nameLabel.textColor = AppTheme.Colors.textPrimary
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(nameLabel)
+
+        let detailLabel = UILabel()
+        detailLabel.text = "\(category.formattedAmount) · \(category.formattedPercentage) · \(category.transactionCount) transactions"
+        detailLabel.font = AppTheme.Fonts.caption
+        detailLabel.textColor = AppTheme.Colors.textSecondary
+        detailLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(detailLabel)
+
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 60),
+
+            colorDot.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            colorDot.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            colorDot.widthAnchor.constraint(equalToConstant: 10),
+            colorDot.heightAnchor.constraint(equalToConstant: 10),
+
+            nameLabel.leadingAnchor.constraint(equalTo: colorDot.trailingAnchor, constant: 12),
+            nameLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -16),
+
+            detailLabel.leadingAnchor.constraint(equalTo: colorDot.trailingAnchor, constant: 12),
+            detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
+            detailLabel.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -16)
+        ])
+
+        return container
+    }
+
+    private func createIncomeSourceDetailRow(source: CategoryBreakdown, color: UIColor) -> UIView {
+        let container = UIView()
+        container.backgroundColor = AppTheme.Colors.cardBackground
+        container.layer.cornerRadius = AppTheme.CornerRadius.medium
+
+        let colorDot = UIView()
+        colorDot.backgroundColor = color
+        colorDot.layer.cornerRadius = 5
+        colorDot.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(colorDot)
+
+        let nameLabel = UILabel()
+        nameLabel.text = source.category
+        nameLabel.font = AppTheme.Fonts.bodyMedium
+        nameLabel.textColor = AppTheme.Colors.textPrimary
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(nameLabel)
+
+        let detailLabel = UILabel()
+        detailLabel.text = "\(source.formattedAmount) · \(source.formattedPercentage) · \(source.transactionCount) transactions"
+        detailLabel.font = AppTheme.Fonts.caption
+        detailLabel.textColor = AppTheme.Colors.textSecondary
+        detailLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(detailLabel)
+
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 60),
+
+            colorDot.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            colorDot.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            colorDot.widthAnchor.constraint(equalToConstant: 10),
+            colorDot.heightAnchor.constraint(equalToConstant: 10),
+
+            nameLabel.leadingAnchor.constraint(equalTo: colorDot.trailingAnchor, constant: 12),
+            nameLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -16),
+
+            detailLabel.leadingAnchor.constraint(equalTo: colorDot.trailingAnchor, constant: 12),
+            detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
+            detailLabel.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -16)
+        ])
+
+        return container
+    }
+
+    private func addDetailRow(to stackView: UIStackView, icon: String, title: String, value: String) {
+        let container = UIView()
+        container.backgroundColor = AppTheme.Colors.cardBackground
+        container.layer.cornerRadius = AppTheme.CornerRadius.medium
+
+        let iconView = UIImageView(image: UIImage(systemName: icon))
+        iconView.tintColor = AppTheme.Colors.accent
+        iconView.contentMode = .scaleAspectFit
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(iconView)
+
+        let titleLabel = UILabel()
+        titleLabel.text = title
+        titleLabel.font = AppTheme.Fonts.caption
+        titleLabel.textColor = AppTheme.Colors.textSecondary
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(titleLabel)
+
+        let valueLabel = UILabel()
+        valueLabel.text = value
+        valueLabel.font = AppTheme.Fonts.bodyMedium
+        valueLabel.textColor = AppTheme.Colors.textPrimary
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(valueLabel)
+
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 50),
+
+            iconView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            iconView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 20),
+            iconView.heightAnchor.constraint(equalToConstant: 20),
+
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 12),
+            titleLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+
+            valueLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            valueLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+        ])
+
+        stackView.addArrangedSubview(container)
+    }
+
+    private func addEmptyState(to stackView: UIStackView, message: String) {
+        let container = UIView()
+        container.backgroundColor = AppTheme.Colors.cardBackground
+        container.layer.cornerRadius = AppTheme.CornerRadius.card
+
+        let iconView = UIImageView(image: UIImage(systemName: "chart.bar.xaxis"))
+        iconView.tintColor = AppTheme.Colors.textMuted
+        iconView.contentMode = .scaleAspectFit
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(iconView)
+
+        let label = UILabel()
+        label.text = message
+        label.font = AppTheme.Fonts.caption
+        label.textColor = AppTheme.Colors.textMuted
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 100),
+
+            iconView.topAnchor.constraint(equalTo: container.topAnchor, constant: 20),
+            iconView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 30),
+            iconView.heightAnchor.constraint(equalToConstant: 30),
+
+            label.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 12),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20)
+        ])
+
+        stackView.addArrangedSubview(container)
+    }
+
+    private func chartColorForIndex(_ index: Int) -> UIColor {
+        let colors: [UIColor] = [
+            AppTheme.Colors.expense,
+            AppTheme.Colors.expenseLight,
+            AppTheme.Colors.secondaryBrown,
+            AppTheme.Colors.secondaryTan,
+            AppTheme.Colors.accent
+        ]
+        return colors[index % colors.count]
+    }
+
+    private func incomeChartColorForIndex(_ index: Int) -> UIColor {
+        let colors: [UIColor] = [
+            AppTheme.Colors.income,
+            AppTheme.Colors.incomeLight,
+            AppTheme.Colors.secondaryBrown,
+            AppTheme.Colors.secondaryTan,
+            AppTheme.Colors.accent
+        ]
+        return colors[index % colors.count]
+    }
+
+    @objc private func viewExpensesTapped() {
+    }
+
+    @objc private func viewIncomeTapped() {
+    }
+
+    @objc private func viewTransactionsTapped() {
     }
 
     private func addInsightRow(icon: String, title: String, value: String, color: UIColor) {
@@ -974,7 +1456,7 @@ class DonutChartView: UIView {
     }
 
     private func setupViews() {
-        AppTheme.applyCardStyle(to: self)
+        backgroundColor = .clear
 
         chartContainer.translatesAutoresizingMaskIntoConstraints = false
         addSubview(chartContainer)
@@ -1001,6 +1483,7 @@ class DonutChartView: UIView {
             chartContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
             chartContainer.widthAnchor.constraint(equalToConstant: 180),
             chartContainer.heightAnchor.constraint(equalToConstant: 180),
+            chartContainer.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -16),
 
             centerLabel.centerXAnchor.constraint(equalTo: chartContainer.centerXAnchor),
             centerLabel.centerYAnchor.constraint(equalTo: chartContainer.centerYAnchor, constant: -8),
@@ -1098,7 +1581,13 @@ class DonutChartView: UIView {
         container.addSubview(labelView)
 
         let amountView = UILabel()
-        amountView.text = "\(amount) (\(Int(percentage))%)"
+        let percentageText: String
+        if percentage > 0 && percentage < 1 {
+            percentageText = "<1%"
+        } else {
+            percentageText = "\(Int(round(percentage)))%"
+        }
+        amountView.text = "\(amount) (\(percentageText))"
         amountView.font = AppTheme.Fonts.small
         amountView.textColor = AppTheme.Colors.textSecondary
         amountView.translatesAutoresizingMaskIntoConstraints = false
@@ -1141,19 +1630,7 @@ class DailySpendingChartView: UIView {
     }
 
     private func setupViews() {
-        AppTheme.applyCardStyle(to: self)
-
-        titleLabel.text = "Daily Spending"
-        titleLabel.font = AppTheme.Fonts.sectionHeader
-        titleLabel.textColor = AppTheme.Colors.textPrimary
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(titleLabel)
-
-        subtitleLabel.text = "Spending by day"
-        subtitleLabel.font = AppTheme.Fonts.caption
-        subtitleLabel.textColor = AppTheme.Colors.textSecondary
-        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(subtitleLabel)
+        backgroundColor = .clear
 
         chartContainer.translatesAutoresizingMaskIntoConstraints = false
         addSubview(chartContainer)
@@ -1167,17 +1644,10 @@ class DailySpendingChartView: UIView {
         addSubview(emptyLabel)
 
         NSLayoutConstraint.activate([
-            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 16),
-            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-
-            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
-            subtitleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-
-            chartContainer.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 12),
+            chartContainer.topAnchor.constraint(equalTo: topAnchor, constant: 12),
             chartContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
             chartContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            chartContainer.heightAnchor.constraint(equalToConstant: 200),
-            chartContainer.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16),
+            chartContainer.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
 
             emptyLabel.centerXAnchor.constraint(equalTo: chartContainer.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: chartContainer.centerYAnchor)
@@ -1203,27 +1673,29 @@ class DailySpendingChartView: UIView {
         drawBars()
     }
 
-    private func drawBars() {
+private func drawBars() {
         bars.forEach { $0.removeFromSuperlayer() }
         bars.removeAll()
         chartContainer.layer.sublayers?.removeAll(where: { $0 is CATextLayer })
 
         guard !data.isEmpty else { return }
 
+        let horizontalInset: CGFloat = 4
+        let labelHeight: CGFloat = 16
+        let availableWidth = chartContainer.bounds.width - (horizontalInset * 2)
+        let availableHeight = chartContainer.bounds.height - labelHeight - 4
+
         let maxAmount = data.map { $0.amount }.max() ?? 1
         let barWidth: CGFloat = 6
-        let labelHeight: CGFloat = 16
-        let availableHeight = chartContainer.bounds.height - labelHeight - 4
-        let minSpacing: CGFloat = data.count > 20 ? 2 : (data.count > 10 ? 3 : 4)
-        let spacing: CGFloat = max(minSpacing, (chartContainer.bounds.width - CGFloat(data.count) * barWidth) / CGFloat(data.count + 1))
-        let startX = spacing
+        let slotWidth = availableWidth / CGFloat(data.count)
 
         let labelIndices = calculateLabelIndices(count: data.count)
 
         for (index, item) in data.enumerated() {
             let normalizedHeight = maxAmount > 0 ? CGFloat(item.amount / maxAmount) * (availableHeight - 8) : 0
             let barHeight = max(4, normalizedHeight)
-            let x = startX + CGFloat(index) * (barWidth + spacing)
+            let centerX = horizontalInset + slotWidth * CGFloat(index) + slotWidth / 2
+            let x = centerX - barWidth / 2
             let y = availableHeight - barHeight
 
             let path = UIBezierPath(roundedRect: CGRect(x: x, y: y, width: barWidth, height: barHeight), cornerRadius: 3)
@@ -1242,7 +1714,7 @@ class DailySpendingChartView: UIView {
                 textLayer.foregroundColor = AppTheme.Colors.textMuted.cgColor
                 textLayer.alignmentMode = .center
                 textLayer.contentsScale = UIScreen.main.scale
-                textLayer.frame = CGRect(x: x - 8, y: chartContainer.bounds.height - labelHeight + 2, width: barWidth + 16, height: labelHeight)
+                textLayer.frame = CGRect(x: centerX - 12, y: availableHeight + 4, width: 24, height: labelHeight)
                 chartContainer.layer.addSublayer(textLayer)
             }
         }

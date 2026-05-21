@@ -62,8 +62,25 @@ struct MonthlyTrendData {
     var formattedIncomes: String { formatCurrency(incomes) }
 }
 
+enum AnalyticsViewMode: Int, CaseIterable {
+    case overview = 0
+    case expenses = 1
+    case income = 2
+    case trends = 3
+
+    var title: String {
+        switch self {
+        case .overview: return "Overview"
+        case .expenses: return "Expenses"
+        case .income: return "Income"
+        case .trends: return "Trends"
+        }
+    }
+}
+
 final class AnalyticsViewModel {
     var selectedMonth: MonthMetadata
+    var viewMode: AnalyticsViewMode = .overview
 
     private(set) var totalExpenses: Double = 0
     private(set) var totalIncomes: Double = 0
@@ -82,6 +99,9 @@ final class AnalyticsViewModel {
     private(set) var dailySpendingData: [DailySpendingData] = []
     private(set) var incomeVsExpenseData: IncomeVsExpenseData?
     private(set) var monthlyTrendData: [MonthlyTrendData] = []
+
+    private var monthExpenses: [NormalizedTransaction] = []
+    private var monthIncomes: [NormalizedTransaction] = []
 
     var hasData: Bool {
         return expenseTransactionCount > 0 || incomeTransactionCount > 0
@@ -107,11 +127,11 @@ final class AnalyticsViewModel {
         print("[Analytics] Screen opened")
         print("[Analytics] Selected month: \(selectedMonth.monthKey)")
 
-        let monthExpenses = expenses.filter {
+        monthExpenses = expenses.filter {
             MonthMetadata(date: $0.date).monthKey == monthKey
         }
 
-        let monthIncomes = incomes.filter {
+        monthIncomes = incomes.filter {
             MonthMetadata(date: $0.date).monthKey == monthKey
         }
 
@@ -263,5 +283,61 @@ final class AnalyticsViewModel {
     var formattedNetBalance: String {
         let prefix = netBalance >= 0 ? "+" : "-"
         return "\(prefix)\(formatCurrency(abs(netBalance)))"
+    }
+
+    func topExpenseCategories(limit: Int = 5) -> [CategoryBreakdown] {
+        return Array(expenseCategories.prefix(limit))
+    }
+
+    func topIncomeSources(limit: Int = 5) -> [CategoryBreakdown] {
+        return Array(incomeCategories.prefix(limit))
+    }
+
+    var dailySpendingStats: (highestDay: String, highestAmount: Double, average: Double, spendingDays: Int, lowestDay: String?, lowestAmount: Double)? {
+        let nonZeroDays = dailySpendingData.filter { $0.amount > 0 }
+        guard !nonZeroDays.isEmpty else { return nil }
+
+        let sorted = nonZeroDays.sorted { $0.amount > $1.amount }
+        let highest = sorted[0]
+
+        let total = nonZeroDays.reduce(0) { $0 + $1.amount }
+        let average = total / Double(nonZeroDays.count)
+
+        var lowest: (day: Int, amount: Double)? = nil
+        if sorted.count > 1 {
+            lowest = (sorted[sorted.count - 1].day, sorted[sorted.count - 1].amount)
+        }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "MMM d, yyyy"
+        var components = DateComponents()
+        components.year = selectedMonth.year
+        components.month = selectedMonth.month
+        components.day = highest.day
+        let highestDateStr = dateFormatter.string(from: Calendar.current.date(from: components) ?? Date())
+
+        var lowestDateStr: String? = nil
+        if let lowestInfo = lowest {
+            components.day = lowestInfo.day
+            lowestDateStr = dateFormatter.string(from: Calendar.current.date(from: components) ?? Date())
+        }
+
+        return (highestDay: highestDateStr, highestAmount: highest.amount, average: average, spendingDays: nonZeroDays.count, lowestDay: lowestDateStr, lowestAmount: lowest?.amount ?? 0)
+    }
+
+    var hasExpenses: Bool {
+        return expenseTransactionCount > 0
+    }
+
+    var hasIncomes: Bool {
+        return incomeTransactionCount > 0
+    }
+
+    var canShowTrend: Bool {
+        return monthlyTrendData.count > 1
+    }
+
+    func setViewMode(_ mode: AnalyticsViewMode) {
+        viewMode = mode
     }
 }
