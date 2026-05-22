@@ -78,9 +78,37 @@ enum AnalyticsViewMode: Int, CaseIterable {
     }
 }
 
+enum AnalyticsTimeRange: Int, CaseIterable {
+    case thisMonth = 0
+    case last3Months = 1
+    case last6Months = 2
+    case cachedMonths = 3
+
+    var title: String {
+        switch self {
+        case .thisMonth: return "This Month"
+        case .last3Months: return "3M"
+        case .last6Months: return "6M"
+        case .cachedMonths: return "Cached"
+        }
+    }
+}
+
+struct MonthlyExpenseData {
+    let month: String
+    let monthKey: String
+    let totalExpenses: Double
+    let totalIncome: Double
+    let categoryTotals: [String: Double]
+
+    var formattedExpenses: String { formatCurrency(totalExpenses) }
+    var formattedIncome: String { formatCurrency(totalIncome) }
+}
+
 final class AnalyticsViewModel {
     var selectedMonth: MonthMetadata
     var viewMode: AnalyticsViewMode = .overview
+    var timeRange: AnalyticsTimeRange = .thisMonth
 
     private(set) var totalExpenses: Double = 0
     private(set) var totalIncomes: Double = 0
@@ -99,6 +127,15 @@ final class AnalyticsViewModel {
     private(set) var dailySpendingData: [DailySpendingData] = []
     private(set) var incomeVsExpenseData: IncomeVsExpenseData?
     private(set) var monthlyTrendData: [MonthlyTrendData] = []
+
+    private(set) var monthlyExpenseComparisonData: [MonthlyExpenseData] = []
+    private(set) var incomeVsExpenseOverTimeData: [MonthlyExpenseData] = []
+    private(set) var categoryTrendData: [MonthlyExpenseData] = []
+    private(set) var topTrendCategories: [String] = []
+
+    private(set) var isLoading: Bool = false
+    private(set) var hasError: Bool = false
+    private(set) var errorMessage: String?
 
     private var monthExpenses: [NormalizedTransaction] = []
     private var monthIncomes: [NormalizedTransaction] = []
@@ -120,6 +157,10 @@ final class AnalyticsViewModel {
     }
 
     func loadAnalytics() {
+        isLoading = true
+        hasError = false
+        errorMessage = nil
+
         let expenses = SessionCacheManager.shared.allExpenses
         let incomes = SessionCacheManager.shared.allIncomes
 
@@ -163,12 +204,28 @@ final class AnalyticsViewModel {
 
         dailySpendingData = computeDailySpending(from: monthExpenses)
 
-        incomeVsExpenseData = IncomeVsExpenseData(
-            totalIncome: totalIncomes,
-            totalExpenses: totalExpenses
-        )
+        if totalExpenses > 0 || totalIncomes > 0 {
+            incomeVsExpenseData = IncomeVsExpenseData(
+                totalIncome: totalIncomes,
+                totalExpenses: totalExpenses
+            )
+        }
 
         monthlyTrendData = computeMonthlyTrend()
+
+        let rangeMonths = monthsForTimeRange()
+        monthlyExpenseComparisonData = computeMonthlyExpenseData(for: rangeMonths)
+        incomeVsExpenseOverTimeData = computeMonthlyExpenseData(for: rangeMonths)
+        categoryTrendData = computeMonthlyExpenseData(for: rangeMonths)
+        topTrendCategories = computeTopCategories(for: categoryTrendData)
+
+        isLoading = false
+        if expenses.isEmpty && incomes.isEmpty && SessionCacheManager.shared.isCachePopulated == false {
+            hasError = true
+            errorMessage = "No analytics yet. Add a transaction to get started."
+        }
+
+        print("[Analytics] Time range: \(timeRange.title), months: \(rangeMonths.count)")
     }
 
     private func computeCategoryBreakdown(from transactions: [NormalizedTransaction]) -> [CategoryBreakdown] {
@@ -271,6 +328,62 @@ final class AnalyticsViewModel {
         return result
     }
 
+    private func computeMonthlyExpenseData(for monthKeys: [String]) -> [MonthlyExpenseData] {
+        let allExpenses = SessionCacheManager.shared.allExpenses
+        let allIncomes = SessionCacheManager.shared.allIncomes
+
+        var result: [MonthlyExpenseData] = []
+
+        for monthKey in monthKeys {
+            let monthExp = allExpenses.filter {
+                MonthMetadata(date: $0.date).monthKey == monthKey
+            }
+            let monthInc = allIncomes.filter {
+                MonthMetadata(date: $0.date).monthKey == monthKey
+            }
+
+            let expenseTotal = monthExp.reduce(0) { $0 + $1.amount }
+            let incomeTotal = monthInc.reduce(0) { $0 + $1.amount }
+
+            var catTotals: [String: Double] = [:]
+            for tx in monthExp {
+                let cat = tx.category ?? "Uncategorized"
+                catTotals[cat] = (catTotals[cat] ?? 0) + tx.amount
+            }
+
+            let displayName = shortMonthName(for: monthKey)
+
+            result.append(MonthlyExpenseData(
+                month: displayName,
+                monthKey: monthKey,
+                totalExpenses: expenseTotal,
+                totalIncome: incomeTotal,
+                categoryTotals: catTotals
+            ))
+        }
+
+        return result
+    }
+
+    private func shortMonthName(for monthKey: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        guard let date = formatter.date(from: monthKey) else { return monthKey }
+        let displayFormatter = DateFormatter()
+        displayFormatter.dateFormat = "MMM"
+        return displayFormatter.string(from: date)
+    }
+
+    private func computeTopCategories(for data: [MonthlyExpenseData], limit: Int = 4) -> [String] {
+        var globalTotals: [String: Double] = [:]
+        for item in data {
+            for (cat, amount) in item.categoryTotals {
+                globalTotals[cat] = (globalTotals[cat] ?? 0) + amount
+            }
+        }
+        return globalTotals.sorted { $0.value > $1.value }.prefix(limit).map { $0.key }
+    }
+
     private func formatCurrency(_ amount: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
@@ -337,7 +450,131 @@ final class AnalyticsViewModel {
         return monthlyTrendData.count > 1
     }
 
+    var cachedMonthKeys: [String] {
+        let months = SessionCacheManager.shared.getFetchedMonths()
+        return months.map { $0.monthKey }.sorted()
+    }
+
+    var availableMonthCount: Int {
+        return cachedMonthKeys.count
+    }
+
+    func monthsForTimeRange() -> [String] {
+        let allCached = cachedMonthKeys.sorted()
+        guard !allCached.isEmpty else { return [selectedMonth.monthKey] }
+
+        switch timeRange {
+        case .thisMonth:
+            return [selectedMonth.monthKey]
+        case .last3Months:
+            return lastNMonths(from: allCached, count: 3)
+        case .last6Months:
+            return lastNMonths(from: allCached, count: 6)
+        case .cachedMonths:
+            return allCached
+        }
+    }
+
+    private func lastNMonths(from cachedMonths: [String], count: Int) -> [String] {
+        let targetMonths = generatePreviousMonthKeys(from: selectedMonth.monthKey, count: count)
+        return targetMonths.filter { cachedMonths.contains($0) }.sorted()
+    }
+
+    private func generatePreviousMonthKeys(from monthKey: String, count: Int) -> [String] {
+        var keys: [String] = []
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        guard let startDate = formatter.date(from: monthKey) else { return [monthKey] }
+
+        var components = DateComponents()
+        for i in 0..<count {
+            components.month = -i
+            if let date = Calendar.current.date(byAdding: components, to: startDate) {
+                keys.append(formatter.string(from: date))
+            }
+        }
+        return keys.sorted()
+    }
+
+    func missingMonthsMessage() -> String? {
+        let months = monthsForTimeRange()
+        let allCached = cachedMonthKeys
+
+        switch timeRange {
+        case .thisMonth:
+            return nil
+        case .last3Months:
+            if allCached.count < 2 {
+                return "Only \(monthDisplayName(allCached.first ?? "")) is loaded. Load more months to compare trends."
+            }
+            return nil
+        case .last6Months:
+            if allCached.count < 2 {
+                return "Trend charts need multiple months. Load previous months to unlock this view."
+            }
+            return nil
+        case .cachedMonths:
+            if allCached.count < 2 {
+                return "Load another month to compare trends."
+            }
+            return nil
+        }
+    }
+
+    private func monthDisplayName(_ monthKey: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        guard let date = formatter.date(from: monthKey) else { return monthKey }
+        let displayFormatter = DateFormatter()
+        displayFormatter.dateFormat = "MMMM yyyy"
+        return displayFormatter.string(from: date)
+    }
+
+    var hasMultipleMonths: Bool {
+        return monthsForTimeRange().count > 1
+    }
+
+    var spendingDaysCount: Int {
+        return dailySpendingData.filter { $0.amount > 0 }.count
+    }
+
+    var spendingDaysMessage: String? {
+        let count = spendingDaysCount
+        guard count > 0, expenseTransactionCount > 0 else { return nil }
+        if count == 1 {
+            return "Spending happened on 1 day this month."
+        } else if count < 4 {
+            return "Spending happened on \(count) days this month."
+        }
+        return nil
+    }
+
+    var insightTopCategoryTitle: String {
+        return "Your highest category this month"
+    }
+
+    var insightHighestDayTitle: String {
+        return "The day with the most expenses"
+    }
+
+    var insightTotalExpensesTitle: String {
+        return "Transactions tracked this month"
+    }
+
+    var insightTotalIncomeTitle: String {
+        return "Income entries tracked this month"
+    }
+
+    var insightNetBalanceTitle: String {
+        return "Income minus expenses"
+    }
+
     func setViewMode(_ mode: AnalyticsViewMode) {
         viewMode = mode
+    }
+
+    func setTimeRange(_ range: AnalyticsTimeRange) {
+        timeRange = range
+        loadAnalytics()
     }
 }
