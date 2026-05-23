@@ -176,18 +176,30 @@ final class AnalyticsViewModel {
             MonthMetadata(date: $0.date).monthKey == monthKey
         }
 
-        expenseTransactionCount = monthExpenses.count
-        incomeTransactionCount = monthIncomes.count
+        let rangeMonths = monthsForTimeRange()
+        let displayExpenses: [NormalizedTransaction]
+        let displayIncomes: [NormalizedTransaction]
 
-        totalExpenses = monthExpenses.reduce(0) { $0 + $1.amount }
-        totalIncomes = monthIncomes.reduce(0) { $0 + $1.amount }
+        if timeRange == .thisMonth {
+            displayExpenses = monthExpenses
+            displayIncomes = monthIncomes
+        } else {
+            displayExpenses = expenses.filter { rangeMonths.contains(MonthMetadata(date: $0.date).monthKey) }
+            displayIncomes = incomes.filter { rangeMonths.contains(MonthMetadata(date: $0.date).monthKey) }
+        }
+
+        expenseTransactionCount = displayExpenses.count
+        incomeTransactionCount = displayIncomes.count
+
+        totalExpenses = displayExpenses.reduce(0) { $0 + $1.amount }
+        totalIncomes = displayIncomes.reduce(0) { $0 + $1.amount }
         netBalance = totalIncomes - totalExpenses
 
         print("[Analytics] Expenses loaded: \(expenseTransactionCount) transactions, Total: \(formatCurrency(totalExpenses))")
         print("[Analytics] Incomes loaded: \(incomeTransactionCount) transactions, Total: \(formatCurrency(totalIncomes))")
 
-        expenseCategories = computeCategoryBreakdown(from: monthExpenses)
-        incomeCategories = computeCategoryBreakdown(from: monthIncomes)
+        expenseCategories = computeCategoryBreakdown(from: displayExpenses)
+        incomeCategories = computeCategoryBreakdown(from: displayIncomes)
 
         print("[Analytics] Category breakdown: \(expenseCategories.count) categories")
 
@@ -196,13 +208,13 @@ final class AnalyticsViewModel {
             print("[Analytics] Top spending: \(top.category) (\(top.formattedAmount))")
         }
 
-        if let (day, amount) = findHighestSpendingDay(from: monthExpenses) {
+        if let (day, amount) = findHighestSpendingDay(from: displayExpenses) {
             highestSpendingDay = day
             highestSpendingDayAmount = amount
             print("[Analytics] Highest spending day: \(day)")
         }
 
-        dailySpendingData = computeDailySpending(from: monthExpenses)
+        dailySpendingData = computeDailySpending(from: displayExpenses)
 
         if totalExpenses > 0 || totalIncomes > 0 {
             incomeVsExpenseData = IncomeVsExpenseData(
@@ -212,8 +224,6 @@ final class AnalyticsViewModel {
         }
 
         monthlyTrendData = computeMonthlyTrend()
-
-        let rangeMonths = monthsForTimeRange()
         monthlyExpenseComparisonData = computeMonthlyExpenseData(for: rangeMonths)
         incomeVsExpenseOverTimeData = computeMonthlyExpenseData(for: rangeMonths)
         categoryTrendData = computeMonthlyExpenseData(for: rangeMonths)
@@ -225,7 +235,8 @@ final class AnalyticsViewModel {
             errorMessage = "No analytics yet. Add a transaction to get started."
         }
 
-        print("[Analytics] Time range: \(timeRange.title), months: \(rangeMonths.count)")
+        print("[Analytics] Time range: \(timeRange.title), range months: \(rangeMonths), cached: \(cachedMonthKeys)")
+        print("[Analytics] displayExpenses: \(displayExpenses.count), displayIncomes: \(displayIncomes.count)")
     }
 
     private func computeCategoryBreakdown(from transactions: [NormalizedTransaction]) -> [CategoryBreakdown] {
@@ -497,7 +508,6 @@ final class AnalyticsViewModel {
     }
 
     func missingMonthsMessage() -> String? {
-        let months = monthsForTimeRange()
         let allCached = cachedMonthKeys
 
         switch timeRange {

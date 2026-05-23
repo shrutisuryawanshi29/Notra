@@ -197,7 +197,7 @@ class AnalyticsViewController: UIViewController {
         title = "Analytics"
         view.backgroundColor = AppTheme.Colors.background
 
-        navigationController?.navigationBar.prefersLargeTitles = true
+        navigationController?.navigationBar.prefersLargeTitles = false
         if let navBar = navigationController?.navigationBar {
             AppTheme.styleNavigationBar(navBar)
         }
@@ -256,30 +256,23 @@ class AnalyticsViewController: UIViewController {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.showsVerticalScrollIndicator = true
         scrollView.alwaysBounceVertical = true
+        scrollView.contentInsetAdjustmentBehavior = .never
         view.addSubview(scrollView)
 
         contentStackView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.addSubview(contentStackView)
-
-        // Bottom spacer for scroll padding
-        let bottomSpacer = UIView()
-        bottomSpacer.backgroundColor = .clear
-        bottomSpacer.translatesAutoresizingMaskIntoConstraints = false
-        contentStackView.addArrangedSubview(bottomSpacer)
+        scrollView.addSubview(contentStackView)            
 
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
 
             contentStackView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
             contentStackView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
             contentStackView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
             contentStackView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-            contentStackView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
-
-            bottomSpacer.heightAnchor.constraint(equalToConstant: 40)
+            contentStackView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
         ])
     }
 
@@ -1843,6 +1836,16 @@ class DonutChartView: UIView {
             segments.append((color: chartColor, percentage: category.percentage, label: category.category, amount: category.formattedAmount))
 
             let legendItem = createLegendItem(color: chartColor, label: category.category, amount: category.formattedAmount, percentage: category.percentage)
+            legendStackView.addArrangedSubview(legendItem)
+        }
+
+        if categories.count > 6 {
+            let otherTotal = categories.dropFirst(6).reduce(0) { $0 + $1.amount }
+            let otherPercentage = categories.dropFirst(6).reduce(0) { $0 + $1.percentage }
+            let otherFormatted = formatter.string(from: NSNumber(value: otherTotal)) ?? "$0"
+            let otherColor = chartColors[min(6, chartColors.count - 1)]
+            segments.append((color: otherColor, percentage: otherPercentage, label: "Other", amount: otherFormatted))
+            let legendItem = createLegendItem(color: otherColor, label: "Other", amount: otherFormatted, percentage: otherPercentage)
             legendStackView.addArrangedSubview(legendItem)
         }
 

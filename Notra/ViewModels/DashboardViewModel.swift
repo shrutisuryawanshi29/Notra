@@ -250,6 +250,7 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
         SessionCacheManager.shared.setLastLoadedMonth(Date())
 
         updateAvailableMonths()
+        SessionCacheManager.shared.setFetchedMonths(availableMonths)
         updateSelectedMonthTotals()
 
         selectedMonth = availableMonths.first ?? MonthMetadata(date: Date())
