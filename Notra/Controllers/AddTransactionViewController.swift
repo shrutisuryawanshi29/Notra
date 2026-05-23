@@ -430,6 +430,13 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
                 cell.configure(with: field, role: viewModel.selectedRole, placeholder: "Loading options...")
             } else {
                 cell.configure(with: field, role: viewModel.selectedRole, relationOptions: relationOpts)
+                if let existingValue = viewModel.fieldValues[field.propertyName],
+                   let relationIds = existingValue.relationIds,
+                   let selectedId = relationIds.first,
+                   let match = relationOpts.first(where: { $0.id == selectedId }) {
+                    cell.valueButton.setTitle(match.title, for: .normal)
+                    cell.valueButton.setTitleColor(AppTheme.Colors.textPrimary, for: .normal)
+                }
             }
             pickerButtons[field.propertyName] = cell.valueButton
             cell.onTap = { [weak self] in
