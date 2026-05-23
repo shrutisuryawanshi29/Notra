@@ -14,6 +14,8 @@ protocol AddTransactionViewModelDelegate: AnyObject {
     func didSaveSuccessfully()
     func didFailToSave(error: String)
     func didValidateForm(isValid: Bool, missingFields: [String])
+    func didResetForm()
+    func didAutoSelectMonthClassification(propertyName: String, title: String)
 }
 
 final class AddTransactionViewModel {
@@ -385,6 +387,94 @@ final class AddTransactionViewModel {
 
         delegate?.didValidateForm(isValid: isValid, missingFields: missingFields)
         return (isValid, missingFields)
+    }
+
+    func resetForm() {
+        print("[AddTransactionVM] Resetting form after successful save")
+        for field in fields {
+            var formValue = DynamicFormValue(propertyName: field.propertyName, propertyType: field.propertyType)
+            if field.propertyType == .date {
+                formValue.dateValue = Date()
+            }
+            fieldValues[field.propertyName] = formValue
+        }
+        print("[AddTransactionVM] Form reset complete. Date set to today.")
+        autoSelectMonthClassification(for: Date())
+        delegate?.didResetForm()
+    }
+
+    var monthClassificationFieldName: String? {
+        return fields.first(where: {
+            $0.propertyType == .relation && $0.propertyName.lowercased().contains("month classification")
+        })?.propertyName
+    }
+
+    func autoSelectMonthClassification(for date: Date) {
+        guard let fieldName = monthClassificationFieldName else {
+            print("[AddTransactionVM] No Month Classification field found in schema")
+            return
+        }
+
+        guard let options = relationOptions[fieldName], !options.isEmpty else {
+            print("[AddTransactionVM] Month Classification options not yet loaded, will auto-select when available")
+            return
+        }
+
+        let cal = Calendar.current
+        let month = cal.component(.month, from: date)
+        let year = cal.component(.year, from: date)
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US")
+        guard let monthNames = dateFormatter.monthSymbols, let shortMonthNames = dateFormatter.shortMonthSymbols else {
+            print("[AddTransactionVM] Could not get month symbols")
+            return
+        }
+        let monthName = monthNames[month - 1]
+        let shortName = shortMonthNames[month - 1]
+
+        let candidates: [String] = [
+            "\(monthName) \(year)",
+            "\(shortName) \(year)",
+            "\(monthName), \(year)",
+            "\(shortName), \(year)",
+            String(format: "%04d-%02d", year, month),
+            String(format: "%02d-%04d", month, year),
+            "\(monthName) \(String(year))",
+            "\(shortName) \(String(year))",
+            monthName.uppercased() + " \(year)",
+            monthName,
+            shortName,
+            monthName.uppercased()
+        ]
+
+        for candidate in candidates {
+            if let match = options.first(where: {
+                $0.title.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(candidate) == .orderedSame
+            }) {
+                updateRelationValue(propertyName: fieldName, ids: [match.id])
+                delegate?.didAutoSelectMonthClassification(propertyName: fieldName, title: match.title)
+                print("[AddTransactionVM] Auto-selected Month Classification: \(match.title) for \(monthName) \(year)")
+                return
+            }
+        }
+
+        for option in options {
+            let title = option.title.trimmingCharacters(in: .whitespaces)
+            if title.localizedCaseInsensitiveContains(monthName) && title.contains(String(year)) {
+                updateRelationValue(propertyName: fieldName, ids: [option.id])
+                delegate?.didAutoSelectMonthClassification(propertyName: fieldName, title: option.title)
+                print("[AddTransactionVM] Auto-selected Month Classification (contains match): \(option.title)")
+                return
+            }
+            if title.localizedCaseInsensitiveContains(shortName) && title.contains(String(year)) {
+                updateRelationValue(propertyName: fieldName, ids: [option.id])
+                delegate?.didAutoSelectMonthClassification(propertyName: fieldName, title: option.title)
+                print("[AddTransactionVM] Auto-selected Month Classification (short contains match): \(option.title)")
+                return
+            }
+        }
+
+        print("[AddTransactionVM] No matching Month Classification option found for \(monthName) \(year)")
     }
 
     func saveTransaction() {

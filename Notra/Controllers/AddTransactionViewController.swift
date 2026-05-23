@@ -351,9 +351,26 @@ final class AddTransactionViewController: UIViewController {
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
-            self?.dismiss(animated: true)
+            self?.resetFormAfterSuccessfulSave()
         })
         present(alert, animated: true)
+    }
+
+    private func resetFormAfterSuccessfulSave() {
+        print("[AddTransactionVC] Resetting form after successful save")
+        viewModel.resetForm()
+        tableView.reloadData()
+        viewModel.autoSelectMonthClassification(for: Date())
+        if let monthFieldName = viewModel.monthClassificationFieldName,
+           let monthValue = viewModel.fieldValues[monthFieldName],
+           let relationIds = monthValue.relationIds,
+           let selectedId = relationIds.first,
+           let options = viewModel.relationOptions[monthFieldName],
+           let match = options.first(where: { $0.id == selectedId }),
+           let button = pickerButtons[monthFieldName] {
+            button.setTitle(match.title, for: .normal)
+            button.setTitleColor(AppTheme.Colors.textPrimary, for: .normal)
+        }
     }
 
     private func showError(_ message: String) {
@@ -422,8 +439,13 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
 
         case .date:
             let cell = tableView.dequeueReusableCell(withIdentifier: "FormDateCell", for: indexPath) as! FormDateCell
-            cell.configure(with: field, role: viewModel.selectedRole)
+            let dateValue = viewModel.fieldValues[field.propertyName]?.dateValue
+            cell.configure(with: field, role: viewModel.selectedRole, dateValue: dateValue)
             datePickers[field.propertyName] = cell.datePicker
+            cell.onDateChanged = { [weak self] date in
+                self?.viewModel.updateDateValue(propertyName: field.propertyName, value: date)
+                self?.viewModel.autoSelectMonthClassification(for: date)
+            }
             return cell
 
         case .checkbox:
@@ -560,6 +582,12 @@ extension AddTransactionViewController: AddTransactionViewModelDelegate {
         }
 
         updateUIForFields()
+        if let monthFieldName = viewModel.monthClassificationFieldName,
+           viewModel.relationOptions[monthFieldName] != nil,
+           let dateField = fields.first(where: { $0.propertyType == .date }),
+           let dateValue = viewModel.fieldValues[dateField.propertyName]?.dateValue {
+            viewModel.autoSelectMonthClassification(for: dateValue)
+        }
     }
 
     func didFailToLoadFields(error: String) {
@@ -577,6 +605,28 @@ extension AddTransactionViewController: AddTransactionViewModelDelegate {
     func didLoadRelationOptions(for propertyName: String, options: [(id: String, title: String)]) {
         print("[AddTransactionVC] Loaded \(options.count) relation options for '\(propertyName)': \(options.map { $0.title }.joined(separator: ", "))")
         tableView.reloadData()
+        if propertyName == viewModel.monthClassificationFieldName,
+           let dateField = viewModel.fields.first(where: { $0.propertyType == .date }),
+           let dateValue = viewModel.fieldValues[dateField.propertyName]?.dateValue {
+            viewModel.autoSelectMonthClassification(for: dateValue)
+        }
+    }
+
+    func didResetForm() {
+        print("[AddTransactionVC] Form has been reset")
+        updateSaveButtonColor()
+        saveButton.isEnabled = true
+        saveButton.configuration?.showsActivityIndicator = false
+        saveButton.configuration?.title = "Save Transaction"
+        errorLabel.isHidden = true
+        loadingIndicator.stopAnimating()
+    }
+
+    func didAutoSelectMonthClassification(propertyName: String, title: String) {
+        if let button = pickerButtons[propertyName] {
+            button.setTitle(title, for: .normal)
+            button.setTitleColor(AppTheme.Colors.textPrimary, for: .normal)
+        }
     }
 
     func didFailToLoadRelationOptions(for propertyName: String, error: String) {
@@ -688,6 +738,7 @@ private class FormFieldCell: UITableViewCell {
     func configure(with field: DynamicFormField, role: DatabaseRole) {
         nameLabel.text = field.displayName
         badgeLabel.isHidden = !field.isMappedCoreField
+        textField.text = ""
 
         switch field.propertyType {
         case .title:
@@ -843,6 +894,7 @@ private class FormDateCell: UITableViewCell {
     let datePicker = UIDatePicker()
     private let nameLabel = UILabel()
     private let badgeLabel = UILabel()
+    var onDateChanged: ((Date) -> Void)?
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -873,6 +925,7 @@ private class FormDateCell: UITableViewCell {
         datePicker.datePickerMode = .date
         datePicker.preferredDatePickerStyle = .compact
         datePicker.translatesAutoresizingMaskIntoConstraints = false
+        datePicker.addTarget(self, action: #selector(datePickerValueChanged), for: .valueChanged)
         contentView.addSubview(datePicker)
 
         NSLayoutConstraint.activate([
@@ -890,10 +943,14 @@ private class FormDateCell: UITableViewCell {
         ])
     }
 
-    func configure(with field: DynamicFormField, role: DatabaseRole) {
+    func configure(with field: DynamicFormField, role: DatabaseRole, dateValue: Date? = nil) {
         nameLabel.text = field.displayName
         badgeLabel.isHidden = !field.isMappedCoreField
-        datePicker.date = Date()
+        datePicker.date = dateValue ?? Date()
+    }
+
+    @objc private func datePickerValueChanged() {
+        onDateChanged?(datePicker.date)
     }
 }
 
@@ -951,6 +1008,7 @@ private class FormSwitchCell: UITableViewCell {
     func configure(with field: DynamicFormField, role: DatabaseRole) {
         nameLabel.text = field.displayName
         badgeLabel.isHidden = !field.isMappedCoreField
+        switchControl.isOn = false
     }
 }
 
