@@ -354,17 +354,7 @@ final class SessionCacheManager {
     }
 
     private func extractTitle(from page: NotionPage) -> String {
-        if let props = page.properties, let titleProp = props["title"], let titleArray = titleProp.title {
-            for item in titleArray {
-                if let text = item.text?.content, !text.isEmpty {
-                    return text
-                }
-                if let text = item.plainText, !text.isEmpty {
-                    return text
-                }
-            }
-        }
-        return String(page.id.prefix(8))
+        return page.title
     }
 
     func extractDatabaseId(from page: NotionPage) -> String? {

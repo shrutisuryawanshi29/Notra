@@ -252,6 +252,13 @@ final class TransactionInsertService {
         return options.sorted { $0.title < $1.title }
     }
 
+    private func isIdLike(_ title: String) -> Bool {
+        let len = title.count
+        guard len >= 8 && len <= 12 else { return false }
+        let hex = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
+        return title.unicodeScalars.allSatisfy { hex.contains($0) }
+    }
+
     private func parseMonthYear(_ title: String, fullOrder: [String], shortOrder: [String]) -> Date? {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US")
@@ -303,7 +310,7 @@ final class TransactionInsertService {
         if let cached = SessionCacheManager.shared.getRelationTargetData(databaseId: databaseId) {
             let options = sortRelationOptions(cached.map { (id: $0.key, title: $0.value) })
             print("[TransactionInsert] Cache HIT (relationData) for \(databaseId): \(options.count) items")
-            if let first = options.first, first.title.hasPrefix("355e") && first.title.count <= 12 {
+            if let first = options.first, isIdLike(first.title) {
                 print("[TransactionInsert] Cache has corrupt titles (stale data from before title fix), re-fetching from API")
                 SessionCacheManager.shared.deleteRelationTargetData(databaseId: databaseId)
             } else {
@@ -315,7 +322,7 @@ final class TransactionInsertService {
         if let categoryLookup = SessionCacheManager.shared.getCategoryLookup(for: databaseId) {
             let options = sortRelationOptions(categoryLookup.map { (id: $0.key, title: $0.value) })
             print("[TransactionInsert] Cache HIT (categoryLookup) for \(databaseId): \(options.count) items")
-            if let first = options.first, first.title.hasPrefix("355e") && first.title.count <= 12 {
+            if let first = options.first, isIdLike(first.title) {
                 print("[TransactionInsert] categoryLookup also has corrupt titles, clearing")
                 SessionCacheManager.shared.clearCategoryLookup(for: databaseId)
             } else {
