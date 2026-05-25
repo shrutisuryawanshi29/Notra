@@ -81,6 +81,44 @@ final class DashboardViewModel {
         selectedMonthExpensesList.filter { $0.category == nil || $0.category!.isEmpty }.count
     }
 
+    var incomeSnapshotData: IncomeSnapshotData {
+        let incomes = selectedMonthIncomesList
+        let total = selectedMonthIncomes
+
+        guard total > 0, !incomes.isEmpty else {
+            return IncomeSnapshotData(
+                totalIncome: 0,
+                totalCount: 0,
+                mainSource: nil,
+                topSources: [],
+                hasIncome: false
+            )
+        }
+
+        let grouped = Dictionary(grouping: incomes) { t in
+            let name = t.category?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return name.isEmpty ? "Uncategorized" : name
+        }
+
+        let sources: [IncomeSourceSummary] = grouped.map { name, txns in
+            let amount = txns.reduce(0) { $0 + $1.amount }
+            return IncomeSourceSummary(
+                name: name,
+                amount: amount,
+                count: txns.count,
+                percentage: (amount / total) * 100
+            )
+        }.sorted { $0.amount > $1.amount }
+
+        return IncomeSnapshotData(
+            totalIncome: total,
+            totalCount: incomes.count,
+            mainSource: sources.first,
+            topSources: Array(sources.prefix(3)),
+            hasIncome: true
+        )
+    }
+
     var hasBudgetData: Bool {
         !budgetCategories.isEmpty
     }

@@ -90,6 +90,23 @@ struct BudgetCategoryItem {
     }
 }
 
+// MARK: - Income Snapshot
+
+struct IncomeSnapshotData {
+    let totalIncome: Double
+    let totalCount: Int
+    let mainSource: IncomeSourceSummary?
+    let topSources: [IncomeSourceSummary]
+    let hasIncome: Bool
+}
+
+struct IncomeSourceSummary {
+    let name: String
+    let amount: Double
+    let count: Int
+    let percentage: Double
+}
+
 struct BudgetUtilizationSummary {
     let totalBudget: Double
     let totalSpent: Double

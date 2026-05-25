@@ -40,6 +40,7 @@ class DashboardViewController: UIViewController {
 
     private let statusCardView = StatusCardView()
     private let budgetCardView = BudgetCardView()
+    private let incomeSnapshotCardView = IncomeSnapshotCardView()
     private let activityCardView = ActivityCardView()
     private let quickChecksCardView = QuickChecksCardView()
     private let summaryTitleLabel: UILabel = {
@@ -127,6 +128,7 @@ class DashboardViewController: UIViewController {
         setupSummarySection()
         setupStatusCard()
         setupBudgetCard()
+        setupIncomeSnapshotCard()
         setupActivityCard()
         setupQuickChecksCard()
         setupActionsSection()
@@ -312,12 +314,26 @@ class DashboardViewController: UIViewController {
         ])
     }
 
+    private func setupIncomeSnapshotCard() {
+        incomeSnapshotCardView.translatesAutoresizingMaskIntoConstraints = false
+        incomeSnapshotCardView.onViewIncome = { [weak self] in
+            self?.viewIncomeTapped()
+        }
+        contentView.addSubview(incomeSnapshotCardView)
+
+        NSLayoutConstraint.activate([
+            incomeSnapshotCardView.topAnchor.constraint(equalTo: budgetCardView.bottomAnchor, constant: sectionSpacing),
+            incomeSnapshotCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            incomeSnapshotCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
+        ])
+    }
+
     private func setupActivityCard() {
         activityCardView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(activityCardView)
 
         NSLayoutConstraint.activate([
-            activityCardView.topAnchor.constraint(equalTo: budgetCardView.bottomAnchor, constant: sectionSpacing),
+            activityCardView.topAnchor.constraint(equalTo: incomeSnapshotCardView.bottomAnchor, constant: sectionSpacing),
             activityCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             activityCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
         ])
@@ -512,6 +528,7 @@ class DashboardViewController: UIViewController {
 
         updateStatusCard()
         updateBudgetCard()
+        updateIncomeSnapshotCard()
         updateActivityCard()
         updateQuickChecksCard()
     }
@@ -542,6 +559,10 @@ class DashboardViewController: UIViewController {
             }
         }
         budgetCardView.configure(with: viewModel.budgetCategories, summary: viewModel.budgetSummary, emptyMessage: emptyMessage)
+    }
+
+    private func updateIncomeSnapshotCard() {
+        incomeSnapshotCardView.configure(with: viewModel.incomeSnapshotData)
     }
 
     private func updateActivityCard() {
@@ -1517,6 +1538,360 @@ class QuickChecksCardView: UIView {
             )
             stackView.addArrangedSubview(row)
         }
+    }
+}
+
+// MARK: - Segmented Income Bar
+
+class SegmentedIncomeBar: UIView {
+    private let barBackground: UIView = {
+        let v = UIView()
+        v.backgroundColor = AppTheme.Colors.border.withAlphaComponent(0.15)
+        v.layer.cornerRadius = 6
+        v.clipsToBounds = true
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        addSubview(barBackground)
+        NSLayoutConstraint.activate([
+            barBackground.topAnchor.constraint(equalTo: topAnchor),
+            barBackground.leadingAnchor.constraint(equalTo: leadingAnchor),
+            barBackground.trailingAnchor.constraint(equalTo: trailingAnchor),
+            barBackground.bottomAnchor.constraint(equalTo: bottomAnchor),
+            heightAnchor.constraint(equalToConstant: 12)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func configure(segments: [(percentage: Double, color: UIColor)]) {
+        barBackground.subviews.forEach { $0.removeFromSuperview() }
+
+        guard !segments.isEmpty else { return }
+
+        let totalPct = segments.reduce(0) { $0 + $1.percentage }
+        guard totalPct > 0 else { return }
+
+        var previous: UIView?
+        for (index, seg) in segments.enumerated() {
+            let pct = seg.percentage / totalPct
+            guard pct > 0 else { continue }
+
+            let view = UIView()
+            view.backgroundColor = seg.color
+            view.translatesAutoresizingMaskIntoConstraints = false
+            barBackground.addSubview(view)
+
+            if segments.count > 1 {
+                if index == 0 {
+                    view.layer.cornerRadius = 6
+                    view.layer.maskedCorners = [.layerMinXMinYCorner, .layerMinXMaxYCorner]
+                } else if index == segments.count - 1 {
+                    view.layer.cornerRadius = 6
+                    view.layer.maskedCorners = [.layerMaxXMinYCorner, .layerMaxXMaxYCorner]
+                }
+            } else {
+                view.layer.cornerRadius = 6
+            }
+
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: barBackground.topAnchor),
+                view.bottomAnchor.constraint(equalTo: barBackground.bottomAnchor),
+            ])
+
+            if let prev = previous {
+                view.leadingAnchor.constraint(equalTo: prev.trailingAnchor).isActive = true
+            } else {
+                view.leadingAnchor.constraint(equalTo: barBackground.leadingAnchor).isActive = true
+            }
+
+            if index == segments.count - 1 {
+                view.trailingAnchor.constraint(equalTo: barBackground.trailingAnchor).isActive = true
+            } else {
+                let wc = view.widthAnchor.constraint(equalTo: barBackground.widthAnchor, multiplier: CGFloat(pct))
+                wc.priority = .defaultHigh
+                wc.isActive = true
+            }
+
+            previous = view
+        }
+    }
+}
+
+// MARK: - Income Sources Card
+
+class IncomeSnapshotCardView: UIView {
+    private let titleLabel = UILabel()
+    private let totalIncomeCaptionLabel = UILabel()
+    private let totalIncomeValueLabel = UILabel()
+    private let mainSourceCaptionLabel = UILabel()
+    private let mainSourceLabel = UILabel()
+    private let segmentedBar = SegmentedIncomeBar()
+    private let sourcesStackView = UIStackView()
+    private let footerLabel = UILabel()
+    private let viewIncomeButton = UIButton(type: .system)
+    private let emptyLabel = UILabel()
+
+    private let formatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        return f
+    }()
+
+    var onViewIncome: (() -> Void)?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupView()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupView() {
+        AppTheme.applyCardStyle(to: self)
+        translatesAutoresizingMaskIntoConstraints = false
+
+        titleLabel.text = "Income Sources"
+        titleLabel.font = AppTheme.Fonts.captionBold
+        titleLabel.textColor = AppTheme.Colors.textSecondary
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        totalIncomeCaptionLabel.text = "Total income"
+        totalIncomeCaptionLabel.font = AppTheme.Fonts.small
+        totalIncomeCaptionLabel.textColor = AppTheme.Colors.textMuted
+        totalIncomeCaptionLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(totalIncomeCaptionLabel)
+
+        totalIncomeValueLabel.font = AppTheme.Fonts.headingLargeRounded
+        totalIncomeValueLabel.textColor = AppTheme.Colors.textPrimary
+        totalIncomeValueLabel.adjustsFontSizeToFitWidth = true
+        totalIncomeValueLabel.minimumScaleFactor = 0.8
+        totalIncomeValueLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(totalIncomeValueLabel)
+
+        mainSourceCaptionLabel.text = "Main source"
+        mainSourceCaptionLabel.font = AppTheme.Fonts.small
+        mainSourceCaptionLabel.textColor = AppTheme.Colors.textMuted
+        mainSourceCaptionLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(mainSourceCaptionLabel)
+
+        mainSourceLabel.font = AppTheme.Fonts.bodyMedium
+        mainSourceLabel.textColor = AppTheme.Colors.income
+        mainSourceLabel.numberOfLines = 1
+        mainSourceLabel.lineBreakMode = .byTruncatingTail
+        mainSourceLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(mainSourceLabel)
+
+        segmentedBar.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(segmentedBar)
+
+        sourcesStackView.axis = .vertical
+        sourcesStackView.spacing = 6
+        sourcesStackView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(sourcesStackView)
+
+        footerLabel.font = AppTheme.Fonts.smallMedium
+        footerLabel.textColor = AppTheme.Colors.textMuted
+        footerLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(footerLabel)
+
+        viewIncomeButton.setTitle("View Income", for: .normal)
+        viewIncomeButton.titleLabel?.font = AppTheme.Fonts.buttonSmall
+        viewIncomeButton.setTitleColor(AppTheme.Colors.primaryBrown, for: .normal)
+        viewIncomeButton.addTarget(self, action: #selector(didTapViewIncome), for: .touchUpInside)
+        viewIncomeButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(viewIncomeButton)
+
+        emptyLabel.font = AppTheme.Fonts.body
+        emptyLabel.textColor = AppTheme.Colors.textMuted
+        emptyLabel.numberOfLines = 0
+        emptyLabel.textAlignment = .center
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        emptyLabel.isHidden = true
+        addSubview(emptyLabel)
+
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            totalIncomeCaptionLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 10),
+            totalIncomeCaptionLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            totalIncomeCaptionLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            totalIncomeValueLabel.topAnchor.constraint(equalTo: totalIncomeCaptionLabel.bottomAnchor, constant: 2),
+            totalIncomeValueLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            totalIncomeValueLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            mainSourceCaptionLabel.topAnchor.constraint(equalTo: totalIncomeValueLabel.bottomAnchor, constant: 14),
+            mainSourceCaptionLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            mainSourceCaptionLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            mainSourceLabel.topAnchor.constraint(equalTo: mainSourceCaptionLabel.bottomAnchor, constant: 2),
+            mainSourceLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            mainSourceLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            segmentedBar.topAnchor.constraint(equalTo: mainSourceLabel.bottomAnchor, constant: 14),
+            segmentedBar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            segmentedBar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            sourcesStackView.topAnchor.constraint(equalTo: segmentedBar.bottomAnchor, constant: 12),
+            sourcesStackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            sourcesStackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            footerLabel.topAnchor.constraint(equalTo: sourcesStackView.bottomAnchor, constant: 10),
+            footerLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            footerLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            viewIncomeButton.topAnchor.constraint(equalTo: footerLabel.bottomAnchor, constant: 6),
+            viewIncomeButton.centerXAnchor.constraint(equalTo: centerXAnchor),
+            viewIncomeButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+
+            emptyLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 20),
+            emptyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+            emptyLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            emptyLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20)
+        ])
+    }
+
+    private func segmentColor(at index: Int) -> UIColor {
+        let palette: [UIColor] = [
+            AppTheme.Colors.income,
+            AppTheme.Colors.incomeLight,
+            AppTheme.Colors.secondaryTan,
+            AppTheme.Colors.textMuted
+        ]
+        return palette[min(index, palette.count - 1)]
+    }
+
+    func configure(with data: IncomeSnapshotData) {
+        if !data.hasIncome {
+            emptyLabel.isHidden = false
+            emptyLabel.text = "No income recorded this month.\n\nIncome you add for this month will appear here."
+            totalIncomeCaptionLabel.isHidden = true
+            totalIncomeValueLabel.isHidden = true
+            mainSourceCaptionLabel.isHidden = true
+            mainSourceLabel.isHidden = true
+            segmentedBar.isHidden = true
+            sourcesStackView.isHidden = true
+            footerLabel.isHidden = true
+            viewIncomeButton.isHidden = false
+            viewIncomeButton.setTitle("Add Income", for: .normal)
+            return
+        }
+
+        emptyLabel.isHidden = true
+        totalIncomeCaptionLabel.isHidden = false
+        totalIncomeValueLabel.isHidden = false
+        mainSourceCaptionLabel.isHidden = false
+        mainSourceLabel.isHidden = false
+        segmentedBar.isHidden = false
+        sourcesStackView.isHidden = false
+        footerLabel.isHidden = false
+        viewIncomeButton.isHidden = false
+        viewIncomeButton.setTitle("View Income", for: .normal)
+
+        totalIncomeValueLabel.text = formatter.string(from: NSNumber(value: data.totalIncome)) ?? "$0.00"
+
+        if let main = data.mainSource {
+            let amtStr = formatter.string(from: NSNumber(value: main.amount)) ?? "$0.00"
+            mainSourceLabel.text = "\(main.name) · \(amtStr)"
+        }
+
+        let barSegments: [(percentage: Double, color: UIColor)] = data.topSources.enumerated().map { (index, source) in
+            (percentage: source.percentage, color: segmentColor(at: index))
+        }
+        segmentedBar.configure(segments: barSegments)
+
+        sourcesStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for (index, source) in data.topSources.enumerated() {
+            let dotColor = segmentColor(at: index)
+            let row = IncomeSourceRowView(source: source, dotColor: dotColor, formatter: formatter)
+            sourcesStackView.addArrangedSubview(row)
+        }
+
+        let entryText = data.totalCount == 1 ? "entry" : "entries"
+        footerLabel.text = "\(data.totalCount) income \(entryText) this month"
+    }
+
+    @objc private func didTapViewIncome() {
+        onViewIncome?()
+    }
+}
+
+class IncomeSourceRowView: UIView {
+    private let dotView = UIView()
+    private let nameLabel = UILabel()
+    private let detailLabel = UILabel()
+
+    init(source: IncomeSourceSummary, dotColor: UIColor, formatter: NumberFormatter) {
+        super.init(frame: .zero)
+        setupView(dotColor: dotColor)
+        configure(with: source, formatter: formatter)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupView(dotColor: UIColor) {
+        dotView.layer.cornerRadius = 4
+        dotView.backgroundColor = dotColor
+        dotView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(dotView)
+
+        nameLabel.font = AppTheme.Fonts.bodyMedium
+        nameLabel.textColor = AppTheme.Colors.textPrimary
+        nameLabel.numberOfLines = 1
+        nameLabel.lineBreakMode = .byTruncatingTail
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(nameLabel)
+
+        detailLabel.font = AppTheme.Fonts.smallMedium
+        detailLabel.textColor = AppTheme.Colors.textMuted
+        detailLabel.textAlignment = .right
+        detailLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        detailLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(detailLabel)
+
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 22),
+
+            dotView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            dotView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            dotView.widthAnchor.constraint(equalToConstant: 8),
+            dotView.heightAnchor.constraint(equalToConstant: 8),
+
+            nameLabel.leadingAnchor.constraint(equalTo: dotView.trailingAnchor, constant: 8),
+            nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: detailLabel.leadingAnchor, constant: -8),
+
+            detailLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
+            detailLabel.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+
+    private func configure(with source: IncomeSourceSummary, formatter: NumberFormatter) {
+        nameLabel.text = source.name
+        let amtStr = formatter.string(from: NSNumber(value: source.amount)) ?? "$0.00"
+        let pctStr: String
+        if source.percentage >= 1 {
+            pctStr = "\(Int(round(source.percentage)))%"
+        } else if source.percentage > 0 {
+            pctStr = "<1%"
+        } else {
+            pctStr = "0%"
+        }
+        detailLabel.text = "\(amtStr) · \(pctStr)"
     }
 }
 
