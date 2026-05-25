@@ -226,7 +226,7 @@ class TransactionDetailViewController: UIViewController {
         editButton.setTitle("Edit", for: .normal)
         editButton.titleLabel?.font = AppTheme.Fonts.buttonLarge
         editButton.setTitleColor(AppTheme.Colors.buttonContent, for: .normal)
-        editButton.backgroundColor = AppTheme.Colors.buttonSurface
+        editButton.backgroundColor = AppTheme.Colors.secondaryBrown
         editButton.layer.cornerRadius = AppTheme.CornerRadius.medium
         editButton.addTarget(self, action: #selector(editTapped), for: .touchUpInside)
         buttonStack.addArrangedSubview(editButton)

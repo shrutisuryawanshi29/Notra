@@ -692,7 +692,7 @@ extension ExpenseListViewController: UITableViewDataSource, UITableViewDelegate 
             self?.editTransaction(transaction)
             completion(true)
         }
-        editAction.backgroundColor = AppTheme.Colors.primaryBrown
+        editAction.backgroundColor = AppTheme.Colors.secondaryBrown
         editAction.image = UIImage(systemName: "pencil")
 
         let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
