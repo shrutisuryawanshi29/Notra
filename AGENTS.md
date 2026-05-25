@@ -26,13 +26,13 @@ No tests, no CocoaPods/SPM, no CI. Deployment target 26.4 (project 26.0). Swift 
 
 `SceneDelegate.swift:152` returns `DatabaseRoleAssignmentViewController()` for `.columnMapping` instead of `ColumnMappingViewController()`. Fix when ready.
 
-## Add Transaction — Month Classification Lifecycle
+## Add Transaction — Month Classification
 
-Month Classification auto-defaults from transaction date. `tableView.reloadData()` is **not** synchronous, so `didAutoSelectMonthClassification` fires before cells exist. Do **not** move auto-select to `viewDidLoad`. Fix in `cellForRowAt` (AddTransactionViewController.swift:536-541): after configuring `.relation` cell, check `viewModel.fieldValues[field.propertyName]` and set button title from match.
+`tableView.reloadData()` is not synchronous — `didAutoSelectMonthClassification` can fire before cells exist. **Do not** move auto-select to `viewDidLoad`. Fix in `cellForRowAt` (lines 536-541): after configuring `.relation` cell, check `viewModel.fieldValues[field.propertyName]` and set button title from match.
 
 ## Edit & Delete
 
-**Edit** — `AddTransactionViewController` init with `editingTransaction`; ViewModel calls `applyEditPrefill(columnMapping:)` → `fieldValues` from `rawProperties`. Critical: `cellForRowAt` must read back from `fieldValues` after cell config (text → `stringValue`/`numberValue`, picker → `selectValue`/`multiSelectValues`, switches → `boolValue`). Save → `TransactionInsertService.updateTransaction(pageId:)` (PATCH), then `onEditComplete` → `replaceExpense`/`replaceIncome`.
+**Edit** — `AddTransactionViewController` init with `editingTransaction`; ViewModel `applyEditPrefill(columnMapping:)` → `fieldValues` from `rawProperties`. Save → `TransactionInsertService.updateTransaction(pageId:)` (PATCH), then `onEditComplete` → `replaceExpense`/`replaceIncome`.
 
 **Delete** — confirmation alert → `NotionService.trashPage(pageId:)` (PATCH `in_trash: true`), then `removeExpense(byPageId:)`/`removeIncome(byPageId:)`.
 
@@ -42,16 +42,16 @@ Cache helpers in `SessionCacheManager`: `replaceExpense`, `replaceIncome`, `remo
 
 All sections use **only selected-month data** — no API calls, no all-time loading.
 
-| Section | Data Source | View |
-|---|---|---|
-| **This Month Status** | `statusInfo` → `DashboardStatusInfo` | `StatusCardView` — icon + color-coded message + footer counts |
-| **Monthly Budget** | `budgetCategories` + `budgetSummary` from `computeBudgetUtilization()` | `BudgetCardView` → 2-col grid of `BudgetCategoryCardView` with `CircularProgressView` ring (62pt) |
-| **Recent Activity** | `recentTransactions` — latest 5, date desc, deduped by page ID | `ActivityCardView` → `ActivityRowView`: dot + title + "category · rel date" + +/- amount |
-| **Quick Checks** | `largestExpense`, `mostUsedCategory`, `uncategorizedCount` | `QuickChecksCardView` → `QuickCheckRowView`: icon + label + value |
+| Section | View |
+|---|---|
+| **This Month Status** | `StatusCardView` — icon + color-coded message + footer counts |
+| **Monthly Budget** | `BudgetCardView` → 2-col grid of `BudgetCategoryCardView` with `CircularProgressView` ring (62pt) |
+| **Recent Activity** | `ActivityCardView` → `ActivityRowView`: dot + title + "category · rel date" + +/- amount (latest 5, date desc, deduped by page ID) |
+| **Quick Checks** | `QuickChecksCardView` → `QuickCheckRowView`: icon + label + value |
 
-Actions: 3 full-width buttons → Expense List, Income List, Analytics. Settings via nav bar gear.
+Budget auto-detects number properties by score ("monthly budget"=100 → "budget"=90 → "limit"=80 → keyword=40), fallback to formula/rollup. Groups selected-month expenses by category relation ID.
 
-Budget auto-detects number properties by score ("monthly budget"=100 → "budget"=90 → "limit"=80 → keyword=40), fallback to formula/rollup. Groups selected-month expenses by category relation ID. Summary: "N over budget · N close · N on track".
+All card views defined inline in `DashboardViewController.swift` (not separate files).
 
 ## Analytics
 
@@ -62,15 +62,19 @@ Budget auto-detects number properties by score ("monthly budget"=100 → "budget
 - Client-side AND-logic on `rawProperties` (no API calls)
 - `.pageSheet` presentation; relation properties load lazily via `RelationResolverService`
 - Excluded from UI: `url`, `email`, `phone_number`, `formula`, `rollup`, `created_time`, `created_by`, `last_edited_time`, `last_edited_by`, `unique_id`, `verification`
-- Summary bar: "Filtered Total: $X · N items" when active
 
 ## Deep Links
 
-`notra://add-expense` / `notra://add-income` — optional query params: `title`, `amount`, `date` (yyyy-MM-dd), `notes`.
+`notra://add-expense` / `notra://add-income` — optional query params: `title`, `amount`, `date` (yyyy-MM-dd), `notes`. Parsed in `SceneDelegate.handleDeepLink()`.
 
-## Light Mode
+## Theme
 
-Forced: `UIUserInterfaceStyle: Light` in Info.plist + `window.overrideUserInterfaceStyle = .light` in SceneDelegate.
+`UIUserInterfaceStyle: Light` in Info.plist sets system default. `window.overrideUserInterfaceStyle` follows `AppTheme.currentMode` (`SceneDelegate.swift:40`). Toggle at `AppConstants.swift:105`:
+```swift
+static var currentMode: ThemeMode = .dark  // .light restores original appearance
+```
+
+Warm cream/brown palette via `AppTheme.Colors` (all programmatic).
 
 ## Debug
 
@@ -95,16 +99,17 @@ Log prefixes: `[SetupState]`, `[SessionCache]`, `[DataFetcher]`, `[NotionService
 | `Services/CategoryParserService.swift` | Category from select/multi-select/relation/text |
 | `Services/DatabaseDiscoveryService.swift` | Auto-discovers accessible Notion databases |
 | `Services/RelationResolverService.swift` | Lazily resolves relation options from target DB |
-| `Services/UserDefaultsManager.swift` | Typed `UserDefaults` wrapper |
 | `Services/SetupStateManager.swift` | Startup routing, state check, reset |
 | `Helpers/AppConstants.swift` | API config, `AppTheme` (warm cream/brown palette), spacing, shadows, fonts |
 
-## Style & Quirks
+## Dead Code
 
-- Light mode forced everywhere; warm cream/brown palette via `AppTheme`
-- Table views: `.plain` (not `.insetGrouped`), except Settings
-- All UI programmatic. `Main.storyboard` exists in `Base.lproj` but **unused** (SceneDelegate builds window/nav in code)
-- `Extensions/` directory empty
-- `SetupCompleteViewController.swift` in `Controllers/` — **dead code**, never called
+- `SetupCompleteViewController.swift` in `Controllers/` — never instantiated
 - `ViewController.swift` at project root — unused Xcode boilerplate
+- `Main.storyboard` in `Base.lproj` — exists but unused (SceneDelegate builds UI in code)
+
+## Style
+
+- Table views: `.plain` (not `.insetGrouped`), except AddTransaction which uses `.insetGrouped`
+- All UI programmatic; no storyboard segues or xibs
 - `AGENTS.md` gitignored (not version controlled)

@@ -35,6 +35,10 @@ class TransactionDetailViewController: UIViewController {
         return f
     }()
 
+    // Tracks relation rows whose titles need async resolution
+    private var relationRowViews: [String: DetailRowView] = [:]
+    private var relationIdsByProperty: [String: [String]] = [:]
+
     init(transaction: NormalizedTransaction) {
         self.transaction = transaction
         super.init(nibName: nil, bundle: nil)
@@ -50,6 +54,7 @@ class TransactionDetailViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupView()
+        resolvePendingRelations()
     }
 
     private func setupView() {
@@ -180,6 +185,10 @@ class TransactionDetailViewController: UIViewController {
                 if mappedColumnNames.contains(name) { continue }
                 if let display = displayValue(for: prop, propertyName: name, type: typeStr) {
                     detailRows.append((name, display))
+                    if typeStr == "relation", let rel = prop.relation {
+                        let ids = rel.compactMap { $0.id }
+                        relationIdsByProperty[name] = ids
+                    }
                 }
             }
         }
@@ -193,6 +202,9 @@ class TransactionDetailViewController: UIViewController {
                 separator.translatesAutoresizingMaskIntoConstraints = false
                 detailsStack.addArrangedSubview(separator)
                 separator.heightAnchor.constraint(equalToConstant: 0.5).isActive = true
+            }
+            if relationIdsByProperty[label] != nil {
+                relationRowViews[label] = row
             }
         }
 
@@ -236,6 +248,30 @@ class TransactionDetailViewController: UIViewController {
             buttonStack.heightAnchor.constraint(equalToConstant: 50),
             buttonStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -24)
         ])
+    }
+
+    private func resolvePendingRelations() {
+        guard let token = UserDefaultsManager.shared.notionToken else { return }
+
+        for (propertyName, ids) in relationIdsByProperty {
+            guard !ids.isEmpty, let rowView = relationRowViews[propertyName] else { continue }
+
+            let cached = SessionCacheManager.shared.resolveRelationTitles(pageIds: ids)
+            if !cached.isEmpty {
+                rowView.setValue(cached.joined(separator: ", "))
+                continue
+            }
+
+            RelationResolverService.shared.resolveRelationTitles(pageIds: ids, token: token) { [weak self] result in
+                guard let self = self else { return }
+                if case .success(let titles) = result {
+                    let joined = titles.joined(separator: ", ")
+                    if !joined.isEmpty {
+                        self.relationRowViews[propertyName]?.setValue(joined)
+                    }
+                }
+            }
+        }
     }
 
     @objc private func closeTapped() {
@@ -308,6 +344,8 @@ class TransactionDetailViewController: UIViewController {
                 let titles = relationIds.compactMap { targetData[$0] }.filter { !$0.isEmpty }
                 if !titles.isEmpty { return titles.joined(separator: ", ") }
             }
+            let titles = SessionCacheManager.shared.resolveRelationTitles(pageIds: relationIds)
+            if !titles.isEmpty { return titles.joined(separator: ", ") }
             return relationIds.joined(separator: ", ")
         default:
             return nil
@@ -321,6 +359,8 @@ private class DetailRowView: UIView {
     private let labelLabel = UILabel()
     private let valueLabel = UILabel()
 
+    var currentValue: String { valueLabel.text ?? "" }
+
     init(label: String, value: String) {
         super.init(frame: .zero)
         setup(label: label, value: value)
@@ -328,6 +368,10 @@ private class DetailRowView: UIView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func setValue(_ value: String) {
+        valueLabel.text = value
     }
 
     private func setup(label: String, value: String) {

@@ -415,6 +415,22 @@ final class SessionCacheManager {
         return nil
     }
 
+    // Searches across all cached relation target databases for page ID → title matches.
+    // Use as fallback when the caller doesn't know which target DB a relation belongs to
+    // (e.g., month classification in TransactionDetailViewController).
+    func resolveRelationTitles(pageIds: [String]) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        let relationData = cache["relationData"] as? [String: [String: String]] ?? [:]
+        for (_, lookup) in relationData {
+            let titles = pageIds.compactMap { lookup[$0] }.filter { !$0.isEmpty }
+            if !titles.isEmpty {
+                return titles
+            }
+        }
+        return []
+    }
+
     func isRelationTargetCached(databaseId: String) -> Bool {
         lock.lock()
         defer { lock.unlock() }
