@@ -25,6 +25,7 @@ class SettingsViewController: UIViewController {
 
     private enum Section: Int, CaseIterable {
         case notionConnection
+        case setupChecklist
         case databaseMapping
         case data
         case debug
@@ -32,6 +33,7 @@ class SettingsViewController: UIViewController {
     }
 
     private let metadata = SetupMetadataService.shared
+    private let checklist = SetupChecklistService.shared
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -141,6 +143,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         guard let sectionType = Section(rawValue: section) else { return 0 }
         switch sectionType {
         case .notionConnection: return ConnectionRow.allCases.count
+        case .setupChecklist: return checklist.allChecks.count
         case .databaseMapping: return 3
         case .data: return 2
         case .debug: return 2
@@ -148,10 +151,24 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         }
     }
 
+    func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+        guard let sectionType = Section(rawValue: section), sectionType == .setupChecklist else { return nil }
+        let failCount = checklist.requiredChecks.filter { $0.status == .fail }.count
+        let warnCount = checklist.allChecks.filter { $0.status == .warning }.count
+        if failCount > 0 {
+            return "\(failCount) critical \(failCount == 1 ? "check" : "checks") need attention"
+        }
+        if warnCount > 0 {
+            return "\(warnCount) \(warnCount == 1 ? "recommendation" : "recommendations") to review"
+        }
+        return "All checks passed"
+    }
+
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         guard let sectionType = Section(rawValue: section) else { return nil }
         switch sectionType {
         case .notionConnection: return "Notion Connection"
+        case .setupChecklist: return "Setup Checklist"
         case .databaseMapping: return "Database Mapping"
         case .data: return "Data"
         case .debug: return "Debug"
@@ -175,6 +192,22 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         switch sectionType {
         case .notionConnection:
             configureNotionConnectionCell(cell: cell, content: &content, row: indexPath.row)
+
+        case .setupChecklist:
+            let check = checklist.allChecks[indexPath.row]
+            content.text = "\(check.status.indicator) \(check.title)"
+            content.secondaryText = check.message
+            content.textProperties.font = AppTheme.Fonts.bodyMedium
+            switch check.status {
+            case .pass:
+                content.textProperties.color = AppTheme.Colors.income
+            case .warning:
+                content.textProperties.color = AppTheme.Colors.warning
+            case .fail:
+                content.textProperties.color = AppTheme.Colors.expense
+            case .unknown:
+                content.textProperties.color = AppTheme.Colors.textMuted
+            }
 
         case .databaseMapping:
             let mappings = ColumnMappingService.shared.loadDatabaseMappings()
@@ -359,6 +392,9 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
                 print(summary)
                 showDebugAlert(title: "Cache Summary", message: summary)
             }
+
+        case .setupChecklist:
+            break
 
         case .dangerZone:
             resetSetup()

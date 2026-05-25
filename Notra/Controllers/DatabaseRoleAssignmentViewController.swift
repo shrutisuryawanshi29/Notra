@@ -370,14 +370,14 @@ class RoleAssignmentCell: UITableViewCell {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(titleLabel)
 
-        segmentedControl.selectedSegmentTintColor = AppTheme.Colors.primaryBrown
+        segmentedControl.selectedSegmentTintColor = AppTheme.Colors.accent
         segmentedControl.backgroundColor = AppTheme.Colors.cardBackgroundAlt
         segmentedControl.setTitleTextAttributes([
             .foregroundColor: AppTheme.Colors.textPrimary,
             .font: AppTheme.Fonts.captionMedium
         ], for: .normal)
         segmentedControl.setTitleTextAttributes([
-            .foregroundColor: UIColor.white,
+            .foregroundColor: AppTheme.Colors.buttonContent,
             .font: AppTheme.Fonts.captionBold
         ], for: .selected)
         segmentedControl.addTarget(self, action: #selector(segmentChanged), for: .valueChanged)
