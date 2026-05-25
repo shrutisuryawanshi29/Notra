@@ -202,8 +202,8 @@ class PagePickerViewController: UIViewController {
         config.image = UIImage(systemName: "arrow.clockwise")
         config.imagePadding = 8
         config.imagePlacement = .leading
-        config.baseBackgroundColor = AppTheme.Colors.primaryBrown
-        config.baseForegroundColor = .white
+        config.baseBackgroundColor = AppTheme.Colors.buttonSurface
+        config.baseForegroundColor = AppTheme.Colors.buttonContent
         config.cornerStyle = .medium
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
             var outgoing = incoming

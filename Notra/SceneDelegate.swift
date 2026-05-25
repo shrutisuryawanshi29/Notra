@@ -37,7 +37,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         self.navigationController = navigationController
         
-        window.overrideUserInterfaceStyle = .light
+        window.overrideUserInterfaceStyle = AppTheme.currentMode == .dark ? .dark : .light
         
         window.makeKeyAndVisible()
 

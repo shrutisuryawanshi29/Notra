@@ -72,7 +72,7 @@ class DashboardViewController: UIViewController {
         button.tintColor = .white
         button.backgroundColor = AppTheme.Colors.accent
         button.layer.cornerRadius = 28
-        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowColor = AppTheme.activePalette.shadow.cgColor
         button.layer.shadowOpacity = 0.15
         button.layer.shadowOffset = CGSize(width: 0, height: 4)
         button.layer.shadowRadius = 8
@@ -188,11 +188,13 @@ class DashboardViewController: UIViewController {
         monthSelectorButton.semanticContentAttribute = .forceRightToLeft
         monthSelectorButton.setTitle(" May 2026 ", for: .normal)
         monthSelectorButton.titleLabel?.font = AppTheme.Fonts.bodyBold
-        monthSelectorButton.setTitleColor(.white, for: .normal)
-        monthSelectorButton.tintColor = .white
-        monthSelectorButton.backgroundColor = AppTheme.Colors.primaryBrown
+        monthSelectorButton.setTitleColor(AppTheme.Colors.pillContent, for: .normal)
+        monthSelectorButton.tintColor = AppTheme.Colors.pillContent
+        monthSelectorButton.backgroundColor = AppTheme.Colors.buttonSurface
         monthSelectorButton.layer.cornerRadius = AppTheme.CornerRadius.pill
         monthSelectorButton.contentEdgeInsets = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
+        monthSelectorButton.layer.borderWidth = AppTheme.currentMode == .dark ? 1 : 0
+        monthSelectorButton.layer.borderColor = AppTheme.currentMode == .dark ? AppTheme.Colors.border.cgColor : nil
         monthSelectorButton.translatesAutoresizingMaskIntoConstraints = false
         monthSelectorButton.addTarget(self, action: #selector(monthSelectorTapped), for: .touchUpInside)
         contentView.addSubview(monthSelectorButton)
@@ -841,7 +843,7 @@ class BudgetCategoryCardView: UIView {
                 statusColor = AppTheme.Colors.expense
                 statusLabel.text = "Over budget"
             case .warning:
-                statusColor = UIColor(red: 210/255, green: 160/255, blue: 90/255, alpha: 1)
+                statusColor = AppTheme.Colors.warning
                 statusLabel.text = ""
             case .safe:
                 statusColor = AppTheme.Colors.income

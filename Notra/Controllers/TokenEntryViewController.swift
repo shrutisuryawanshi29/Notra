@@ -214,8 +214,8 @@ class TokenEntryViewController: UIViewController {
         config.image = UIImage(systemName: "arrow.right")
         config.imagePadding = 8
         config.imagePlacement = .trailing
-        config.baseBackgroundColor = AppTheme.Colors.primaryBrown
-        config.baseForegroundColor = .white
+        config.baseBackgroundColor = AppTheme.Colors.buttonSurface
+        config.baseForegroundColor = AppTheme.Colors.buttonContent
         config.cornerStyle = .medium
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
             var outgoing = incoming

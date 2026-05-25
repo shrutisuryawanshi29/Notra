@@ -23,44 +23,148 @@ struct AppConstants {
 }
 
 struct AppTheme {
-    // MARK: - Background Colors
+    // MARK: - Theme Mode
+    enum ThemeMode {
+        case light
+        case dark
+    }
+
+    struct Palette {
+        let background: UIColor
+        let backgroundLight: UIColor
+        let backgroundIvory: UIColor
+        let primaryBrown: UIColor
+        let primaryBrownLight: UIColor
+        let secondaryBrown: UIColor
+        let secondaryTan: UIColor
+        let cardBackground: UIColor
+        let cardBackgroundAlt: UIColor
+        let textPrimary: UIColor
+        let textSecondary: UIColor
+        let textMuted: UIColor
+        let expense: UIColor
+        let expenseLight: UIColor
+        let income: UIColor
+        let incomeLight: UIColor
+        let border: UIColor
+        let accent: UIColor
+        let accentSecondary: UIColor
+        let warning: UIColor
+        let shadow: UIColor
+    }
+
+    static let lightPalette = Palette(
+        background: UIColor(red: 246/255, green: 239/255, blue: 227/255, alpha: 1), // #F6EFE3
+        backgroundLight: UIColor(red: 239/255, green: 227/255, blue: 210/255, alpha: 1), // #EFE3D2
+        backgroundIvory: UIColor(red: 250/255, green: 247/255, blue: 240/255, alpha: 1), // #FAF7F0
+        primaryBrown: UIColor(red: 107/255, green: 70/255, blue: 56/255, alpha: 1), // #6B4638
+        primaryBrownLight: UIColor(red: 122/255, green: 80/255, blue: 66/255, alpha: 1), // #7A5042
+        secondaryBrown: UIColor(red: 217/255, green: 168/255, blue: 117/255, alpha: 1), // #D9A875
+        secondaryTan: UIColor(red: 232/255, green: 201/255, blue: 166/255, alpha: 1), // #E8C9A6
+        cardBackground: UIColor(red: 255/255, green: 249/255, blue: 241/255, alpha: 1), // #FFF9F1
+        cardBackgroundAlt: UIColor(red: 244/255, green: 232/255, blue: 216/255, alpha: 1), // #F4E8D8
+        textPrimary: UIColor(red: 74/255, green: 51/255, blue: 44/255, alpha: 1), // #4A332C
+        textSecondary: UIColor(red: 138/255, green: 106/255, blue: 91/255, alpha: 1), // #8A6A5B
+        textMuted: UIColor(red: 180/255, green: 154/255, blue: 138/255, alpha: 1), // #B49A8A
+        expense: UIColor(red: 217/255, green: 139/255, blue: 125/255, alpha: 1), // #D98B7D
+        expenseLight: UIColor(red: 231/255, green: 163/255, blue: 154/255, alpha: 1), // #E7A39A
+        income: UIColor(red: 167/255, green: 200/255, blue: 162/255, alpha: 1), // #A7C8A2
+        incomeLight: UIColor(red: 200/255, green: 221/255, blue: 190/255, alpha: 1), // #C8DDBE
+        border: UIColor(red: 227/255, green: 210/255, blue: 193/255, alpha: 1), // #E3D2C1
+        accent: UIColor(red: 217/255, green: 168/255, blue: 117/255, alpha: 1), // #D9A875
+        accentSecondary: UIColor(red: 232/255, green: 201/255, blue: 166/255, alpha: 1), // #E8C9A6
+        warning: UIColor(red: 210/255, green: 160/255, blue: 90/255, alpha: 1), // #D2A05A
+        shadow: UIColor(red: 0/255, green: 0/255, blue: 0/255, alpha: 1) // black
+    )
+
+    static let darkPalette = Palette(
+        background: UIColor(red: 43/255, green: 36/255, blue: 30/255, alpha: 1), // #2B241E
+        backgroundLight: UIColor(red: 51/255, green: 42/255, blue: 35/255, alpha: 1), // #332A23
+        backgroundIvory: UIColor(red: 31/255, green: 26/255, blue: 22/255, alpha: 1), // #1F1A16
+        primaryBrown: UIColor(red: 237/255, green: 225/255, blue: 209/255, alpha: 1), // #EDE1D1
+        primaryBrownLight: UIColor(red: 216/255, green: 198/255, blue: 180/255, alpha: 1), // #D8C6B4
+        secondaryBrown: UIColor(red: 201/255, green: 145/255, blue: 82/255, alpha: 1), // #C99152
+        secondaryTan: UIColor(red: 169/255, green: 120/255, blue: 69/255, alpha: 1), // #A97845
+        cardBackground: UIColor(red: 54/255, green: 45/255, blue: 37/255, alpha: 1), // #362D25
+        cardBackgroundAlt: UIColor(red: 64/255, green: 52/255, blue: 43/255, alpha: 1), // #40342B
+        textPrimary: UIColor(red: 244/255, green: 233/255, blue: 218/255, alpha: 1), // #F4E9DA
+        textSecondary: UIColor(red: 203/255, green: 185/255, blue: 167/255, alpha: 1), // #CBB9A7
+        textMuted: UIColor(red: 155/255, green: 135/255, blue: 120/255, alpha: 1), // #9B8778
+        expense: UIColor(red: 199/255, green: 116/255, blue: 90/255, alpha: 1), // #C7745A
+        expenseLight: UIColor(red: 224/255, green: 154/255, blue: 130/255, alpha: 1), // #E09A82
+        income: UIColor(red: 140/255, green: 163/255, blue: 125/255, alpha: 1), // #8CA37D
+        incomeLight: UIColor(red: 178/255, green: 197/255, blue: 166/255, alpha: 1), // #B2C5A6
+        border: UIColor(red: 76/255, green: 64/255, blue: 54/255, alpha: 1), // #4C4036
+        accent: UIColor(red: 201/255, green: 145/255, blue: 82/255, alpha: 1), // #C99152
+        accentSecondary: UIColor(red: 169/255, green: 120/255, blue: 69/255, alpha: 1), // #A97845
+        warning: UIColor(red: 196/255, green: 154/255, blue: 90/255, alpha: 1), // #C49A5A
+        shadow: UIColor(red: 18/255, green: 14/255, blue: 11/255, alpha: 1) // #120E0B
+    )
+
+    // Switch to .dark for dark theme preview; .light restores original appearance
+    static var currentMode: ThemeMode = .dark
+
+    static var activePalette: Palette {
+        switch currentMode {
+        case .light:
+            return lightPalette
+        case .dark:
+            return darkPalette
+        }
+    }
+
+    // MARK: - Colors
     struct Colors {
         // App Backgrounds
-        static let background = UIColor(red: 246/255, green: 239/255, blue: 227/255, alpha: 1) // Warm cream #F6EFE3
-        static let backgroundLight = UIColor(red: 239/255, green: 227/255, blue: 210/255, alpha: 1) // Light beige #EFE3D2
-        static let backgroundIvory = UIColor(red: 250/255, green: 247/255, blue: 240/255, alpha: 1) // Soft ivory #FAF7F0
+        static var background: UIColor { AppTheme.activePalette.background }
+        static var backgroundLight: UIColor { AppTheme.activePalette.backgroundLight }
+        static var backgroundIvory: UIColor { AppTheme.activePalette.backgroundIvory }
 
         // Primary Brown
-        static let primaryBrown = UIColor(red: 107/255, green: 70/255, blue: 56/255, alpha: 1) // Deep mocha #6B4638
-        static let primaryBrownLight = UIColor(red: 122/255, green: 80/255, blue: 66/255, alpha: 1) // Cocoa #7A5042
+        static var primaryBrown: UIColor { AppTheme.activePalette.primaryBrown }
+        static var primaryBrownLight: UIColor { AppTheme.activePalette.primaryBrownLight }
 
         // Secondary Brown
-        static let secondaryBrown = UIColor(red: 217/255, green: 168/255, blue: 117/255, alpha: 1) // Muted caramel #D9A875
-        static let secondaryTan = UIColor(red: 232/255, green: 201/255, blue: 166/255, alpha: 1) // Soft tan #E8C9A6
+        static var secondaryBrown: UIColor { AppTheme.activePalette.secondaryBrown }
+        static var secondaryTan: UIColor { AppTheme.activePalette.secondaryTan }
 
         // Card Backgrounds
-        static let cardBackground = UIColor(red: 255/255, green: 249/255, blue: 241/255, alpha: 1) // Warm off-white #FFF9F1
-        static let cardBackgroundAlt = UIColor(red: 244/255, green: 232/255, blue: 216/255, alpha: 1) // Pale beige #F4E8D8
+        static var cardBackground: UIColor { AppTheme.activePalette.cardBackground }
+        static var cardBackgroundAlt: UIColor { AppTheme.activePalette.cardBackgroundAlt }
 
         // Text Colors
-        static let textPrimary = UIColor(red: 74/255, green: 51/255, blue: 44/255, alpha: 1) // #4A332C
-        static let textSecondary = UIColor(red: 138/255, green: 106/255, blue: 91/255, alpha: 1) // #8A6A5B
-        static let textMuted = UIColor(red: 180/255, green: 154/255, blue: 138/255, alpha: 1) // #B49A8A
+        static var textPrimary: UIColor { AppTheme.activePalette.textPrimary }
+        static var textSecondary: UIColor { AppTheme.activePalette.textSecondary }
+        static var textMuted: UIColor { AppTheme.activePalette.textMuted }
 
         // Expense Accent (Soft coral/clay)
-        static let expense = UIColor(red: 217/255, green: 139/255, blue: 125/255, alpha: 1) // #D98B7D
-        static let expenseLight = UIColor(red: 231/255, green: 163/255, blue: 154/255, alpha: 1) // #E7A39A
+        static var expense: UIColor { AppTheme.activePalette.expense }
+        static var expenseLight: UIColor { AppTheme.activePalette.expenseLight }
 
         // Income Accent (Soft sage green)
-        static let income = UIColor(red: 167/255, green: 200/255, blue: 162/255, alpha: 1) // #A7C8A2
-        static let incomeLight = UIColor(red: 200/255, green: 221/255, blue: 190/255, alpha: 1) // #C8DDBE
+        static var income: UIColor { AppTheme.activePalette.income }
+        static var incomeLight: UIColor { AppTheme.activePalette.incomeLight }
 
         // Border/Divider
-        static let border = UIColor(red: 227/255, green: 210/255, blue: 193/255, alpha: 1) // Soft beige #E3D2C1
+        static var border: UIColor { AppTheme.activePalette.border }
 
         // Accent
-        static let accent = secondaryBrown
-        static let accentSecondary = secondaryTan
+        static var accent: UIColor { AppTheme.activePalette.accent }
+        static var accentSecondary: UIColor { AppTheme.activePalette.accentSecondary }
+
+        // Warning
+        static var warning: UIColor { AppTheme.activePalette.warning }
+
+        // Semantic surfaces (stay dark in both modes for buttons/pills)
+        static var buttonSurface: UIColor {
+            AppTheme.currentMode == .dark ? AppTheme.darkPalette.cardBackgroundAlt : AppTheme.lightPalette.primaryBrown
+        }
+        static var buttonContent: UIColor {
+            AppTheme.currentMode == .dark ? AppTheme.darkPalette.textPrimary : .white
+        }
+        static var pillContent: UIColor {
+            AppTheme.currentMode == .dark ? AppTheme.darkPalette.accent : .white
+        }
     }
 
     // MARK: - Typography
@@ -123,7 +227,7 @@ struct AppTheme {
     // MARK: - Shadows
     struct Shadow {
         static func apply(to view: UIView, opacity: Float = 0.06, radius: CGFloat = 8, offset: CGSize = CGSize(width: 0, height: 2)) {
-            view.layer.shadowColor = UIColor.black.cgColor
+            view.layer.shadowColor = AppTheme.activePalette.shadow.cgColor
             view.layer.shadowOpacity = opacity
             view.layer.shadowOffset = offset
             view.layer.shadowRadius = radius
@@ -154,8 +258,8 @@ struct AppTheme {
 
     // MARK: - Button Styles
     static func applyPrimaryButtonStyle(to button: UIButton) {
-        button.backgroundColor = Colors.primaryBrown
-        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = Colors.buttonSurface
+        button.setTitleColor(Colors.buttonContent, for: .normal)
         button.titleLabel?.font = Fonts.buttonLarge
         button.layer.cornerRadius = CornerRadius.button
         button.contentEdgeInsets = UIEdgeInsets(top: 14, left: 24, bottom: 14, right: 24)

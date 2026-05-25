@@ -472,14 +472,14 @@ class AnalyticsViewController: UIViewController {
 
     private func styleSegmentedControl(_ control: UISegmentedControl) {
         control.backgroundColor = AppTheme.Colors.cardBackgroundAlt
-        control.selectedSegmentTintColor = AppTheme.Colors.primaryBrown
+        control.selectedSegmentTintColor = AppTheme.currentMode == .dark ? AppTheme.Colors.accent : AppTheme.Colors.primaryBrown
 
         let normalAttributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: AppTheme.Colors.textPrimary,
             .font: AppTheme.Fonts.captionMedium
         ]
         let selectedAttributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: UIColor.white,
+            .foregroundColor: AppTheme.currentMode == .dark ? AppTheme.Colors.textPrimary : UIColor.white,
             .font: AppTheme.Fonts.captionMedium
         ]
 
