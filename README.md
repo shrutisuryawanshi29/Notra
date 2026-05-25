@@ -1,19 +1,19 @@
 # Notra
 
-A Notion-powered personal finance tracker for iOS. Notra adapts to your existing Notion workspace structure without requiring you to restructure your databases.
+Notion-powered personal finance tracker for iOS. UIKit + programmatic UI (no storyboards), MVVM.
 
 ## Features
 
-### Phase 1: Setup
-- Notion Integration token authentication
-- Page selection from workspace
-
-### Phase 2: Database Discovery & Mapping
-- Automatic discovery of accessible databases
-- Role assignment (Expense/Income/Ignore)
-- Column mapping (Title/Amount/Category/Date)
-- Category parsing (select, multi-select, relation, text)
-- Session caching for fast access
+- **Notion Integration** — authenticate via Integration Token, select workspace page
+- **Database Discovery** — automatic discovery of accessible databases
+- **Role Assignment** — label databases as Expense / Income / Ignore
+- **Column Mapping** — map Notion columns to Title / Amount / Category / Date
+- **Dashboard** — monthly summary with expense/income totals and per-category breakdowns
+- **Expense / Income Lists** — grouped by date, filterable by Notion column values and date range
+- **Filter System** — dynamic property types (title, rich_text, number, date, select, multi_select, relation, checkbox, status), AND logic, filtered total summary bar
+- **Add Transactions** — insert new expenses/incomes via Notion API; month classification auto-defaults from transaction date
+- **Deep Links** — `notra://add-expense` and `notra://add-income` with optional `title`, `amount`, `date` (yyyy-MM-dd), `notes` params
+- **Category Parsing** — from select, multi-select, relation properties, and text/title
 
 ## Requirements
 
@@ -34,40 +34,10 @@ A Notion-powered personal finance tracker for iOS. Notra adapts to your existing
    - Select "Connect to" → your integration
 
 3. **Build & Run**
-   - Open `Notra.xcodeproj` in Xcode
-   - Select a simulator
-   - Press Cmd+R to build and run
-
-## How It Works
-
-### Token Entry
-Enter your Notion Integration token to authenticate.
-
-### Page Selection
-Select the Notion page containing your finance databases.
-
-### Database Discovery
-Notra discovers all accessible databases in your workspace.
-
-### Role Assignment
-Assign each database as:
-- **Expense** - for expense tracking
-- **Income** - for income tracking
-- **Ignore** - skip this database
-
-### Column Mapping
-Map your Notion columns to internal fields:
-- Title
-- Amount
-- Category
-- Date
-
-### Category Parsing
-Automatically detects categories from:
-- Select properties
-- Multi-select properties
-- Relation properties
-- Text/Title properties
+   ```bash
+   xcodebuild -project Notra.xcodeproj -scheme Notra -configuration Debug \
+     -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+   ```
 
 ## Project Structure
 
@@ -76,25 +46,28 @@ Notra/
 ├── Controllers/       # ViewControllers
 ├── ViewModels/        # Business logic
 ├── Models/            # Data models
-├── Services/         # API & Storage
-├── Helpers/           # Constants
-└── Extensions/        # Extensions
+├── Services/          # API & storage (NotionService, SessionCacheManager, etc.)
+├── Helpers/           # AppConstants + AppTheme (warm cream/brown palette)
+└── Extensions/        # Extensions (empty)
 ```
 
 ## Debug
 
-Print session summary:
 ```swift
 print(ColumnMappingService.shared.getSessionSummary())
+print(SessionCacheManager.shared.getTransactionSummary())
 ```
 
-## Future Phases
+Log prefixes: `[SetupState]`, `[SessionCache]`, `[DataFetcher]`, `[NotionService]`, `[DashboardViewModel]`, `[Analytics]`, `[AddTransactionVM]`, `[AddTransactionVC]`, `[TransactionInsert]`, `[DeepLink]`, `[ExpenseFilter]`, `[IncomeFilter]`
 
-- Dashboard summaries
-- Expense tracking
-- Income tracking
-- Analytics & charts
-- Category-wise spending analysis
+## Filters
+
+Expense and Income lists support column-based filtering. Open the filter panel via the nav bar button to:
+- Set a **date range** (From / To) — auto-dismisses on selection, clearable with × button
+- Add **column filter rows** — pick a property → condition → value
+- Supports all Notion property types (except read-only/computed types)
+- Relation properties load lazily from the target database
+- Summary bar at the bottom shows the filtered total
 
 ## License
 
