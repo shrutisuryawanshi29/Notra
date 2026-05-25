@@ -45,6 +45,101 @@ final class DashboardViewModel {
         return selectedMonthIncomes - selectedMonthExpenses
     }
 
+    // MARK: - Dashboard Section Data
+
+    var selectedMonthExpensesList: [NormalizedTransaction] {
+        allExpenses.filter { MonthMetadata(date: $0.date).monthKey == selectedMonth.monthKey }
+    }
+
+    var selectedMonthIncomesList: [NormalizedTransaction] {
+        allIncomes.filter { MonthMetadata(date: $0.date).monthKey == selectedMonth.monthKey }
+    }
+
+    var recentTransactions: [NormalizedTransaction] {
+        let combined = selectedMonthExpensesList + selectedMonthIncomesList
+        let sorted = combined.sorted { $0.date > $1.date }
+        var seen = Set<String>()
+        return sorted.filter { seen.insert($0.id).inserted }.prefix(5).map { $0 }
+    }
+
+    var largestExpense: NormalizedTransaction? {
+        selectedMonthExpensesList.max { $0.amount < $1.amount }
+    }
+
+    var mostUsedCategory: (name: String, count: Int)? {
+        let categories = selectedMonthExpensesList.compactMap { $0.category }.filter { !$0.isEmpty }
+        guard !categories.isEmpty else { return nil }
+        let counts = Dictionary(grouping: categories, by: { $0 }).mapValues(\.count)
+        return counts.max { $0.value < $1.value }.map { ($0.key, $0.value) }
+    }
+
+    var uncategorizedCount: Int {
+        selectedMonthExpensesList.filter { $0.category == nil || $0.category!.isEmpty }.count
+    }
+
+    var statusInfo: DashboardStatusInfo {
+        if selectedMonthExpenses == 0 && selectedMonthIncomes == 0 {
+            return DashboardStatusInfo(
+                mainText: "No transactions yet for this month",
+                subText: "Add your first expense or income",
+                footerText: "0 expenses · 0 income entries",
+                balance: 0,
+                hasIncome: false,
+                hasExpenses: false
+            )
+        }
+
+        if selectedMonthIncomes == 0 {
+            let exCount = selectedMonthExpensesCount
+            return DashboardStatusInfo(
+                mainText: "No income recorded this month",
+                subText: "Add income to calculate savings rate",
+                footerText: "\(exCount) expense\(exCount == 1 ? "" : "s") · 0 income entries",
+                balance: balance,
+                hasIncome: false,
+                hasExpenses: exCount > 0
+            )
+        }
+
+        let savingsRate = (balance / selectedMonthIncomes) * 100
+        let absRate = abs(savingsRate)
+        let pctText = privateFormatPercent(absRate)
+
+        if balance >= 0 {
+            return DashboardStatusInfo(
+                mainText: "You saved \(privateFormatCurrency(balance)) this month",
+                subText: "Income is higher than expenses by \(pctText)",
+                footerText: "\(selectedMonthExpensesCount) expense\(selectedMonthExpensesCount == 1 ? "" : "s") · \(selectedMonthIncomesCount) income entries",
+                balance: balance,
+                hasIncome: true,
+                hasExpenses: selectedMonthExpensesCount > 0
+            )
+        } else {
+            return DashboardStatusInfo(
+                mainText: "You spent \(privateFormatCurrency(abs(balance))) more than you earned",
+                subText: "Expenses are higher than income by \(pctText)",
+                footerText: "\(selectedMonthExpensesCount) expense\(selectedMonthExpensesCount == 1 ? "" : "s") · \(selectedMonthIncomesCount) income entries",
+                balance: balance,
+                hasIncome: true,
+                hasExpenses: selectedMonthExpensesCount > 0
+            )
+        }
+    }
+
+    private func privateFormatCurrency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        return formatter.string(from: NSNumber(value: abs(value))) ?? "$0.00"
+    }
+
+    private func privateFormatPercent(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .percent
+        formatter.maximumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: value / 100)) ?? "0%"
+    }
+
     var availableMonths: [MonthMetadata] = []
 
     init(token: String) {
@@ -295,4 +390,13 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
         }
         return String(page.id.prefix(8))
     }
+}
+
+struct DashboardStatusInfo {
+    let mainText: String
+    let subText: String
+    let footerText: String
+    let balance: Double
+    let hasIncome: Bool
+    let hasExpenses: Bool
 }

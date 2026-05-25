@@ -36,6 +36,18 @@ class DashboardViewController: UIViewController {
     private let incomeButton = UIButton(type: .system)
     private let analyticsButton = UIButton(type: .system)
 
+    private let statusCardView = StatusCardView()
+    private let activityCardView = ActivityCardView()
+    private let quickChecksCardView = QuickChecksCardView()
+    private let actionsTitleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Actions"
+        label.font = AppTheme.Fonts.captionBold
+        label.textColor = AppTheme.Colors.textSecondary
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
     private let loadingContainerView: UIView = {
         let view = UIView()
         view.backgroundColor = AppTheme.Colors.background
@@ -108,7 +120,10 @@ class DashboardViewController: UIViewController {
         setupHeader()
         setupMonthSelector()
         setupSummaryCards()
-        setupButtons()
+        setupStatusCard()
+        setupActivityCard()
+        setupQuickChecksCard()
+        setupActionsSection()
         setupLoadingView()
         setupEmptyState()
         setupFAB()
@@ -207,12 +222,15 @@ class DashboardViewController: UIViewController {
         ])
     }
 
-    private func setupButtons() {
-        let buttonStackView = UIStackView()
-        buttonStackView.axis = .vertical
-        buttonStackView.spacing = 12
-        buttonStackView.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(buttonStackView)
+    private func setupActionsSection() {
+        contentView.addSubview(actionsTitleLabel)
+        contentView.addSubview(expenseButton)
+        contentView.addSubview(incomeButton)
+        contentView.addSubview(analyticsButton)
+
+        expenseButton.translatesAutoresizingMaskIntoConstraints = false
+        incomeButton.translatesAutoresizingMaskIntoConstraints = false
+        analyticsButton.translatesAutoresizingMaskIntoConstraints = false
 
         configureActionButton(expenseButton, title: "View Expenses", icon: "creditcard.fill", color: AppTheme.Colors.expense)
         configureActionButton(incomeButton, title: "View Income", icon: "banknote.fill", color: AppTheme.Colors.income)
@@ -222,20 +240,59 @@ class DashboardViewController: UIViewController {
         incomeButton.addTarget(self, action: #selector(viewIncomeTapped), for: .touchUpInside)
         analyticsButton.addTarget(self, action: #selector(analyticsTapped), for: .touchUpInside)
 
-        buttonStackView.addArrangedSubview(expenseButton)
-        buttonStackView.addArrangedSubview(incomeButton)
-        buttonStackView.addArrangedSubview(analyticsButton)
+        NSLayoutConstraint.activate([
+            actionsTitleLabel.topAnchor.constraint(equalTo: quickChecksCardView.bottomAnchor, constant: 28),
+            actionsTitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+
+            expenseButton.topAnchor.constraint(equalTo: actionsTitleLabel.bottomAnchor, constant: 12),
+            expenseButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            expenseButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            expenseButton.heightAnchor.constraint(equalToConstant: 56),
+
+            incomeButton.topAnchor.constraint(equalTo: expenseButton.bottomAnchor, constant: 12),
+            incomeButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            incomeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            incomeButton.heightAnchor.constraint(equalToConstant: 56),
+
+            analyticsButton.topAnchor.constraint(equalTo: incomeButton.bottomAnchor, constant: 12),
+            analyticsButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            analyticsButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            analyticsButton.heightAnchor.constraint(equalToConstant: 56),
+            analyticsButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
+        ])
+    }
+
+    private func setupStatusCard() {
+        statusCardView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(statusCardView)
 
         NSLayoutConstraint.activate([
-            buttonStackView.topAnchor.constraint(equalTo: summaryStackView.bottomAnchor, constant: 32),
-            buttonStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            buttonStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            buttonStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
+            statusCardView.topAnchor.constraint(equalTo: summaryStackView.bottomAnchor, constant: 24),
+            statusCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            statusCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
         ])
+    }
 
-        [expenseButton, incomeButton, analyticsButton].forEach { button in
-            button.heightAnchor.constraint(equalToConstant: 56).isActive = true
-        }
+    private func setupActivityCard() {
+        activityCardView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(activityCardView)
+
+        NSLayoutConstraint.activate([
+            activityCardView.topAnchor.constraint(equalTo: statusCardView.bottomAnchor, constant: 24),
+            activityCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            activityCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
+        ])
+    }
+
+    private func setupQuickChecksCard() {
+        quickChecksCardView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(quickChecksCardView)
+
+        NSLayoutConstraint.activate([
+            quickChecksCardView.topAnchor.constraint(equalTo: activityCardView.bottomAnchor, constant: 24),
+            quickChecksCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            quickChecksCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
+        ])
     }
 
     private func configureActionButton(_ button: UIButton, title: String, icon: String, color: UIColor) {
@@ -419,6 +476,27 @@ class DashboardViewController: UIViewController {
             timeFormatter.timeStyle = .short
             lastSyncLabel.text = "Last synced at \(timeFormatter.string(from: lastSync))"
         }
+
+        updateStatusCard()
+        updateActivityCard()
+        updateQuickChecksCard()
+    }
+
+    private func updateStatusCard() {
+        let info = viewModel.statusInfo
+        statusCardView.configure(with: info)
+    }
+
+    private func updateActivityCard() {
+        activityCardView.configure(with: viewModel.recentTransactions)
+    }
+
+    private func updateQuickChecksCard() {
+        quickChecksCardView.configure(
+            largestExpense: viewModel.largestExpense,
+            mostUsedCategory: viewModel.mostUsedCategory,
+            uncategorizedCount: viewModel.uncategorizedCount
+        )
     }
 }
 
@@ -566,5 +644,446 @@ class SummaryCardView: UIView {
 
     func setSubtitle(_ subtitle: String) {
         subtitleLabel.text = subtitle
+    }
+}
+
+// MARK: - This Month Status Card
+
+class StatusCardView: UIView {
+    private let iconContainer = UIView()
+    private let iconImageView = UIImageView()
+    private let titleLabel = UILabel()
+    private let mainTextLabel = UILabel()
+    private let subTextLabel = UILabel()
+    private let footerLabel = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupView()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupView() {
+        AppTheme.applyCardStyle(to: self)
+
+        iconContainer.layer.cornerRadius = 18
+        iconContainer.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(iconContainer)
+
+        iconImageView.image = UIImage(systemName: "chart.pie.fill")
+        iconImageView.tintColor = .white
+        iconImageView.contentMode = .scaleAspectFit
+        iconImageView.translatesAutoresizingMaskIntoConstraints = false
+        iconContainer.addSubview(iconImageView)
+
+        titleLabel.text = "This Month Status"
+        titleLabel.font = AppTheme.Fonts.captionBold
+        titleLabel.textColor = AppTheme.Colors.textSecondary
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        mainTextLabel.font = AppTheme.Fonts.headingMedium
+        mainTextLabel.textColor = AppTheme.Colors.textPrimary
+        mainTextLabel.numberOfLines = 0
+        mainTextLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(mainTextLabel)
+
+        subTextLabel.font = AppTheme.Fonts.body
+        subTextLabel.textColor = AppTheme.Colors.textMuted
+        subTextLabel.numberOfLines = 0
+        subTextLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(subTextLabel)
+
+        footerLabel.font = AppTheme.Fonts.smallMedium
+        footerLabel.textColor = AppTheme.Colors.textMuted
+        footerLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(footerLabel)
+
+        NSLayoutConstraint.activate([
+            iconContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            iconContainer.topAnchor.constraint(equalTo: topAnchor, constant: 16),
+            iconContainer.widthAnchor.constraint(equalToConstant: 36),
+            iconContainer.heightAnchor.constraint(equalToConstant: 36),
+
+            iconImageView.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
+            iconImageView.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
+            iconImageView.widthAnchor.constraint(equalToConstant: 18),
+            iconImageView.heightAnchor.constraint(equalToConstant: 18),
+
+            titleLabel.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 12),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            mainTextLabel.topAnchor.constraint(equalTo: iconContainer.bottomAnchor, constant: 12),
+            mainTextLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            mainTextLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            subTextLabel.topAnchor.constraint(equalTo: mainTextLabel.bottomAnchor, constant: 4),
+            subTextLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            subTextLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            footerLabel.topAnchor.constraint(equalTo: subTextLabel.bottomAnchor, constant: 12),
+            footerLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            footerLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            footerLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16)
+        ])
+    }
+
+    func configure(with info: DashboardStatusInfo) {
+        titleLabel.text = "This Month Status"
+        mainTextLabel.text = info.mainText
+        subTextLabel.text = info.subText
+        footerLabel.text = info.footerText
+
+        if info.balance > 0 && info.hasIncome {
+            mainTextLabel.textColor = AppTheme.Colors.income
+            iconContainer.backgroundColor = AppTheme.Colors.income
+        } else if info.balance < 0 && info.hasIncome {
+            mainTextLabel.textColor = AppTheme.Colors.expense
+            iconContainer.backgroundColor = AppTheme.Colors.expense
+        } else {
+            mainTextLabel.textColor = AppTheme.Colors.textPrimary
+            iconContainer.backgroundColor = AppTheme.Colors.accent
+        }
+    }
+}
+
+// MARK: - Recent Activity Card
+
+class ActivityCardView: UIView {
+    private let titleLabel = UILabel()
+    private let stackView = UIStackView()
+    private let emptyLabel = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupView()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupView() {
+        AppTheme.applyCardStyle(to: self)
+
+        titleLabel.text = "Recent Activity"
+        titleLabel.font = AppTheme.Fonts.captionBold
+        titleLabel.textColor = AppTheme.Colors.textSecondary
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        stackView.axis = .vertical
+        stackView.spacing = 0
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stackView)
+
+        emptyLabel.text = "No activity this month yet.\nAdd an expense or income to get started."
+        emptyLabel.font = AppTheme.Fonts.body
+        emptyLabel.textColor = AppTheme.Colors.textMuted
+        emptyLabel.numberOfLines = 0
+        emptyLabel.textAlignment = .center
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        emptyLabel.isHidden = true
+        addSubview(emptyLabel)
+
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            stackView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            stackView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+
+            emptyLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 20),
+            emptyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            emptyLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            emptyLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20)
+        ])
+    }
+
+    func configure(with transactions: [NormalizedTransaction]) {
+        stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        if transactions.isEmpty {
+            emptyLabel.isHidden = false
+            stackView.isHidden = true
+            return
+        }
+
+        emptyLabel.isHidden = true
+        stackView.isHidden = false
+
+        for (index, transaction) in transactions.enumerated() {
+            let row = ActivityRowView(transaction: transaction)
+            stackView.addArrangedSubview(row)
+
+            if index < transactions.count - 1 {
+                let separator = UIView()
+                separator.backgroundColor = AppTheme.Colors.border
+                separator.translatesAutoresizingMaskIntoConstraints = false
+                separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
+                stackView.addArrangedSubview(separator)
+            }
+        }
+    }
+}
+
+class ActivityRowView: UIView {
+    private let dotView = UIView()
+    private let titleLabel = UILabel()
+    private let categoryDateLabel = UILabel()
+    private let amountLabel = UILabel()
+
+    init(transaction: NormalizedTransaction) {
+        super.init(frame: .zero)
+        setupView()
+        configure(with: transaction)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupView() {
+        dotView.layer.cornerRadius = 4
+        dotView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(dotView)
+
+        titleLabel.font = AppTheme.Fonts.bodyMedium
+        titleLabel.textColor = AppTheme.Colors.textPrimary
+        titleLabel.numberOfLines = 1
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        categoryDateLabel.font = AppTheme.Fonts.small
+        categoryDateLabel.textColor = AppTheme.Colors.textMuted
+        categoryDateLabel.numberOfLines = 1
+        categoryDateLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(categoryDateLabel)
+
+        amountLabel.font = AppTheme.Fonts.bodyBold
+        amountLabel.textAlignment = .right
+        amountLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        amountLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(amountLabel)
+
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+
+            dotView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            dotView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            dotView.widthAnchor.constraint(equalToConstant: 8),
+            dotView.heightAnchor.constraint(equalToConstant: 8),
+
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            titleLabel.leadingAnchor.constraint(equalTo: dotView.trailingAnchor, constant: 10),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: amountLabel.leadingAnchor, constant: -8),
+
+            categoryDateLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1),
+            categoryDateLabel.leadingAnchor.constraint(equalTo: dotView.trailingAnchor, constant: 10),
+            categoryDateLabel.trailingAnchor.constraint(lessThanOrEqualTo: amountLabel.leadingAnchor, constant: -8),
+            categoryDateLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+
+            amountLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            amountLabel.trailingAnchor.constraint(equalTo: trailingAnchor)
+        ])
+    }
+
+    private func configure(with transaction: NormalizedTransaction) {
+        titleLabel.text = transaction.title
+
+        let category = transaction.category ?? "Uncategorized"
+        let dateText = formatRelativeDate(transaction.date)
+        categoryDateLabel.text = "\(category) · \(dateText)"
+
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        let formattedAmt = formatter.string(from: NSNumber(value: transaction.amount)) ?? "$0.00"
+
+        if transaction.databaseRole == .expense {
+            dotView.backgroundColor = AppTheme.Colors.expense
+            amountLabel.textColor = AppTheme.Colors.expense
+            amountLabel.text = "-\(formattedAmt)"
+        } else {
+            dotView.backgroundColor = AppTheme.Colors.income
+            amountLabel.textColor = AppTheme.Colors.income
+            amountLabel.text = "+\(formattedAmt)"
+        }
+    }
+
+    private func formatRelativeDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return "Today"
+        } else if calendar.isDateInYesterday(date) {
+            return "Yesterday"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            return formatter.string(from: date)
+        }
+    }
+}
+
+// MARK: - Quick Checks Card
+
+class QuickChecksCardView: UIView {
+    private let titleLabel = UILabel()
+    private let stackView = UIStackView()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupView()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupView() {
+        AppTheme.applyCardStyle(to: self)
+
+        titleLabel.text = "Quick Checks"
+        titleLabel.font = AppTheme.Fonts.captionBold
+        titleLabel.textColor = AppTheme.Colors.textSecondary
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        stackView.axis = .vertical
+        stackView.spacing = 10
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stackView)
+
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            stackView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 12),
+            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            stackView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16)
+        ])
+    }
+
+    func configure(largestExpense: NormalizedTransaction?,
+                   mostUsedCategory: (name: String, count: Int)?,
+                   uncategorizedCount: Int) {
+        stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        if let expense = largestExpense {
+            let row = QuickCheckRowView(
+                icon: "arrow.up.circle.fill",
+                iconColor: AppTheme.Colors.expense,
+                label: "Largest expense",
+                value: "\(expense.title) · \(expense.formattedAmount)"
+            )
+            stackView.addArrangedSubview(row)
+        } else {
+            let row = QuickCheckRowView(
+                icon: "arrow.up.circle.fill",
+                iconColor: AppTheme.Colors.textMuted,
+                label: "Largest expense",
+                value: "No expenses yet"
+            )
+            stackView.addArrangedSubview(row)
+        }
+
+        if let category = mostUsedCategory {
+            let row = QuickCheckRowView(
+                icon: "tag.fill",
+                iconColor: AppTheme.Colors.accent,
+                label: "Most used category",
+                value: "\(category.name) · \(category.count) transactions"
+            )
+            stackView.addArrangedSubview(row)
+        } else {
+            let row = QuickCheckRowView(
+                icon: "tag.fill",
+                iconColor: AppTheme.Colors.textMuted,
+                label: "Most used category",
+                value: "No category data"
+            )
+            stackView.addArrangedSubview(row)
+        }
+
+        if uncategorizedCount > 0 {
+            let row = QuickCheckRowView(
+                icon: "exclamationmark.triangle.fill",
+                iconColor: AppTheme.Colors.expense,
+                label: "Needs attention",
+                value: "\(uncategorizedCount) uncategorized"
+            )
+            stackView.addArrangedSubview(row)
+        } else {
+            let row = QuickCheckRowView(
+                icon: "checkmark.circle.fill",
+                iconColor: AppTheme.Colors.income,
+                label: "Categorization",
+                value: "Everything categorized"
+            )
+            stackView.addArrangedSubview(row)
+        }
+    }
+}
+
+class QuickCheckRowView: UIView {
+    private let iconImageView = UIImageView()
+    private let labelLabel = UILabel()
+    private let valueLabel = UILabel()
+
+    init(icon: String, iconColor: UIColor, label: String, value: String) {
+        super.init(frame: .zero)
+        setupView()
+        iconImageView.image = UIImage(systemName: icon)
+        iconImageView.tintColor = iconColor
+        labelLabel.text = label
+        valueLabel.text = value
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupView() {
+        iconImageView.contentMode = .scaleAspectFit
+        iconImageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(iconImageView)
+
+        labelLabel.font = AppTheme.Fonts.bodyMedium
+        labelLabel.textColor = AppTheme.Colors.textPrimary
+        labelLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(labelLabel)
+
+        valueLabel.font = AppTheme.Fonts.smallMedium
+        valueLabel.textColor = AppTheme.Colors.textMuted
+        valueLabel.textAlignment = .right
+        valueLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        valueLabel.numberOfLines = 1
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(valueLabel)
+
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 24),
+
+            iconImageView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            iconImageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconImageView.widthAnchor.constraint(equalToConstant: 18),
+            iconImageView.heightAnchor.constraint(equalToConstant: 18),
+
+            labelLabel.leadingAnchor.constraint(equalTo: iconImageView.trailingAnchor, constant: 10),
+            labelLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            labelLabel.trailingAnchor.constraint(lessThanOrEqualTo: valueLabel.leadingAnchor, constant: -8),
+
+            valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
+            valueLabel.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
     }
 }
