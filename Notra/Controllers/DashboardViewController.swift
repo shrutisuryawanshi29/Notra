@@ -37,6 +37,7 @@ class DashboardViewController: UIViewController {
     private let analyticsButton = UIButton(type: .system)
 
     private let statusCardView = StatusCardView()
+    private let budgetCardView = BudgetCardView()
     private let activityCardView = ActivityCardView()
     private let quickChecksCardView = QuickChecksCardView()
     private let actionsTitleLabel: UILabel = {
@@ -121,6 +122,7 @@ class DashboardViewController: UIViewController {
         setupMonthSelector()
         setupSummaryCards()
         setupStatusCard()
+        setupBudgetCard()
         setupActivityCard()
         setupQuickChecksCard()
         setupActionsSection()
@@ -273,12 +275,23 @@ class DashboardViewController: UIViewController {
         ])
     }
 
+    private func setupBudgetCard() {
+        budgetCardView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(budgetCardView)
+
+        NSLayoutConstraint.activate([
+            budgetCardView.topAnchor.constraint(equalTo: statusCardView.bottomAnchor, constant: 24),
+            budgetCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            budgetCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
+        ])
+    }
+
     private func setupActivityCard() {
         activityCardView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(activityCardView)
 
         NSLayoutConstraint.activate([
-            activityCardView.topAnchor.constraint(equalTo: statusCardView.bottomAnchor, constant: 24),
+            activityCardView.topAnchor.constraint(equalTo: budgetCardView.bottomAnchor, constant: 24),
             activityCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             activityCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
         ])
@@ -478,6 +491,7 @@ class DashboardViewController: UIViewController {
         }
 
         updateStatusCard()
+        updateBudgetCard()
         updateActivityCard()
         updateQuickChecksCard()
     }
@@ -485,6 +499,10 @@ class DashboardViewController: UIViewController {
     private func updateStatusCard() {
         let info = viewModel.statusInfo
         statusCardView.configure(with: info)
+    }
+
+    private func updateBudgetCard() {
+        budgetCardView.configure(with: viewModel.budgetCategories, summary: viewModel.budgetSummary)
     }
 
     private func updateActivityCard() {
@@ -644,6 +662,286 @@ class SummaryCardView: UIView {
 
     func setSubtitle(_ subtitle: String) {
         subtitleLabel.text = subtitle
+    }
+}
+
+// MARK: - Monthly Budget Card
+
+class BudgetCardView: UIView {
+    private let titleLabel = UILabel()
+    private let summaryLabel = UILabel()
+    private let stackView = UIStackView()
+    private let emptyLabel = UILabel()
+    private let showAllButton = UIButton(type: .system)
+
+    private var allItems: [BudgetCategoryItem] = []
+    private var isShowingAll = false
+    private let maxVisibleItems = 6
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupView()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupView() {
+        AppTheme.applyCardStyle(to: self)
+
+        titleLabel.text = "Monthly Budget"
+        titleLabel.font = AppTheme.Fonts.captionBold
+        titleLabel.textColor = AppTheme.Colors.textSecondary
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        summaryLabel.font = AppTheme.Fonts.smallMedium
+        summaryLabel.textColor = AppTheme.Colors.textMuted
+        summaryLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(summaryLabel)
+
+        stackView.axis = .vertical
+        stackView.spacing = 8
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stackView)
+
+        emptyLabel.text = "Budget details unavailable"
+        emptyLabel.font = AppTheme.Fonts.body
+        emptyLabel.textColor = AppTheme.Colors.textMuted
+        emptyLabel.numberOfLines = 0
+        emptyLabel.textAlignment = .center
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        emptyLabel.isHidden = true
+        addSubview(emptyLabel)
+
+        showAllButton.titleLabel?.font = AppTheme.Fonts.buttonSmall
+        showAllButton.setTitleColor(AppTheme.Colors.primaryBrown, for: .normal)
+        showAllButton.addTarget(self, action: #selector(toggleShowAll), for: .touchUpInside)
+        showAllButton.translatesAutoresizingMaskIntoConstraints = false
+        showAllButton.isHidden = true
+        addSubview(showAllButton)
+
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            summaryLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            summaryLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            summaryLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            stackView.topAnchor.constraint(equalTo: summaryLabel.bottomAnchor, constant: 12),
+            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+
+            showAllButton.topAnchor.constraint(equalTo: stackView.bottomAnchor, constant: 8),
+            showAllButton.centerXAnchor.constraint(equalTo: centerXAnchor),
+            showAllButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+
+            emptyLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 16),
+            emptyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            emptyLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            emptyLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16)
+        ])
+    }
+
+    func configure(with items: [BudgetCategoryItem], summary: BudgetUtilizationSummary?) {
+        allItems = items
+        stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        if items.isEmpty {
+            emptyLabel.isHidden = false
+            stackView.isHidden = true
+            showAllButton.isHidden = true
+            summaryLabel.text = ""
+            return
+        }
+
+        emptyLabel.isHidden = true
+        stackView.isHidden = false
+
+        if let s = summary {
+            var parts: [String] = []
+            if s.overBudgetCount > 0 { parts.append("\(s.overBudgetCount) over budget") }
+            if s.warningCount > 0 { parts.append("\(s.warningCount) close") }
+            if s.onTrackCount > 0 { parts.append("\(s.onTrackCount) on track") }
+            if !parts.isEmpty {
+                summaryLabel.text = parts.joined(separator: " · ")
+            } else {
+                summaryLabel.text = ""
+            }
+        } else {
+            summaryLabel.text = ""
+        }
+
+        let shouldTruncate = items.count > maxVisibleItems
+        let displayedItems = shouldTruncate && !isShowingAll ? Array(items.prefix(maxVisibleItems)) : items
+
+        for item in displayedItems {
+            let row = BudgetCategoryRowView(item: item)
+            stackView.addArrangedSubview(row)
+        }
+
+        if shouldTruncate {
+            showAllButton.isHidden = false
+            showAllButton.setTitle(isShowingAll ? "Show less" : "Show all (\(items.count) categories)", for: .normal)
+        } else {
+            showAllButton.isHidden = true
+        }
+    }
+
+    @objc private func toggleShowAll() {
+        isShowingAll.toggle()
+        configure(with: allItems, summary: nil)
+    }
+}
+
+class BudgetCategoryRowView: UIView {
+    private let iconLabel = UILabel()
+    private let nameLabel = UILabel()
+    private let spentLabel = UILabel()
+    private let percentLabel = UILabel()
+    private let progressTrackView = UIView()
+    private let progressFillView = UIView()
+    private let noBudgetNote = UILabel()
+
+    private let formatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        return f
+    }()
+
+    init(item: BudgetCategoryItem) {
+        super.init(frame: .zero)
+        setupView()
+        configure(with: item)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupView() {
+        iconLabel.font = UIFont.systemFont(ofSize: 16)
+        iconLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(iconLabel)
+
+        nameLabel.font = AppTheme.Fonts.bodyMedium
+        nameLabel.textColor = AppTheme.Colors.textPrimary
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(nameLabel)
+
+        percentLabel.font = AppTheme.Fonts.bodyBold
+        percentLabel.textAlignment = .right
+        percentLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        percentLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(percentLabel)
+
+        spentLabel.font = AppTheme.Fonts.small
+        spentLabel.textColor = AppTheme.Colors.textMuted
+        spentLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(spentLabel)
+
+        noBudgetNote.font = AppTheme.Fonts.small
+        noBudgetNote.textColor = AppTheme.Colors.textMuted
+        noBudgetNote.translatesAutoresizingMaskIntoConstraints = false
+        noBudgetNote.isHidden = true
+        addSubview(noBudgetNote)
+
+        progressTrackView.backgroundColor = AppTheme.Colors.border.withAlphaComponent(0.4)
+        progressTrackView.layer.cornerRadius = 4
+        progressTrackView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(progressTrackView)
+
+        progressFillView.layer.cornerRadius = 4
+        progressFillView.translatesAutoresizingMaskIntoConstraints = false
+        progressTrackView.addSubview(progressFillView)
+
+        NSLayoutConstraint.activate([
+            iconLabel.leadingAnchor.constraint(equalTo: leadingAnchor),
+            iconLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
+            iconLabel.widthAnchor.constraint(equalToConstant: 20),
+
+            nameLabel.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            nameLabel.leadingAnchor.constraint(equalTo: iconLabel.trailingAnchor, constant: 4),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: percentLabel.leadingAnchor, constant: -8),
+
+            percentLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
+            percentLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            spentLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
+            spentLabel.leadingAnchor.constraint(equalTo: iconLabel.trailingAnchor, constant: 4),
+
+            noBudgetNote.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
+            noBudgetNote.leadingAnchor.constraint(equalTo: iconLabel.trailingAnchor, constant: 4),
+            noBudgetNote.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            progressTrackView.topAnchor.constraint(equalTo: spentLabel.bottomAnchor, constant: 6),
+            progressTrackView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            progressTrackView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            progressTrackView.heightAnchor.constraint(equalToConstant: 8),
+            progressTrackView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+
+            progressFillView.leadingAnchor.constraint(equalTo: progressTrackView.leadingAnchor),
+            progressFillView.topAnchor.constraint(equalTo: progressTrackView.topAnchor),
+            progressFillView.bottomAnchor.constraint(equalTo: progressTrackView.bottomAnchor),
+            progressFillView.widthAnchor.constraint(equalTo: progressTrackView.widthAnchor, multiplier: 0)
+        ])
+    }
+
+    private func configure(with item: BudgetCategoryItem) {
+        if let emoji = item.iconEmoji {
+            iconLabel.text = emoji
+        } else {
+            iconLabel.text = "📦"
+        }
+
+        nameLabel.text = item.categoryName
+
+        let spentStr = formatter.string(from: NSNumber(value: item.spent)) ?? "$0.00"
+
+        if let budget = item.budget, budget > 0 {
+            let budgetStr = formatter.string(from: NSNumber(value: budget)) ?? "$0.00"
+            spentLabel.text = "\(spentStr) of \(budgetStr)"
+            noBudgetNote.isHidden = true
+
+            let pct = item.utilizationPercent ?? 0
+            percentLabel.text = String(format: "%.0f%%", pct)
+
+            let progress: CGFloat = CGFloat(min(item.spent / budget, 1.0))
+            progressFillView.isHidden = false
+
+            let statusColor: UIColor
+            switch item.status {
+            case .overBudget:
+                statusColor = AppTheme.Colors.expense
+            case .warning:
+                statusColor = UIColor(red: 210/255, green: 160/255, blue: 90/255, alpha: 1) // warm amber
+            case .safe:
+                statusColor = AppTheme.Colors.income
+            case .noBudget:
+                statusColor = AppTheme.Colors.textMuted
+            }
+            percentLabel.textColor = statusColor
+            progressFillView.backgroundColor = statusColor
+
+            progressFillView.constraints.forEach { constraint in
+                if constraint.firstAttribute == .width {
+                    constraint.isActive = false
+                }
+            }
+            progressFillView.widthAnchor.constraint(equalTo: progressTrackView.widthAnchor, multiplier: progress).isActive = true
+        } else {
+            spentLabel.text = "\(spentStr) spent"
+            percentLabel.text = ""
+            noBudgetNote.isHidden = false
+            noBudgetNote.text = "No monthly budget set"
+            noBudgetNote.textColor = AppTheme.Colors.textMuted
+            progressFillView.isHidden = true
+            percentLabel.textColor = AppTheme.Colors.textMuted
+        }
     }
 }
 

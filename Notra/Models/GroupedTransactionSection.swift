@@ -48,3 +48,52 @@ struct MonthMetadata: Codable {
         self.monthKey = String(format: "%04d-%02d", year, month)
     }
 }
+
+// MARK: - Budget Utilization
+
+enum BudgetStatus {
+    case noBudget
+    case safe
+    case warning
+    case overBudget
+}
+
+extension BudgetStatus {
+    var sortOrder: Int {
+        switch self {
+        case .overBudget: return 0
+        case .warning: return 1
+        case .safe: return 2
+        case .noBudget: return 3
+        }
+    }
+}
+
+struct BudgetCategoryItem {
+    let categoryPageId: String
+    let categoryName: String
+    let iconEmoji: String?
+    let spent: Double
+    let budget: Double?
+
+    var utilizationPercent: Double? {
+        guard let budget = budget, budget > 0 else { return nil }
+        return (spent / budget) * 100
+    }
+
+    var status: BudgetStatus {
+        guard let budget = budget, budget > 0 else { return .noBudget }
+        let pct = spent / budget
+        if pct >= 1.0 { return .overBudget }
+        if pct >= 0.8 { return .warning }
+        return .safe
+    }
+}
+
+struct BudgetUtilizationSummary {
+    let totalBudget: Double
+    let totalSpent: Double
+    let overBudgetCount: Int
+    let warningCount: Int
+    let onTrackCount: Int
+}

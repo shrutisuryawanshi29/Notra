@@ -25,6 +25,9 @@ final class DashboardViewModel {
     private var incomeMappings: [DatabaseMappingData] = []
 
     private var relationLookupMap: [String: [String: String]] = [:]
+    private var categoryPagesByDataSource: [String: [NotionPage]] = [:]
+    private(set) var budgetCategories: [BudgetCategoryItem] = []
+    private(set) var budgetSummary: BudgetUtilizationSummary?
 
     private var allExpenses: [NormalizedTransaction] = []
     private var allIncomes: [NormalizedTransaction] = []
@@ -32,6 +35,7 @@ final class DashboardViewModel {
     var selectedMonth: MonthMetadata {
         didSet {
             updateSelectedMonthTotals()
+            computeBudgetUtilization()
             delegate?.didUpdateMonthSelection()
         }
     }
@@ -75,6 +79,15 @@ final class DashboardViewModel {
 
     var uncategorizedCount: Int {
         selectedMonthExpensesList.filter { $0.category == nil || $0.category!.isEmpty }.count
+    }
+
+    var hasBudgetData: Bool {
+        !budgetCategories.isEmpty
+    }
+
+    var hasBudgetSetup: Bool {
+        let expenseMappings = columnMappingService.loadDatabaseMappings().values.filter { $0.role == .expense }
+        return expenseMappings.contains { $0.columnMapping?.categoryRelationDataSourceId != nil }
     }
 
     var statusInfo: DashboardStatusInfo {
@@ -250,6 +263,7 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
 
                     switch result {
                     case .success(let pages):
+                        self?.categoryPagesByDataSource[dsId] = pages
                         var lookup: [String: String] = [:]
                         for page in pages {
                             let extractedTitle = self?.extractTitle(from: page) ?? String(page.id.prefix(8))
@@ -347,6 +361,7 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
         updateAvailableMonths()
         SessionCacheManager.shared.setFetchedMonths(availableMonths)
         updateSelectedMonthTotals()
+        computeBudgetUtilization()
 
         selectedMonth = availableMonths.first ?? MonthMetadata(date: Date())
 
@@ -371,6 +386,186 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
             return formatter.string(from: date)
         }
         return month.monthKey
+    }
+
+    // MARK: - Budget Utilization
+
+    private func computeBudgetUtilization() {
+        let expenseMappings = columnMappingService.loadDatabaseMappings().values.filter { $0.role == .expense }
+
+        guard !expenseMappings.isEmpty else {
+            budgetCategories = []
+            budgetSummary = nil
+            return
+        }
+
+        var dataSourceIds: [String] = []
+        var categoryPageById: [String: NotionPage] = [:]
+        var pageIdToDbId: [String: String] = [:]
+
+        for mapping in expenseMappings {
+            guard let dsId = mapping.columnMapping?.categoryRelationDataSourceId else { continue }
+            if !dataSourceIds.contains(dsId) {
+                dataSourceIds.append(dsId)
+            }
+            if let pages = categoryPagesByDataSource[dsId] {
+                for page in pages {
+                    categoryPageById[page.id] = page
+                    pageIdToDbId[page.id] = dsId
+                }
+            }
+        }
+
+        guard !dataSourceIds.isEmpty else {
+            budgetCategories = []
+            budgetSummary = nil
+            return
+        }
+
+        var pageBudget: [String: Double] = [:]
+        for (pageId, page) in categoryPageById {
+            if let budget = detectBudgetProperty(from: page) ?? detectBudgetFromFormulaOrRollup(from: page) {
+                pageBudget[pageId] = budget
+            }
+        }
+
+        let selectedExpenses = selectedMonthExpensesList
+        var spentByCategoryId: [String: Double] = [:]
+
+        for expense in selectedExpenses {
+            guard let rawProps = expense.rawProperties else { continue }
+
+            for mapping in expenseMappings {
+                guard let categoryCol = mapping.columnMapping?.categoryColumn,
+                      let dsId = mapping.columnMapping?.categoryRelationDataSourceId,
+                      !dsId.isEmpty else { continue }
+
+                if let prop = rawProps[categoryCol], let relations = prop.relation {
+                    for relation in relations {
+                        if let catId = relation.id {
+                            spentByCategoryId[catId, default: 0] += expense.amount
+                        }
+                    }
+                }
+            }
+        }
+
+        var items: [BudgetCategoryItem] = []
+
+        for (pageId, page) in categoryPageById {
+            let name = page.title
+            let iconEmoji = page.icon?.emoji
+            let spent = spentByCategoryId[pageId] ?? 0
+            let budget = pageBudget[pageId]
+
+            let item = BudgetCategoryItem(
+                categoryPageId: pageId,
+                categoryName: name,
+                iconEmoji: iconEmoji,
+                spent: spent,
+                budget: budget
+            )
+            items.append(item)
+        }
+
+        for (catId, spent) in spentByCategoryId {
+            if !categoryPageById.keys.contains(catId) {
+                let item = BudgetCategoryItem(
+                    categoryPageId: catId,
+                    categoryName: "Unknown",
+                    iconEmoji: nil,
+                    spent: spent,
+                    budget: nil
+                )
+                items.append(item)
+            }
+        }
+
+        items.sort { a, b in
+            let aOrder = a.status.sortOrder
+            let bOrder = b.status.sortOrder
+            if aOrder != bOrder { return aOrder < bOrder }
+
+            let aPct = a.utilizationPercent ?? -1
+            let bPct = b.utilizationPercent ?? -1
+            if aPct != bPct { return aPct > bPct }
+
+            if a.spent != b.spent { return a.spent > b.spent }
+            return a.categoryName < b.categoryName
+        }
+
+        budgetCategories = items
+
+        let budgetedItems = items.filter { $0.budget != nil && $0.budget! > 0 }
+        let totalBudget = budgetedItems.reduce(0) { $0 + ($1.budget ?? 0) }
+        let totalSpent = budgetedItems.reduce(0) { $0 + $1.spent }
+        let overBudgetCount = items.filter { $0.status == .overBudget }.count
+        let warningCount = items.filter { $0.status == .warning }.count
+        let onTrackCount = items.filter { $0.status == .safe }.count
+
+        budgetSummary = BudgetUtilizationSummary(
+            totalBudget: totalBudget,
+            totalSpent: totalSpent,
+            overBudgetCount: overBudgetCount,
+            warningCount: warningCount,
+            onTrackCount: onTrackCount
+        )
+    }
+
+    private func detectBudgetProperty(from page: NotionPage) -> Double? {
+        guard let props = page.properties else { return nil }
+
+        var bestScore = -1
+        var bestValue: Double?
+
+        let budgetKeywords = ["monthly budget", "budget", "limit", "monthly limit", "planned", "target", "cap"]
+
+        for (name, value) in props {
+            guard value.type == "number", let num = value.number else { continue }
+
+            let lowerName = name.lowercased().trimmingCharacters(in: .whitespaces)
+            var score = 0
+
+            if lowerName == "monthly budget" { score = 100 }
+            else if lowerName == "budget" { score = 90 }
+            else if lowerName == "limit" { score = 80 }
+            else if lowerName == "monthly limit" { score = 85 }
+            else if lowerName == "planned" { score = 70 }
+            else if lowerName == "target" { score = 60 }
+            else if lowerName == "cap" { score = 50 }
+            else {
+                for keyword in budgetKeywords {
+                    if lowerName.contains(keyword) {
+                        score = max(score, 40)
+                        break
+                    }
+                }
+            }
+
+            if score > bestScore {
+                bestScore = score
+                bestValue = num
+            }
+        }
+
+        return bestValue
+    }
+
+    private func detectBudgetFromFormulaOrRollup(from page: NotionPage) -> Double? {
+        guard let props = page.properties else { return nil }
+
+        for (name, value) in props {
+            if value.type == "formula" || value.type == "rollup" {
+                let number = value.number ?? value.rollup?.number
+                if let number = number {
+                    let lowerName = name.lowercased()
+                    if lowerName.contains("budget") || lowerName.contains("limit") {
+                        return number
+                    }
+                }
+            }
+        }
+        return nil
     }
 
     private func extractTitle(from page: NotionPage) -> String {
