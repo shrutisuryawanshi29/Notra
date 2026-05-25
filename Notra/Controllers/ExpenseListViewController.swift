@@ -8,20 +8,7 @@ class ExpenseListViewController: UIViewController {
         tv.backgroundColor = AppTheme.Colors.background
         return tv
     }()
-    private let emptyView: UIView = {
-        let view = UIView()
-        view.backgroundColor = AppTheme.Colors.background
-        return view
-    }()
-    private let emptyIconView = UIImageView(image: UIImage(systemName: "tray"))
-    private let emptyLabel = UILabel()
-    private let emptySublabel = UILabel()
-    private let emptyClearFiltersButton: UIButton = {
-        let btn = UIButton(type: .system)
-        btn.setTitle("Clear Filters", for: .normal)
-        btn.isHidden = true
-        return btn
-    }()
+    private let emptyStateView = EmptyStateView()
     private let filterButton = UIButton(type: .system)
     private var isLoadingSchemas = false
     private let searchBar: UISearchBar = {
@@ -171,56 +158,20 @@ class ExpenseListViewController: UIViewController {
     }
 
     private func setupEmptyState() {
-        emptyView.isHidden = true
-        emptyView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(emptyView)
+        emptyStateView.isHidden = true
+        view.addSubview(emptyStateView)
 
-        emptyIconView.tintColor = AppTheme.Colors.textMuted
-        emptyIconView.contentMode = .scaleAspectFit
-        emptyIconView.translatesAutoresizingMaskIntoConstraints = false
-        emptyView.addSubview(emptyIconView)
-
-        emptyLabel.font = AppTheme.Fonts.bodyMedium
-        emptyLabel.textColor = AppTheme.Colors.textSecondary
-        emptyLabel.textAlignment = .center
-        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
-        emptyView.addSubview(emptyLabel)
-
-        emptySublabel.font = AppTheme.Fonts.caption
-        emptySublabel.textColor = AppTheme.Colors.textMuted
-        emptySublabel.textAlignment = .center
-        emptySublabel.numberOfLines = 0
-        emptySublabel.translatesAutoresizingMaskIntoConstraints = false
-        emptyView.addSubview(emptySublabel)
-
-        emptyClearFiltersButton.titleLabel?.font = AppTheme.Fonts.buttonMedium
-        emptyClearFiltersButton.tintColor = AppTheme.Colors.primaryBrown
-        emptyClearFiltersButton.addTarget(self, action: #selector(clearFiltersTapped), for: .touchUpInside)
-        emptyClearFiltersButton.translatesAutoresizingMaskIntoConstraints = false
-        emptyView.addSubview(emptyClearFiltersButton)
+        emptyStateView.configure(
+            icon: "tray",
+            title: "No expenses yet",
+            message: "Expenses you add for this month will appear here."
+        )
 
         NSLayoutConstraint.activate([
-            emptyView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            emptyView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            emptyView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            emptyView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
-
-            emptyIconView.topAnchor.constraint(equalTo: emptyView.topAnchor),
-            emptyIconView.centerXAnchor.constraint(equalTo: emptyView.centerXAnchor),
-            emptyIconView.widthAnchor.constraint(equalToConstant: 48),
-            emptyIconView.heightAnchor.constraint(equalToConstant: 48),
-
-            emptyLabel.topAnchor.constraint(equalTo: emptyIconView.bottomAnchor, constant: 16),
-            emptyLabel.leadingAnchor.constraint(equalTo: emptyView.leadingAnchor),
-            emptyLabel.trailingAnchor.constraint(equalTo: emptyView.trailingAnchor),
-
-            emptySublabel.topAnchor.constraint(equalTo: emptyLabel.bottomAnchor, constant: 8),
-            emptySublabel.leadingAnchor.constraint(equalTo: emptyView.leadingAnchor),
-            emptySublabel.trailingAnchor.constraint(equalTo: emptyView.trailingAnchor),
-
-            emptyClearFiltersButton.topAnchor.constraint(equalTo: emptySublabel.bottomAnchor, constant: 16),
-            emptyClearFiltersButton.centerXAnchor.constraint(equalTo: emptyView.centerXAnchor),
-            emptyClearFiltersButton.bottomAnchor.constraint(equalTo: emptyView.bottomAnchor)
+            emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            emptyStateView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            emptyStateView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
         ])
     }
 
@@ -267,25 +218,39 @@ class ExpenseListViewController: UIViewController {
 
     private func updateEmptyState() {
         if viewModel.isSearching && viewModel.hasActiveFilters {
-            emptyIconView.image = UIImage(systemName: "magnifyingglass")
-            emptyLabel.text = "No transactions match your search and filters."
-            emptySublabel.text = "Try adjusting your filters or search query."
-            emptyClearFiltersButton.isHidden = false
+            emptyStateView.configure(
+                icon: "magnifyingglass",
+                title: "No matches found",
+                message: "Try clearing filters or changing your search.",
+                actionTitle: "Clear Filters"
+            )
+            emptyStateView.onAction = { [weak self] in
+                self?.clearFiltersTapped()
+            }
         } else if viewModel.isSearching {
-            emptyIconView.image = UIImage(systemName: "magnifyingglass")
-            emptyLabel.text = "No transactions match your search."
-            emptySublabel.text = "Try a different search term."
-            emptyClearFiltersButton.isHidden = true
+            emptyStateView.configure(
+                icon: "magnifyingglass",
+                title: "No results",
+                message: "Try a different search term."
+            )
+            emptyStateView.onAction = nil
         } else if viewModel.hasActiveFilters {
-            emptyIconView.image = UIImage(systemName: "tray")
-            emptyLabel.text = "No expenses match these filters."
-            emptySublabel.text = "Try adjusting your filters to see more results."
-            emptyClearFiltersButton.isHidden = false
+            emptyStateView.configure(
+                icon: "tray",
+                title: "No matches found",
+                message: "Try clearing filters or changing your search.",
+                actionTitle: "Clear Filters"
+            )
+            emptyStateView.onAction = { [weak self] in
+                self?.clearFiltersTapped()
+            }
         } else {
-            emptyIconView.image = UIImage(systemName: "tray")
-            emptyLabel.text = "No expenses for this month"
-            emptySublabel.text = "Transactions sync from your Notion databases. Select a different month from Dashboard to view more data."
-            emptyClearFiltersButton.isHidden = true
+            emptyStateView.configure(
+                icon: "tray",
+                title: "No expenses yet",
+                message: "Expenses you add for this month will appear here."
+            )
+            emptyStateView.onAction = nil
         }
     }
 
@@ -636,7 +601,7 @@ extension ExpenseListViewController: UISearchBarDelegate {
 extension ExpenseListViewController: ExpenseListViewModelDelegate {
     func didLoadExpenses() {
         tableView.reloadData()
-        emptyView.isHidden = viewModel.hasData
+        emptyStateView.isHidden = viewModel.hasData
         tableView.isHidden = !viewModel.hasData
         updateEmptyState()
         updateFilterButton()

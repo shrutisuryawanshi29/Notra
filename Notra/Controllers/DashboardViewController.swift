@@ -57,13 +57,7 @@ class DashboardViewController: UIViewController {
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let progressLabel = UILabel()
 
-    private let emptyStateView: UIView = {
-        let view = UIView()
-        view.backgroundColor = AppTheme.Colors.background
-        return view
-    }()
-    private let emptyStateLabel = UILabel()
-    private let setupButton = UIButton(type: .system)
+    private let emptyStateView = EmptyStateView()
 
     private let fabButton: UIButton = {
         let button = UIButton(type: .system)
@@ -351,50 +345,21 @@ class DashboardViewController: UIViewController {
     }
 
     private func setupEmptyState() {
-        emptyStateView.translatesAutoresizingMaskIntoConstraints = false
         emptyStateView.isHidden = true
         view.addSubview(emptyStateView)
 
-        let emptyIcon = UIImageView(image: UIImage(systemName: "doc.text.magnifyingglass"))
-        emptyIcon.tintColor = AppTheme.Colors.textMuted
-        emptyIcon.contentMode = .scaleAspectFit
-        emptyIcon.translatesAutoresizingMaskIntoConstraints = false
-        emptyStateView.addSubview(emptyIcon)
-
-        emptyStateLabel.text = "No data found"
-        emptyStateLabel.font = AppTheme.Fonts.headingMedium
-        emptyStateLabel.textColor = AppTheme.Colors.textSecondary
-        emptyStateLabel.textAlignment = .center
-        emptyStateLabel.translatesAutoresizingMaskIntoConstraints = false
-        emptyStateView.addSubview(emptyStateLabel)
-
-        setupButton.setTitle("Go to Setup", for: .normal)
-        setupButton.titleLabel?.font = AppTheme.Fonts.buttonMedium
-        AppTheme.applyPrimaryButtonStyle(to: setupButton)
-        setupButton.translatesAutoresizingMaskIntoConstraints = false
-        setupButton.addTarget(self, action: #selector(goToSetup), for: .touchUpInside)
-        emptyStateView.addSubview(setupButton)
+        emptyStateView.configure(
+            icon: "doc.text.magnifyingglass",
+            title: "No data found",
+            message: "Load dashboard data from Notion to get started.",
+            actionTitle: nil
+        )
 
         NSLayoutConstraint.activate([
             emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -40),
             emptyStateView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
             emptyStateView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
-
-            emptyIcon.topAnchor.constraint(equalTo: emptyStateView.topAnchor),
-            emptyIcon.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
-            emptyIcon.widthAnchor.constraint(equalToConstant: 60),
-            emptyIcon.heightAnchor.constraint(equalToConstant: 60),
-
-            emptyStateLabel.topAnchor.constraint(equalTo: emptyIcon.bottomAnchor, constant: 16),
-            emptyStateLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
-            emptyStateLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-
-            setupButton.topAnchor.constraint(equalTo: emptyStateLabel.bottomAnchor, constant: 24),
-            setupButton.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
-            setupButton.widthAnchor.constraint(equalToConstant: 160),
-            setupButton.heightAnchor.constraint(equalToConstant: 48),
-            setupButton.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
         ])
     }
 
@@ -504,7 +469,26 @@ class DashboardViewController: UIViewController {
     }
 
     private func updateBudgetCard() {
-        budgetCardView.configure(with: viewModel.budgetCategories, summary: viewModel.budgetSummary)
+        var emptyMessage: String?
+        if viewModel.budgetCategories.isEmpty {
+            let expenseMappings = ColumnMappingService.shared.loadDatabaseMappings().values.filter { $0.role == .expense }
+            if expenseMappings.isEmpty {
+                emptyMessage = "Budget tracking unavailable"
+            } else {
+                let hasRelation = expenseMappings.contains { $0.columnMapping?.categoryRelationDataSourceId != nil }
+                if !hasRelation {
+                    emptyMessage = "Budget tracking works when your expense category field is a Notion relation database."
+                } else {
+                    emptyMessage = "No budget categories"
+                }
+            }
+        } else {
+            let allNoBudget = viewModel.budgetCategories.allSatisfy { $0.budget == nil }
+            if allNoBudget {
+                emptyMessage = "No monthly budget found"
+            }
+        }
+        budgetCardView.configure(with: viewModel.budgetCategories, summary: viewModel.budgetSummary, emptyMessage: emptyMessage)
     }
 
     private func updateActivityCard() {
@@ -527,7 +511,7 @@ extension DashboardViewController: DashboardViewModelDelegate {
         scrollView.isHidden = true
         emptyStateView.isHidden = true
         activityIndicator.startAnimating()
-        progressLabel.text = "Loading your finances..."
+        progressLabel.text = "Loading your finances from Notion…"
     }
 
     func didFinishLoading(success: Bool, error: Error?) {
@@ -548,10 +532,15 @@ extension DashboardViewController: DashboardViewModelDelegate {
                 scrollView.isHidden = true
                 emptyStateView.isHidden = false
                 let monthName = viewModel.getMonthDisplayString(for: viewModel.selectedMonth)
-                emptyStateLabel.text = "No transactions for \(monthName)"
-                setupButton.setTitle("Select Different Month", for: .normal)
-                setupButton.removeTarget(self, action: #selector(goToSetup), for: .touchUpInside)
-                setupButton.addTarget(self, action: #selector(monthSelectorTapped), for: .touchUpInside)
+                emptyStateView.configure(
+                    icon: "doc.text.magnifyingglass",
+                    title: "No transactions yet",
+                    message: "Add your first expense or income for \(monthName).",
+                    actionTitle: "Add Transaction"
+                )
+                emptyStateView.onAction = { [weak self] in
+                    self?.addTransactionTapped()
+                }
             }
         } else {
             scrollView.isHidden = true
@@ -559,15 +548,25 @@ extension DashboardViewController: DashboardViewModelDelegate {
 
             let errorMessage = error?.localizedDescription ?? ""
             if errorMessage.lowercased().contains("no configured") {
-                emptyStateLabel.text = "No databases configured.\n\nGo to Setup to add your finance databases."
-                setupButton.setTitle("Go to Setup", for: .normal)
-                setupButton.removeTarget(self, action: #selector(refreshTapped), for: .touchUpInside)
-                setupButton.addTarget(self, action: #selector(goToSetup), for: .touchUpInside)
+                emptyStateView.configure(
+                    icon: "exclamationmark.triangle",
+                    title: "No databases configured",
+                    message: "Go to Setup to add your finance databases.",
+                    actionTitle: "Go to Setup"
+                )
+                emptyStateView.onAction = { [weak self] in
+                    self?.goToSetup()
+                }
             } else {
-                emptyStateLabel.text = "Couldn't load your finances.\n\nPlease try again."
-                setupButton.setTitle("Try Again", for: .normal)
-                setupButton.removeTarget(self, action: #selector(goToSetup), for: .touchUpInside)
-                setupButton.addTarget(self, action: #selector(refreshTapped), for: .touchUpInside)
+                emptyStateView.configure(
+                    icon: "exclamationmark.triangle",
+                    title: "Couldn't load your finances",
+                    message: "Please try again.",
+                    actionTitle: "Try Again"
+                )
+                emptyStateView.onAction = { [weak self] in
+                    self?.refreshTapped()
+                }
             }
         }
     }
@@ -1004,13 +1003,14 @@ class BudgetCardView: UIView {
         ])
     }
 
-    func configure(with items: [BudgetCategoryItem], summary: BudgetUtilizationSummary?) {
+    func configure(with items: [BudgetCategoryItem], summary: BudgetUtilizationSummary?, emptyMessage: String? = nil) {
         allItems = items
         lastSummary = summary
         stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
         if items.isEmpty {
             emptyLabel.isHidden = false
+            emptyLabel.text = emptyMessage ?? "Budget details unavailable"
             stackView.isHidden = true
             showAllButton.isHidden = true
             summaryLabel.text = ""
@@ -1429,7 +1429,7 @@ class QuickChecksCardView: UIView {
                 icon: "tag.fill",
                 iconColor: AppTheme.Colors.textMuted,
                 label: "Most used category",
-                value: "No category data"
+                value: "Not enough data yet"
             )
             stackView.addArrangedSubview(row)
         }

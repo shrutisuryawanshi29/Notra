@@ -24,11 +24,7 @@ class AnalyticsViewController: UIViewController {
         return stack
     }()
 
-    private let emptyView: UIView = {
-        let view = UIView()
-        view.backgroundColor = AppTheme.Colors.background
-        return view
-    }()
+    private let emptyStateView = EmptyStateView()
 
     private let loadingView: UIView = {
         let view = UIView()
@@ -39,7 +35,7 @@ class AnalyticsViewController: UIViewController {
         spinner.startAnimating()
         spinner.translatesAutoresizingMaskIntoConstraints = false
         let label = UILabel()
-        label.text = "Loading analytics..."
+        label.text = "Crunching the numbers…"
         label.font = AppTheme.Fonts.body
         label.textColor = AppTheme.Colors.textMuted
         label.textAlignment = .center
@@ -277,52 +273,20 @@ class AnalyticsViewController: UIViewController {
     }
 
     private func setupEmptyState() {
-        emptyView.translatesAutoresizingMaskIntoConstraints = false
-        emptyView.isHidden = true
-        view.addSubview(emptyView)
+        emptyStateView.isHidden = true
+        view.addSubview(emptyStateView)
 
-        let iconView = UIImageView(image: UIImage(systemName: "chart.bar.xaxis"))
-        iconView.tintColor = AppTheme.Colors.textMuted
-        iconView.contentMode = .scaleAspectFit
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        emptyView.addSubview(iconView)
-
-        let label = UILabel()
-        label.text = "No analytics available"
-        label.font = AppTheme.Fonts.headingMedium
-        label.textColor = AppTheme.Colors.textPrimary
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        emptyView.addSubview(label)
-
-        let sublabel = UILabel()
-        sublabel.text = "Load dashboard data or refresh from Notion to see insights."
-        sublabel.font = AppTheme.Fonts.body
-        sublabel.textColor = AppTheme.Colors.textMuted
-        sublabel.textAlignment = .center
-        sublabel.numberOfLines = 0
-        sublabel.translatesAutoresizingMaskIntoConstraints = false
-        emptyView.addSubview(sublabel)
+        emptyStateView.configure(
+            icon: "chart.bar.xaxis",
+            title: "No analytics yet",
+            message: "Add a transaction to get started."
+        )
 
         NSLayoutConstraint.activate([
-            emptyView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            emptyView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            emptyView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            emptyView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
-
-            iconView.topAnchor.constraint(equalTo: emptyView.topAnchor),
-            iconView.centerXAnchor.constraint(equalTo: emptyView.centerXAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 60),
-            iconView.heightAnchor.constraint(equalToConstant: 60),
-
-            label.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 16),
-            label.leadingAnchor.constraint(equalTo: emptyView.leadingAnchor),
-            label.trailingAnchor.constraint(equalTo: emptyView.trailingAnchor),
-
-            sublabel.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 8),
-            sublabel.leadingAnchor.constraint(equalTo: emptyView.leadingAnchor),
-            sublabel.trailingAnchor.constraint(equalTo: emptyView.trailingAnchor),
-            sublabel.bottomAnchor.constraint(equalTo: emptyView.bottomAnchor)
+            emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            emptyStateView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            emptyStateView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
         ])
     }
 
@@ -895,7 +859,7 @@ class AnalyticsViewController: UIViewController {
     private func loadData() {
         loadingView.isHidden = false
         scrollView.isHidden = true
-        emptyView.isHidden = true
+        emptyStateView.isHidden = true
         errorView.isHidden = true
 
         viewModel.loadAnalytics()
@@ -914,26 +878,21 @@ class AnalyticsViewController: UIViewController {
 
         if viewModel.hasData {
             scrollView.isHidden = false
-            emptyView.isHidden = true
+            emptyStateView.isHidden = true
             updateUI()
         } else if viewModel.expenseTransactionCount == 0 && viewModel.incomeTransactionCount == 0 {
             scrollView.isHidden = true
-            emptyView.isHidden = false
-            updateEmptyStateMessage()
+            emptyStateView.isHidden = false
+            emptyStateView.configure(
+                icon: "chart.bar.xaxis",
+                title: "No analytics yet",
+                message: "Add a transaction to get started."
+            )
         } else {
             scrollView.isHidden = false
-            emptyView.isHidden = true
+            emptyStateView.isHidden = true
             updateUI()
         }
-    }
-
-    private func updateEmptyStateMessage() {
-        guard let iconView = emptyView.subviews.first as? UIImageView,
-              let label = emptyView.subviews.dropFirst().first as? UILabel,
-              let sublabel = emptyView.subviews.dropFirst(2).first as? UILabel else { return }
-        iconView.image = UIImage(systemName: "chart.bar.xaxis")
-        label.text = "No analytics yet"
-        sublabel.text = "Add a transaction to get started."
     }
 
     private func updateUI() {
