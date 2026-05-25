@@ -764,7 +764,13 @@ class BudgetCategoryCardView: UIView {
     private func setupView() {
         backgroundColor = AppTheme.Colors.cardBackground
         layer.cornerRadius = AppTheme.CornerRadius.card
-        AppTheme.Shadow.applyCard(to: self)
+        layer.shadowColor = AppTheme.activePalette.shadow.cgColor
+        layer.shadowOpacity = 0.3
+        layer.shadowOffset = CGSize(width: 0, height: 3)
+        layer.shadowRadius = 10
+        layer.masksToBounds = false
+        layer.borderWidth = AppTheme.currentMode == .dark ? 1 : 0
+        layer.borderColor = AppTheme.Colors.border.cgColor
 
         iconImageView.contentMode = .scaleAspectFit
         iconImageView.translatesAutoresizingMaskIntoConstraints = false

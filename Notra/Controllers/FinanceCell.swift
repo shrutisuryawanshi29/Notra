@@ -30,6 +30,8 @@ class FinanceCell: UITableViewCell {
 
         containerView.backgroundColor = AppTheme.Colors.cardBackground
         containerView.layer.cornerRadius = AppTheme.CornerRadius.medium
+        containerView.layer.borderWidth = AppTheme.currentMode == .dark ? 1 : 0
+        containerView.layer.borderColor = AppTheme.Colors.border.cgColor
         containerView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(containerView)
 
