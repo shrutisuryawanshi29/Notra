@@ -10,6 +10,8 @@ class DashboardViewController: UIViewController {
     let viewModel: DashboardViewModel
     private var lastSyncDate: Date?
 
+    private let sectionSpacing: CGFloat = 28
+
     private let scrollView: UIScrollView = {
         let sv = UIScrollView()
         sv.backgroundColor = AppTheme.Colors.background
@@ -40,11 +42,19 @@ class DashboardViewController: UIViewController {
     private let budgetCardView = BudgetCardView()
     private let activityCardView = ActivityCardView()
     private let quickChecksCardView = QuickChecksCardView()
+    private let summaryTitleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Overview"
+        label.font = AppTheme.Fonts.sectionHeader
+        label.textColor = AppTheme.Colors.textPrimary
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
     private let actionsTitleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Actions"
-        label.font = AppTheme.Fonts.captionBold
-        label.textColor = AppTheme.Colors.textSecondary
+        label.text = "Explore"
+        label.font = AppTheme.Fonts.sectionHeader
+        label.textColor = AppTheme.Colors.textPrimary
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -114,7 +124,7 @@ class DashboardViewController: UIViewController {
         setupScrollView()
         setupHeader()
         setupMonthSelector()
-        setupSummaryCards()
+        setupSummarySection()
         setupStatusCard()
         setupBudgetCard()
         setupActivityCard()
@@ -200,7 +210,8 @@ class DashboardViewController: UIViewController {
         ])
     }
 
-    private func setupSummaryCards() {
+    private func setupSummarySection() {
+        contentView.addSubview(summaryTitleLabel)
         summaryStackView.axis = .vertical
         summaryStackView.spacing = 12
         summaryStackView.translatesAutoresizingMaskIntoConstraints = false
@@ -215,7 +226,10 @@ class DashboardViewController: UIViewController {
         summaryStackView.addArrangedSubview(balanceCard)
 
         NSLayoutConstraint.activate([
-            summaryStackView.topAnchor.constraint(equalTo: monthSelectorButton.bottomAnchor, constant: 24),
+            summaryTitleLabel.topAnchor.constraint(equalTo: monthSelectorButton.bottomAnchor, constant: 24),
+            summaryTitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+
+            summaryStackView.topAnchor.constraint(equalTo: summaryTitleLabel.bottomAnchor, constant: 12),
             summaryStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             summaryStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
         ])
@@ -262,14 +276,14 @@ class DashboardViewController: UIViewController {
         actionsStackView.addArrangedSubview(analyticsActionCard)
 
         NSLayoutConstraint.activate([
-            actionsTitleLabel.topAnchor.constraint(equalTo: quickChecksCardView.bottomAnchor, constant: 28),
+            actionsTitleLabel.topAnchor.constraint(equalTo: quickChecksCardView.bottomAnchor, constant: sectionSpacing),
             actionsTitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
 
             actionsStackView.topAnchor.constraint(equalTo: actionsTitleLabel.bottomAnchor, constant: 12),
             actionsStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             actionsStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             actionsStackView.heightAnchor.constraint(equalToConstant: 90),
-            actionsStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
+            actionsStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -40)
         ])
     }
 
@@ -278,7 +292,7 @@ class DashboardViewController: UIViewController {
         contentView.addSubview(statusCardView)
 
         NSLayoutConstraint.activate([
-            statusCardView.topAnchor.constraint(equalTo: summaryStackView.bottomAnchor, constant: 24),
+            statusCardView.topAnchor.constraint(equalTo: summaryStackView.bottomAnchor, constant: sectionSpacing),
             statusCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             statusCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
         ])
@@ -292,7 +306,7 @@ class DashboardViewController: UIViewController {
         contentView.addSubview(budgetCardView)
 
         NSLayoutConstraint.activate([
-            budgetCardView.topAnchor.constraint(equalTo: statusCardView.bottomAnchor, constant: 24),
+            budgetCardView.topAnchor.constraint(equalTo: statusCardView.bottomAnchor, constant: sectionSpacing),
             budgetCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             budgetCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
         ])
@@ -303,7 +317,7 @@ class DashboardViewController: UIViewController {
         contentView.addSubview(activityCardView)
 
         NSLayoutConstraint.activate([
-            activityCardView.topAnchor.constraint(equalTo: budgetCardView.bottomAnchor, constant: 24),
+            activityCardView.topAnchor.constraint(equalTo: budgetCardView.bottomAnchor, constant: sectionSpacing),
             activityCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             activityCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
         ])
@@ -314,7 +328,7 @@ class DashboardViewController: UIViewController {
         contentView.addSubview(quickChecksCardView)
 
         NSLayoutConstraint.activate([
-            quickChecksCardView.topAnchor.constraint(equalTo: activityCardView.bottomAnchor, constant: 24),
+            quickChecksCardView.topAnchor.constraint(equalTo: activityCardView.bottomAnchor, constant: sectionSpacing),
             quickChecksCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             quickChecksCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
         ])
