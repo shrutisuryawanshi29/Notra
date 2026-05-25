@@ -8,17 +8,18 @@ Notion-powered personal finance tracker for iOS. UIKit + programmatic UI (no sto
 - **Database Discovery** — automatic discovery of accessible databases
 - **Role Assignment** — label databases as Expense / Income / Ignore
 - **Column Mapping** — map Notion columns to Title / Amount / Category / Date
-- **Dashboard** — monthly summary with expense/income totals and per-category breakdowns
+- **Dashboard** — monthly summary with expense/income totals, per-category breakdowns, and budget utilization tracking with circular progress indicators
 - **Expense / Income Lists** — grouped by date, filterable by Notion column values and date range
 - **Filter System** — dynamic property types (title, rich_text, number, date, select, multi_select, relation, checkbox, status), AND logic, filtered total summary bar
 - **Add Transactions** — insert new expenses/incomes via Notion API; month classification auto-defaults from transaction date
 - **Deep Links** — `notra://add-expense` and `notra://add-income` with optional `title`, `amount`, `date` (yyyy-MM-dd), `notes` params
 - **Category Parsing** — from select, multi-select, relation properties, and text/title
+- **Monthly Budget Tracking** — auto-detects budget columns in related category databases, shows per-category utilization with circular rings, two-column card grid layout
 
 ## Requirements
 
-- iOS 15.0+
-- Xcode 15.0+
+- iOS 26.0+
+- Xcode 15.4+
 - Notion Integration Token
 
 ## Getting Started
