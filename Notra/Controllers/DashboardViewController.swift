@@ -32,9 +32,9 @@ class DashboardViewController: UIViewController {
     private let incomeCard = SummaryCardView()
     private let balanceCard = SummaryCardView()
 
-    private let expenseButton = UIButton(type: .system)
-    private let incomeButton = UIButton(type: .system)
-    private let analyticsButton = UIButton(type: .system)
+    private let expensesActionCard = ActionCardView()
+    private let incomeActionCard = ActionCardView()
+    private let analyticsActionCard = ActionCardView()
 
     private let statusCardView = StatusCardView()
     private let budgetCardView = BudgetCardView()
@@ -61,11 +61,11 @@ class DashboardViewController: UIViewController {
 
     private let fabButton: UIButton = {
         let button = UIButton(type: .system)
-        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        let config = UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
         button.setImage(UIImage(systemName: "plus", withConfiguration: config), for: .normal)
         button.tintColor = .white
         button.backgroundColor = AppTheme.Colors.accent
-        button.layer.cornerRadius = 28
+        button.layer.cornerRadius = 32
         button.layer.shadowColor = AppTheme.activePalette.shadow.cgColor
         button.layer.shadowOpacity = 0.15
         button.layer.shadowOffset = CGSize(width: 0, height: 4)
@@ -128,6 +128,7 @@ class DashboardViewController: UIViewController {
     private func setupScrollView() {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.showsVerticalScrollIndicator = false
+        scrollView.contentInset.bottom = 96
         view.addSubview(scrollView)
 
         contentView.translatesAutoresizingMaskIntoConstraints = false
@@ -222,41 +223,53 @@ class DashboardViewController: UIViewController {
 
     private func setupActionsSection() {
         contentView.addSubview(actionsTitleLabel)
-        contentView.addSubview(expenseButton)
-        contentView.addSubview(incomeButton)
-        contentView.addSubview(analyticsButton)
 
-        expenseButton.translatesAutoresizingMaskIntoConstraints = false
-        incomeButton.translatesAutoresizingMaskIntoConstraints = false
-        analyticsButton.translatesAutoresizingMaskIntoConstraints = false
+        let actionsStackView = UIStackView()
+        actionsStackView.axis = .horizontal
+        actionsStackView.distribution = .fillEqually
+        actionsStackView.spacing = 12
+        actionsStackView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(actionsStackView)
 
-        configureActionButton(expenseButton, title: "View Expenses", icon: "creditcard.fill", color: AppTheme.Colors.expense)
-        configureActionButton(incomeButton, title: "View Income", icon: "banknote.fill", color: AppTheme.Colors.income)
-        configureActionButton(analyticsButton, title: "Analytics", icon: "chart.bar.fill", color: AppTheme.Colors.primaryBrown)
+        expensesActionCard.configure(
+            icon: "creditcard.fill",
+            title: "Expenses",
+            subtitle: "View spending",
+            accentColor: AppTheme.Colors.expense
+        )
+        incomeActionCard.configure(
+            icon: "banknote.fill",
+            title: "Income",
+            subtitle: "View earnings",
+            accentColor: AppTheme.Colors.income
+        )
+        analyticsActionCard.configure(
+            icon: "chart.bar.fill",
+            title: "Analytics",
+            subtitle: "See insights",
+            accentColor: AppTheme.Colors.accent
+        )
 
-        expenseButton.addTarget(self, action: #selector(viewExpensesTapped), for: .touchUpInside)
-        incomeButton.addTarget(self, action: #selector(viewIncomeTapped), for: .touchUpInside)
-        analyticsButton.addTarget(self, action: #selector(analyticsTapped), for: .touchUpInside)
+        let expenseTap = UITapGestureRecognizer(target: self, action: #selector(viewExpensesTapped))
+        expensesActionCard.addGestureRecognizer(expenseTap)
+        let incomeTap = UITapGestureRecognizer(target: self, action: #selector(viewIncomeTapped))
+        incomeActionCard.addGestureRecognizer(incomeTap)
+        let analyticsTap = UITapGestureRecognizer(target: self, action: #selector(analyticsTapped))
+        analyticsActionCard.addGestureRecognizer(analyticsTap)
+
+        actionsStackView.addArrangedSubview(expensesActionCard)
+        actionsStackView.addArrangedSubview(incomeActionCard)
+        actionsStackView.addArrangedSubview(analyticsActionCard)
 
         NSLayoutConstraint.activate([
             actionsTitleLabel.topAnchor.constraint(equalTo: quickChecksCardView.bottomAnchor, constant: 28),
             actionsTitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
 
-            expenseButton.topAnchor.constraint(equalTo: actionsTitleLabel.bottomAnchor, constant: 12),
-            expenseButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            expenseButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            expenseButton.heightAnchor.constraint(equalToConstant: 56),
-
-            incomeButton.topAnchor.constraint(equalTo: expenseButton.bottomAnchor, constant: 12),
-            incomeButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            incomeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            incomeButton.heightAnchor.constraint(equalToConstant: 56),
-
-            analyticsButton.topAnchor.constraint(equalTo: incomeButton.bottomAnchor, constant: 12),
-            analyticsButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            analyticsButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            analyticsButton.heightAnchor.constraint(equalToConstant: 56),
-            analyticsButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
+            actionsStackView.topAnchor.constraint(equalTo: actionsTitleLabel.bottomAnchor, constant: 12),
+            actionsStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            actionsStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            actionsStackView.heightAnchor.constraint(equalToConstant: 90),
+            actionsStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
         ])
     }
 
@@ -302,16 +315,6 @@ class DashboardViewController: UIViewController {
             quickChecksCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             quickChecksCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
         ])
-    }
-
-    private func configureActionButton(_ button: UIButton, title: String, icon: String, color: UIColor) {
-        button.setTitle("  \(title)", for: .normal)
-        button.setImage(UIImage(systemName: icon), for: .normal)
-        button.backgroundColor = color.withAlphaComponent(0.12)
-        button.setTitleColor(color, for: .normal)
-        button.tintColor = color
-        button.titleLabel?.font = AppTheme.Fonts.bodyBold
-        button.layer.cornerRadius = AppTheme.CornerRadius.button
     }
 
     private func setupLoadingView() {
@@ -424,8 +427,8 @@ class DashboardViewController: UIViewController {
         NSLayoutConstraint.activate([
             fabButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             fabButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            fabButton.widthAnchor.constraint(equalToConstant: 56),
-            fabButton.heightAnchor.constraint(equalToConstant: 56)
+            fabButton.widthAnchor.constraint(equalToConstant: 64),
+            fabButton.heightAnchor.constraint(equalToConstant: 64)
         ])
     }
 
@@ -1451,6 +1454,76 @@ class QuickChecksCardView: UIView {
             )
             stackView.addArrangedSubview(row)
         }
+    }
+}
+
+// MARK: - Action Card (Compact Explore/Actions)
+
+class ActionCardView: UIView {
+    private let iconImageView = UIImageView()
+    private let titleLabel = UILabel()
+    private let subtitleLabel = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupView()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupView() {
+        backgroundColor = AppTheme.Colors.cardBackground
+        layer.cornerRadius = AppTheme.CornerRadius.card
+        layer.shadowColor = AppTheme.activePalette.shadow.cgColor
+        layer.shadowOpacity = 0.06
+        layer.shadowOffset = CGSize(width: 0, height: 2)
+        layer.shadowRadius = 6
+        layer.masksToBounds = false
+        if AppTheme.currentMode == .dark {
+            layer.borderWidth = 1
+            layer.borderColor = AppTheme.Colors.border.cgColor
+        }
+        isUserInteractionEnabled = true
+
+        iconImageView.contentMode = .scaleAspectFit
+        iconImageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(iconImageView)
+
+        titleLabel.font = AppTheme.Fonts.bodyBold
+        titleLabel.textColor = AppTheme.Colors.textPrimary
+        titleLabel.textAlignment = .center
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        subtitleLabel.font = AppTheme.Fonts.small
+        subtitleLabel.textColor = AppTheme.Colors.textMuted
+        subtitleLabel.textAlignment = .center
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(subtitleLabel)
+
+        NSLayoutConstraint.activate([
+            iconImageView.topAnchor.constraint(equalTo: topAnchor, constant: 14),
+            iconImageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            iconImageView.widthAnchor.constraint(equalToConstant: 24),
+            iconImageView.heightAnchor.constraint(equalToConstant: 24),
+
+            titleLabel.topAnchor.constraint(equalTo: iconImageView.bottomAnchor, constant: 6),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            subtitleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            subtitleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+        ])
+    }
+
+    func configure(icon: String, title: String, subtitle: String, accentColor: UIColor) {
+        iconImageView.image = UIImage(systemName: icon)
+        iconImageView.tintColor = accentColor
+        titleLabel.text = title
+        subtitleLabel.text = subtitle
     }
 }
 
