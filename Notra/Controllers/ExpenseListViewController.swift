@@ -24,6 +24,20 @@ class ExpenseListViewController: UIViewController {
     }()
     private let filterButton = UIButton(type: .system)
     private var isLoadingSchemas = false
+    private let searchBar: UISearchBar = {
+        let sb = UISearchBar()
+        sb.searchBarStyle = .minimal
+        sb.placeholder = "Search expenses"
+        sb.translatesAutoresizingMaskIntoConstraints = false
+        return sb
+    }()
+    private let searchBarContainer: UIView = {
+        let v = UIView()
+        v.backgroundColor = AppTheme.Colors.cardBackground
+        v.layer.cornerRadius = AppTheme.CornerRadius.large
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
     private let summaryView: UIView = {
         let v = UIView()
         v.backgroundColor = AppTheme.Colors.cardBackground
@@ -53,6 +67,7 @@ class ExpenseListViewController: UIViewController {
         AppTheme.styleNavigationBar(navigationController!.navigationBar)
 
         setupFilterButton()
+        setupSearchBar()
         setupSummaryView()
         setupTableView()
         setupEmptyState()
@@ -68,6 +83,35 @@ class ExpenseListViewController: UIViewController {
         navigationItem.rightBarButtonItem = barButton
     }
 
+    private func setupSearchBar() {
+        searchBar.delegate = self
+        searchBar.searchTextField.backgroundColor = AppTheme.Colors.cardBackground
+        searchBar.searchTextField.textColor = AppTheme.Colors.textPrimary
+        searchBar.searchTextField.tintColor = AppTheme.Colors.primaryBrown
+        searchBar.searchTextField.leftView?.tintColor = AppTheme.Colors.textMuted
+        searchBar.searchTextField.attributedPlaceholder = NSAttributedString(
+            string: "Search expenses",
+            attributes: [.foregroundColor: AppTheme.Colors.textMuted]
+        )
+
+        view.addSubview(searchBarContainer)
+        searchBarContainer.addSubview(searchBar)
+
+        NSLayoutConstraint.activate([
+            searchBarContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: AppTheme.Spacing.small),
+            searchBarContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppTheme.Spacing.screenPadding),
+            searchBarContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppTheme.Spacing.screenPadding),
+            searchBarContainer.heightAnchor.constraint(equalToConstant: 44),
+
+            searchBar.topAnchor.constraint(equalTo: searchBarContainer.topAnchor),
+            searchBar.leadingAnchor.constraint(equalTo: searchBarContainer.leadingAnchor, constant: 4),
+            searchBar.trailingAnchor.constraint(equalTo: searchBarContainer.trailingAnchor, constant: -4),
+            searchBar.bottomAnchor.constraint(equalTo: searchBarContainer.bottomAnchor),
+        ])
+
+        AppTheme.Shadow.applySoft(to: searchBarContainer)
+    }
+
     private func setupTableView() {
         tableView.delegate = self
         tableView.dataSource = self
@@ -80,7 +124,7 @@ class ExpenseListViewController: UIViewController {
         view.addSubview(tableView)
 
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            tableView.topAnchor.constraint(equalTo: searchBarContainer.bottomAnchor, constant: AppTheme.Spacing.small),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: summaryView.topAnchor),
@@ -183,11 +227,23 @@ class ExpenseListViewController: UIViewController {
     }
 
     private func updateEmptyState() {
-        if viewModel.hasActiveFilters {
+        if viewModel.isSearching && viewModel.hasActiveFilters {
+            emptyIconView.image = UIImage(systemName: "magnifyingglass")
+            emptyLabel.text = "No transactions match your search and filters."
+            emptySublabel.text = "Try adjusting your filters or search query."
+            emptyClearFiltersButton.isHidden = false
+        } else if viewModel.isSearching {
+            emptyIconView.image = UIImage(systemName: "magnifyingglass")
+            emptyLabel.text = "No transactions match your search."
+            emptySublabel.text = "Try a different search term."
+            emptyClearFiltersButton.isHidden = true
+        } else if viewModel.hasActiveFilters {
+            emptyIconView.image = UIImage(systemName: "tray")
             emptyLabel.text = "No expenses match these filters."
             emptySublabel.text = "Try adjusting your filters to see more results."
             emptyClearFiltersButton.isHidden = false
         } else {
+            emptyIconView.image = UIImage(systemName: "tray")
             emptyLabel.text = "No expenses for this month"
             emptySublabel.text = "Transactions sync from your Notion databases. Select a different month from Dashboard to view more data."
             emptyClearFiltersButton.isHidden = true
@@ -496,6 +552,16 @@ class ExpenseListViewController: UIViewController {
             }
         })
         present(alert, animated: true)
+    }
+}
+
+extension ExpenseListViewController: UISearchBarDelegate {
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        viewModel.setSearchQuery(searchText)
+    }
+
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        searchBar.resignFirstResponder()
     }
 }
 

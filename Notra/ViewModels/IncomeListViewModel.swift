@@ -14,6 +14,16 @@ final class IncomeListViewModel {
     var activeFilters: [TransactionFilter] = []
     var dateRange: DateRangeFilter?
     var allTransactions: [NormalizedTransaction] = []
+    var searchQuery: String = ""
+
+    var isSearching: Bool {
+        !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func setSearchQuery(_ query: String) {
+        searchQuery = query
+        applyCurrentFilters()
+    }
 
     func loadFromCache() {
         allTransactions = SessionCacheManager.shared.allIncomes
@@ -57,9 +67,16 @@ final class IncomeListViewModel {
             dateRange: dateRange,
             relationLookup: nil
         )
-        sections = groupTransactionsByDate(filtered)
-        totalAmount = filtered.reduce(0) { $0 + $1.amount }
+        let searched = applySearch(to: filtered)
+        sections = groupTransactionsByDate(searched)
+        totalAmount = searched.reduce(0) { $0 + $1.amount }
         delegate?.didLoadIncomes()
+    }
+
+    private func applySearch(to transactions: [NormalizedTransaction]) -> [NormalizedTransaction] {
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return transactions }
+        return transactions.filter { LocalSearchService.transactionMatchesSearch($0, query: trimmed) }
     }
 
     private func groupTransactionsByDate(_ transactions: [NormalizedTransaction]) -> [GroupedTransactionSection] {
