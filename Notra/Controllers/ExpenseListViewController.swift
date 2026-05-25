@@ -3,6 +3,19 @@ import UIKit
 class ExpenseListViewController: UIViewController {
 
     private let viewModel = ExpenseListViewModel()
+    private var initialFilters: [TransactionFilter]?
+    private var initialDateRange: DateRangeFilter?
+
+    init(initialFilters: [TransactionFilter]? = nil, initialDateRange: DateRangeFilter? = nil) {
+        self.initialFilters = initialFilters
+        self.initialDateRange = initialDateRange
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     private let tableView: UITableView = {
         let tv = UITableView(frame: .zero, style: .plain)
         tv.backgroundColor = AppTheme.Colors.background
@@ -61,6 +74,9 @@ class ExpenseListViewController: UIViewController {
         setupUI()
         viewModel.delegate = self
         viewModel.loadFromCache()
+        if let filters = initialFilters, let dateRange = initialDateRange {
+            viewModel.applyFilters(filters: filters, dateRange: dateRange)
+        }
     }
 
     private func setupUI() {

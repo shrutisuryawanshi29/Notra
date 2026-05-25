@@ -286,6 +286,9 @@ class DashboardViewController: UIViewController {
 
     private func setupBudgetCard() {
         budgetCardView.translatesAutoresizingMaskIntoConstraints = false
+        budgetCardView.onCategoryTap = { [weak self] item in
+            self?.openExpenseListFiltered(to: item)
+        }
         contentView.addSubview(budgetCardView)
 
         NSLayoutConstraint.activate([
@@ -418,6 +421,39 @@ class DashboardViewController: UIViewController {
         let vc = AddTransactionViewController()
         let nav = UINavigationController(rootViewController: vc)
         present(nav, animated: true)
+    }
+
+    private func openExpenseListFiltered(to categoryItem: BudgetCategoryItem) {
+        let mappings = ColumnMappingService.shared.loadDatabaseMappings()
+        let expenseMappings = mappings.values.filter { $0.role == .expense && $0.columnMapping != nil }
+
+        guard let mapping = expenseMappings.first,
+              let columnMapping = mapping.columnMapping,
+              let categoryColumn = columnMapping.categoryColumn else {
+            return
+        }
+
+        let calendar = Calendar.current
+        var components = DateComponents()
+        components.year = viewModel.selectedMonth.year
+        components.month = viewModel.selectedMonth.month
+        components.day = 1
+        guard let monthStart = calendar.date(from: components),
+              let monthEnd = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: monthStart) else {
+            return
+        }
+
+        let categoryFilter = TransactionFilter(
+            propertyName: categoryColumn,
+            propertyType: .relation,
+            condition: .equals,
+            value: .relation(id: categoryItem.categoryPageId, title: categoryItem.categoryName)
+        )
+
+        let dateRange = DateRangeFilter(fromDate: monthStart, toDate: monthEnd)
+
+        let vc = ExpenseListViewController(initialFilters: [categoryFilter], initialDateRange: dateRange)
+        navigationController?.pushViewController(vc, animated: true)
     }
 
     private func setupFAB() {
@@ -754,6 +790,9 @@ class BudgetCategoryCardView: UIView {
         return f
     }()
 
+    var categoryItem: BudgetCategoryItem?
+    var onTap: ((BudgetCategoryItem) -> Void)?
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupView()
@@ -773,6 +812,8 @@ class BudgetCategoryCardView: UIView {
         layer.masksToBounds = false
         layer.borderWidth = AppTheme.currentMode == .dark ? 1 : 0
         layer.borderColor = AppTheme.Colors.border.cgColor
+        isUserInteractionEnabled = true
+        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(didTap)))
 
         iconImageView.contentMode = .scaleAspectFit
         iconImageView.translatesAutoresizingMaskIntoConstraints = false
@@ -828,7 +869,13 @@ class BudgetCategoryCardView: UIView {
         ])
     }
 
+    @objc private func didTap() {
+        guard let item = categoryItem else { return }
+        onTap?(item)
+    }
+
     func configure(with item: BudgetCategoryItem) {
+        categoryItem = item
         titleLabel.text = item.categoryName
 
         let iconName = Self.iconName(for: item.categoryName)
@@ -935,6 +982,7 @@ class BudgetCardView: UIView {
     private var isShowingAll = false
     private let maxVisibleItems = 6
     private var lastSummary: BudgetUtilizationSummary?
+    var onCategoryTap: ((BudgetCategoryItem) -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -1046,6 +1094,7 @@ class BudgetCardView: UIView {
             for item in pair {
                 let card = BudgetCategoryCardView()
                 card.configure(with: item)
+                card.onTap = onCategoryTap
                 rowStack.addArrangedSubview(card)
             }
 
