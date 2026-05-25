@@ -951,6 +951,8 @@ class BudgetCardView: UIView {
 
         stackView.axis = .vertical
         stackView.spacing = 12
+        stackView.isLayoutMarginsRelativeArrangement = true
+        stackView.layoutMargins = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
         stackView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stackView)
 
@@ -1042,13 +1044,7 @@ class BudgetCardView: UIView {
                 rowStack.addArrangedSubview(spacer)
             }
 
-            rowStack.translatesAutoresizingMaskIntoConstraints = false
             stackView.addArrangedSubview(rowStack)
-
-            NSLayoutConstraint.activate([
-                rowStack.leadingAnchor.constraint(equalTo: stackView.leadingAnchor, constant: 16),
-                rowStack.trailingAnchor.constraint(equalTo: stackView.trailingAnchor, constant: -16)
-            ])
         }
 
         showAllButton.isHidden = !shouldTruncate
