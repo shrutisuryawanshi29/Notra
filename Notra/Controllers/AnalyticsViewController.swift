@@ -1797,10 +1797,9 @@ class DonutChartView: UIView {
 
         NSLayoutConstraint.activate([
             chartContainer.topAnchor.constraint(equalTo: topAnchor, constant: 16),
-            chartContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            chartContainer.centerXAnchor.constraint(equalTo: centerXAnchor),
             chartContainer.widthAnchor.constraint(equalToConstant: 180),
             chartContainer.heightAnchor.constraint(equalToConstant: 180),
-            chartContainer.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -16),
 
             centerLabel.centerXAnchor.constraint(equalTo: chartContainer.centerXAnchor),
             centerLabel.centerYAnchor.constraint(equalTo: chartContainer.centerYAnchor, constant: -8),
@@ -1808,10 +1807,10 @@ class DonutChartView: UIView {
             centerSubtitleLabel.centerXAnchor.constraint(equalTo: chartContainer.centerXAnchor),
             centerSubtitleLabel.topAnchor.constraint(equalTo: centerLabel.bottomAnchor, constant: 2),
 
-            legendStackView.topAnchor.constraint(equalTo: topAnchor, constant: 20),
-            legendStackView.leadingAnchor.constraint(equalTo: chartContainer.trailingAnchor, constant: 20),
+            legendStackView.topAnchor.constraint(equalTo: chartContainer.bottomAnchor, constant: 20),
+            legendStackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
             legendStackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            legendStackView.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -16)
+            legendStackView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16)
         ])
     }
 
@@ -1892,21 +1891,29 @@ class DonutChartView: UIView {
     }
 
     private func createLegendItem(color: UIColor, label: String, amount: String, percentage: Double) -> UIView {
-        let container = UIView()
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.spacing = 8
+        row.alignment = .center
+        row.translatesAutoresizingMaskIntoConstraints = false
 
         let colorDot = UIView()
         colorDot.backgroundColor = color
         colorDot.layer.cornerRadius = 5
         colorDot.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(colorDot)
+        colorDot.widthAnchor.constraint(equalToConstant: 10).isActive = true
+        colorDot.heightAnchor.constraint(equalToConstant: 10).isActive = true
+        row.addArrangedSubview(colorDot)
 
         let labelView = UILabel()
         labelView.text = label
         labelView.font = AppTheme.Fonts.captionMedium
         labelView.textColor = AppTheme.Colors.textPrimary
-        labelView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        labelView.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(labelView)
+        labelView.adjustsFontSizeToFitWidth = true
+        labelView.minimumScaleFactor = 0.8
+        labelView.lineBreakMode = .byTruncatingTail
+        labelView.numberOfLines = 1
+        row.addArrangedSubview(labelView)
 
         let amountView = UILabel()
         let percentageText: String
@@ -1918,27 +1925,11 @@ class DonutChartView: UIView {
         amountView.text = "\(amount) (\(percentageText))"
         amountView.font = AppTheme.Fonts.small
         amountView.textColor = AppTheme.Colors.textSecondary
+        amountView.setContentHuggingPriority(.required, for: .horizontal)
         amountView.setContentCompressionResistancePriority(.required, for: .horizontal)
-        amountView.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(amountView)
+        row.addArrangedSubview(amountView)
 
-        NSLayoutConstraint.activate([
-            colorDot.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            colorDot.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            colorDot.widthAnchor.constraint(equalToConstant: 10),
-            colorDot.heightAnchor.constraint(equalToConstant: 10),
-
-            labelView.leadingAnchor.constraint(equalTo: colorDot.trailingAnchor, constant: 8),
-            labelView.topAnchor.constraint(equalTo: container.topAnchor),
-            labelView.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor),
-
-            amountView.leadingAnchor.constraint(equalTo: colorDot.trailingAnchor, constant: 8),
-            amountView.topAnchor.constraint(equalTo: labelView.bottomAnchor, constant: 2),
-            amountView.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor),
-            amountView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-        ])
-
-        return container
+        return row
     }
 }
 
