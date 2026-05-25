@@ -407,7 +407,24 @@ class IncomeListViewController: UIViewController {
         return (properties, selectOptions, relationOptions, needsFetch)
     }
 
-    // MARK: - Edit & Delete
+    // MARK: - Detail, Edit & Delete
+
+    private func showDetail(for transaction: NormalizedTransaction) {
+        let detailVC = TransactionDetailViewController(transaction: transaction)
+        detailVC.onEdit = { [weak self] tx in
+            self?.editTransaction(tx)
+        }
+        detailVC.onDelete = { [weak self] tx in
+            self?.deleteTransaction(tx)
+        }
+        let nav = UINavigationController(rootViewController: detailVC)
+        nav.modalPresentationStyle = .pageSheet
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.large()]
+            sheet.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
+    }
 
     private func editTransaction(_ transaction: NormalizedTransaction) {
         let editVC = AddTransactionViewController(
@@ -423,6 +440,26 @@ class IncomeListViewController: UIViewController {
         let nav = UINavigationController(rootViewController: editVC)
         nav.modalPresentationStyle = .fullScreen
         present(nav, animated: true)
+    }
+
+    private func deleteTransaction(_ transaction: NormalizedTransaction) {
+        guard let token = UserDefaultsManager.shared.notionToken else { return }
+        NotionService.shared.trashPage(pageId: transaction.id, token: token) { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .success:
+                SessionCacheManager.shared.removeIncome(byPageId: transaction.id)
+                self.viewModel.loadFromCache()
+            case .failure(let error):
+                let alert = UIAlertController(
+                    title: "Couldn't delete transaction.",
+                    message: error.localizedDescription,
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                self.present(alert, animated: true)
+            }
+        }
     }
 
     private func deleteTransaction(_ transaction: NormalizedTransaction, at indexPath: IndexPath) {
@@ -519,6 +556,8 @@ extension IncomeListViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
+        guard let transaction = viewModel.getTransaction(at: indexPath) else { return }
+        showDetail(for: transaction)
     }
 
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {

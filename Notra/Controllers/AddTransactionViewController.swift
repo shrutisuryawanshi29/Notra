@@ -350,30 +350,22 @@ final class AddTransactionViewController: UIViewController {
 
     private func showSuccess() {
         if editingTransaction != nil {
-            let alert = UIAlertController(
-                title: "Transaction Updated",
-                message: "Transaction updated successfully.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
-                guard let self = self, let tx = self.viewModel.editingTransaction else { return }
-                let oldMonthKey = MonthMetadata(date: tx.date).monthKey
-                // Build updated transaction from current field values
-                let updatedTx = self.buildUpdatedTransaction(from: tx)
-                self.onEditComplete?(updatedTx, oldMonthKey)
-                self.dismiss(animated: true)
-            })
-            present(alert, animated: true)
+            guard let tx = viewModel.editingTransaction else { return }
+            let role = viewModel.selectedRole
+            let message = role == .expense ? "Expense updated" : "Income updated"
+            let toast = ToastView(message: message)
+            let oldMonthKey = MonthMetadata(date: tx.date).monthKey
+            let updatedTx = buildUpdatedTransaction(from: tx)
+            toast.show(in: view, duration: 1.8) { [weak self] in
+                self?.onEditComplete?(updatedTx, oldMonthKey)
+                self?.dismiss(animated: true)
+            }
         } else {
-            let alert = UIAlertController(
-                title: "Transaction Added",
-                message: "The transaction has been saved to Notion.\n\nRefresh the Dashboard to see your updated data.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
-                self?.resetFormAfterSuccessfulSave()
-            })
-            present(alert, animated: true)
+            let role = viewModel.selectedRole
+            let message = role == .expense ? "Expense saved" : "Income saved"
+            let toast = ToastView(message: message)
+            toast.show(in: view, duration: 1.8)
+            resetFormAfterSuccessfulSave()
         }
     }
 
