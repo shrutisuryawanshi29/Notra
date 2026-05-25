@@ -1,8 +1,3 @@
-//
-//  ExpenseListViewModel.swift
-//  Notra
-//
-
 import Foundation
 import UIKit
 
@@ -16,11 +11,89 @@ final class ExpenseListViewModel {
     var sections: [GroupedTransactionSection] = []
     var totalAmount: Double = 0
 
+    var activeFilters: [TransactionFilter] = []
+    var dateRange: DateRangeFilter?
+    var allTransactions: [NormalizedTransaction] = []
+
     func loadFromCache() {
-        sections = SessionCacheManager.shared.groupedExpenses
-        totalAmount = SessionCacheManager.shared.allExpenses.reduce(0) { $0 + $1.amount }
-        print("[ExpenseListViewModel] Loaded from cache: \(sections.count) sections")
+        allTransactions = SessionCacheManager.shared.allExpenses
+        applyCurrentFilters()
+        #if DEBUG
+        print("[ExpenseListViewModel] Loaded from cache: \(allTransactions.count) total transactions")
+        #endif
+    }
+
+    func applyFilters(filters: [TransactionFilter], dateRange: DateRangeFilter?) {
+        self.activeFilters = filters
+        self.dateRange = dateRange
+        applyCurrentFilters()
+    }
+
+    func clearFilters() {
+        activeFilters = []
+        dateRange = nil
+        applyCurrentFilters()
+    }
+
+    var hasActiveFilters: Bool {
+        return !activeFilters.isEmpty || (dateRange?.isActive == true)
+    }
+
+    var activeFilterCount: Int {
+        var count = activeFilters.count
+        if dateRange?.isActive == true { count += 1 }
+        return count
+    }
+
+    var databaseIds: [String] {
+        let ids = Set(allTransactions.map { $0.databaseId })
+        return Array(ids)
+    }
+
+    private func applyCurrentFilters() {
+        let filtered = FilterEngine.applyFilters(
+            to: allTransactions,
+            filters: activeFilters,
+            dateRange: dateRange,
+            relationLookup: nil
+        )
+        sections = groupTransactionsByDate(filtered)
+        totalAmount = filtered.reduce(0) { $0 + $1.amount }
         delegate?.didLoadExpenses()
+    }
+
+    private func groupTransactionsByDate(_ transactions: [NormalizedTransaction]) -> [GroupedTransactionSection] {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+
+        let displayFormatter = DateFormatter()
+        displayFormatter.dateStyle = .medium
+
+        var grouped: [String: [NormalizedTransaction]] = [:]
+
+        for transaction in transactions {
+            let key = dateFormatter.string(from: transaction.date)
+            if grouped[key] == nil {
+                grouped[key] = []
+            }
+            grouped[key]?.append(transaction)
+        }
+
+        var sections: [GroupedTransactionSection] = []
+
+        for (dateKey, txns) in grouped.sorted(by: { $0.key > $1.key }) {
+            if let date = dateFormatter.date(from: dateKey) {
+                let section = GroupedTransactionSection(
+                    date: dateKey,
+                    displayDate: displayFormatter.string(from: date),
+                    transactions: txns.sorted { $0.amount > $1.amount },
+                    totalAmount: txns.reduce(0) { $0 + $1.amount }
+                )
+                sections.append(section)
+            }
+        }
+
+        return sections
     }
 
     func getTransaction(at indexPath: IndexPath) -> NormalizedTransaction? {

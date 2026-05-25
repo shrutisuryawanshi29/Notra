@@ -20,6 +20,7 @@ struct NormalizedTransaction: Identifiable {
     let date: Date
     let databaseId: String
     let databaseRole: DatabaseRole
+    let rawProperties: [String: NotionPropertyValue]?
 
     var formattedAmount: String {
         let formatter = NumberFormatter()

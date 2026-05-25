@@ -403,6 +403,58 @@ final class SessionCacheManager {
         return nil
     }
 
+    // MARK: - Database Schema Cache (for filter UI)
+
+    func getDatabaseSchema(databaseId: String) -> [String: String]? {
+        lock.lock()
+        defer { lock.unlock() }
+        let schemas = cache["databaseSchemas"] as? [String: [String: String]] ?? [:]
+        return schemas[databaseId]
+    }
+
+    func saveDatabaseSchema(databaseId: String, schema: [String: String]) {
+        lock.lock()
+        var schemas = cache["databaseSchemas"] as? [String: [String: String]] ?? [:]
+        schemas[databaseId] = schema
+        cache["databaseSchemas"] = schemas
+        lock.unlock()
+        print("[SessionCache] Saved schema for database: \(databaseId)")
+    }
+
+    func getSelectOptions(databaseId: String) -> [String: [String]]? {
+        lock.lock()
+        defer { lock.unlock() }
+        let options = cache["selectOptions"] as? [String: [String: [String]]] ?? [:]
+        return options[databaseId]
+    }
+
+    func saveSelectOptions(databaseId: String, options: [String: [String]]) {
+        lock.lock()
+        var allOptions = cache["selectOptions"] as? [String: [String: [String]]] ?? [:]
+        allOptions[databaseId] = options
+        cache["selectOptions"] = allOptions
+        lock.unlock()
+        print("[SessionCache] Saved select options for database: \(databaseId)")
+    }
+
+    // MARK: - Relation Target DB IDs Cache (source property → target database)
+
+    func saveRelationTargetDbIds(databaseId: String, mapping: [String: String]) {
+        lock.lock()
+        var allMapping = cache["relationTargetDbIds"] as? [String: [String: String]] ?? [:]
+        allMapping[databaseId] = mapping
+        cache["relationTargetDbIds"] = allMapping
+        lock.unlock()
+        print("[SessionCache] Saved \(mapping.count) relation target DB IDs for: \(databaseId)")
+    }
+
+    func getAllRelationTargetDbIds(databaseId: String) -> [String: String]? {
+        lock.lock()
+        defer { lock.unlock() }
+        let allMapping = cache["relationTargetDbIds"] as? [String: [String: String]] ?? [:]
+        return allMapping[databaseId]
+    }
+
     func deleteRelationTargetData(databaseId: String) {
         lock.lock()
         var relationData = cache["relationData"] as? [String: [String: String]] ?? [:]

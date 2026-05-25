@@ -75,7 +75,8 @@ final class TransactionNormalizer {
                     category: category,
                     date: date,
                     databaseId: mapping.databaseId,
-                    databaseRole: role
+                    databaseRole: role,
+                    rawProperties: row.properties
                 )
 
                 mutex.lock()
@@ -92,7 +93,8 @@ final class TransactionNormalizer {
                     category: category,
                     date: date,
                     databaseId: mapping.databaseId,
-                    databaseRole: role
+                    databaseRole: role,
+                    rawProperties: row.properties
                 )
 
                 mutex.lock()
@@ -151,7 +153,8 @@ final class TransactionNormalizer {
                 category: category,
                 date: date,
                 databaseId: mapping.databaseId,
-                databaseRole: role
+                databaseRole: role,
+                rawProperties: row.properties
             )
             transactions.append(transaction)
         }

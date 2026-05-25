@@ -45,8 +45,9 @@ class FinanceCell: UITableViewCell {
 
         titleLabel.font = AppTheme.Fonts.bodyBold
         titleLabel.textColor = AppTheme.Colors.textPrimary
-        titleLabel.numberOfLines = 2
-        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.numberOfLines = 0
+        titleLabel.lineBreakMode = .byWordWrapping
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(titleLabel)
 
@@ -66,7 +67,10 @@ class FinanceCell: UITableViewCell {
         amountLabel.font = AppTheme.Fonts.bodyBold
         amountLabel.textColor = AppTheme.Colors.expense
         amountLabel.textAlignment = .right
+        amountLabel.numberOfLines = 0
+        amountLabel.lineBreakMode = .byWordWrapping
         amountLabel.setContentHuggingPriority(.required, for: .horizontal)
+        amountLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         amountLabel.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(amountLabel)
 
@@ -75,6 +79,9 @@ class FinanceCell: UITableViewCell {
         chevronView.contentMode = .scaleAspectFit
         chevronView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(chevronView)
+
+        let amountWidthConstraint = amountLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 130)
+        amountWidthConstraint.priority = .required
 
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
@@ -94,11 +101,11 @@ class FinanceCell: UITableViewCell {
 
             titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 10),
             titleLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 12),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: amountLabel.leadingAnchor, constant: -12),
+            titleLabel.trailingAnchor.constraint(equalTo: amountLabel.leadingAnchor, constant: -12),
 
             categoryContainer.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
             categoryContainer.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 12),
-            categoryContainer.trailingAnchor.constraint(lessThanOrEqualTo: amountLabel.leadingAnchor, constant: -12),
+            categoryContainer.trailingAnchor.constraint(lessThanOrEqualTo: chevronView.leadingAnchor, constant: -12),
             categoryContainer.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -10),
 
             categoryLabel.topAnchor.constraint(equalTo: categoryContainer.topAnchor, constant: 4),
@@ -112,7 +119,8 @@ class FinanceCell: UITableViewCell {
             chevronView.heightAnchor.constraint(equalToConstant: 14),
 
             amountLabel.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
-            amountLabel.trailingAnchor.constraint(equalTo: chevronView.leadingAnchor, constant: -12)
+            amountLabel.trailingAnchor.constraint(equalTo: chevronView.leadingAnchor, constant: -12),
+            amountWidthConstraint
         ])
     }
 
