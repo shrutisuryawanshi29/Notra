@@ -39,6 +39,16 @@ final class ExpenseListViewModel {
         applyCurrentFilters()
     }
 
+    func removeFilter(byId id: UUID) {
+        activeFilters.removeAll { $0.id == id }
+        applyCurrentFilters()
+    }
+
+    func clearDateRange() {
+        dateRange = nil
+        applyCurrentFilters()
+    }
+
     func clearFilters() {
         activeFilters = []
         dateRange = nil

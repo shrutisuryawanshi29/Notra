@@ -38,6 +38,22 @@ class IncomeListViewController: UIViewController {
         v.translatesAutoresizingMaskIntoConstraints = false
         return v
     }()
+    private let chipsScrollView: UIScrollView = {
+        let sv = UIScrollView()
+        sv.showsHorizontalScrollIndicator = false
+        sv.translatesAutoresizingMaskIntoConstraints = false
+        sv.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: AppTheme.Spacing.screenPadding)
+        return sv
+    }()
+    private let chipsStackView: UIStackView = {
+        let sv = UIStackView()
+        sv.axis = .horizontal
+        sv.spacing = AppTheme.Spacing.small
+        sv.alignment = .center
+        sv.translatesAutoresizingMaskIntoConstraints = false
+        return sv
+    }()
+    private var chipsHeightConstraint: NSLayoutConstraint!
     private let summaryView: UIView = {
         let v = UIView()
         v.backgroundColor = AppTheme.Colors.cardBackground
@@ -68,6 +84,7 @@ class IncomeListViewController: UIViewController {
 
         setupFilterButton()
         setupSearchBar()
+        setupChipsContainer()
         setupSummaryView()
         setupTableView()
         setupEmptyState()
@@ -112,6 +129,28 @@ class IncomeListViewController: UIViewController {
         AppTheme.Shadow.applySoft(to: searchBarContainer)
     }
 
+    private func setupChipsContainer() {
+        chipsScrollView.addSubview(chipsStackView)
+        view.addSubview(chipsScrollView)
+
+        chipsHeightConstraint = chipsScrollView.heightAnchor.constraint(equalToConstant: 0)
+
+        NSLayoutConstraint.activate([
+            chipsScrollView.topAnchor.constraint(equalTo: searchBarContainer.bottomAnchor, constant: 4),
+            chipsScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppTheme.Spacing.screenPadding),
+            chipsScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            chipsHeightConstraint,
+
+            chipsStackView.topAnchor.constraint(equalTo: chipsScrollView.contentLayoutGuide.topAnchor),
+            chipsStackView.leadingAnchor.constraint(equalTo: chipsScrollView.contentLayoutGuide.leadingAnchor),
+            chipsStackView.trailingAnchor.constraint(equalTo: chipsScrollView.contentLayoutGuide.trailingAnchor),
+            chipsStackView.bottomAnchor.constraint(equalTo: chipsScrollView.contentLayoutGuide.bottomAnchor),
+            chipsStackView.heightAnchor.constraint(equalTo: chipsScrollView.frameLayoutGuide.heightAnchor),
+        ])
+
+        chipsScrollView.isHidden = true
+    }
+
     private func setupTableView() {
         tableView.delegate = self
         tableView.dataSource = self
@@ -124,7 +163,7 @@ class IncomeListViewController: UIViewController {
         view.addSubview(tableView)
 
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: searchBarContainer.bottomAnchor, constant: AppTheme.Spacing.small),
+            tableView.topAnchor.constraint(equalTo: chipsScrollView.bottomAnchor, constant: AppTheme.Spacing.small),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: summaryView.topAnchor),
@@ -250,6 +289,34 @@ class IncomeListViewController: UIViewController {
         }
     }
 
+    private func updateChips() {
+        chipsStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        var hasChips = false
+
+        for filter in viewModel.activeFilters {
+            let chip = FilterChipView(text: filter.chipDisplayText)
+            chip.onRemove = { [weak self] in
+                self?.viewModel.removeFilter(byId: filter.id)
+            }
+            chipsStackView.addArrangedSubview(chip)
+            hasChips = true
+        }
+
+        if let dr = viewModel.dateRange, dr.isActive {
+            let chip = FilterChipView(text: "Date: \(dr.displayString)")
+            chip.onRemove = { [weak self] in
+                self?.viewModel.clearDateRange()
+            }
+            chipsStackView.addArrangedSubview(chip)
+            hasChips = true
+        }
+
+        chipsScrollView.isHidden = !hasChips
+        chipsHeightConstraint.constant = hasChips ? 36 : 0
+        chipsScrollView.layoutIfNeeded()
+    }
+
     private func updateFilterButton() {
         if viewModel.hasActiveFilters {
             filterButton.setImage(nil, for: .normal)
@@ -337,6 +404,7 @@ class IncomeListViewController: UIViewController {
         viewModel.clearFilters()
         updateEmptyState()
         updateFilterButton()
+        updateChips()
         updateSummaryView()
     }
 
@@ -564,6 +632,7 @@ extension IncomeListViewController: IncomeListViewModelDelegate {
         tableView.isHidden = !viewModel.hasData
         updateEmptyState()
         updateFilterButton()
+        updateChips()
         updateSummaryView()
     }
 }
@@ -575,6 +644,7 @@ extension IncomeListViewController: FilterPanelDelegate {
 
     func filterPanelDidClear() {
         viewModel.clearFilters()
+        updateChips()
         updateSummaryView()
     }
 

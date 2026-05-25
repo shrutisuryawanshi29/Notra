@@ -71,6 +71,34 @@ struct TransactionFilter {
         self.condition = condition
         self.value = value
     }
+
+    var chipDisplayText: String {
+        let name = propertyName
+        switch condition {
+        case .equals, .contains:
+            return "\(name): \(value?.displayString ?? "")"
+        case .notEquals:
+            return "\(name) ≠ \(value?.displayString ?? "")"
+        case .greaterThan:
+            return "\(name) > \(value?.displayString ?? "")"
+        case .lessThan:
+            return "\(name) < \(value?.displayString ?? "")"
+        case .between:
+            return "\(name): \(value?.displayString ?? "")"
+        case .before:
+            return "\(name) before \(value?.displayString ?? "")"
+        case .after:
+            return "\(name) after \(value?.displayString ?? "")"
+        case .isEmpty:
+            return "\(name) is empty"
+        case .isNotEmpty:
+            return "\(name) is not empty"
+        case .isChecked:
+            return "\(name): Checked"
+        case .isUnchecked:
+            return "\(name): Unchecked"
+        }
+    }
 }
 
 enum FilterValue {
