@@ -1070,12 +1070,6 @@ class AnalyticsViewController: UIViewController {
             expenseStackView.addArrangedSubview(cardView)
 
             cardView.heightAnchor.constraint(greaterThanOrEqualToConstant: 280).isActive = true
-
-            if viewModel.viewMode == .expenses || viewModel.viewMode == .overview {
-                let actionButton = createCardActionButton(title: "View Expenses", icon: "list.bullet")
-                actionButton.addTarget(self, action: #selector(viewExpensesTapped), for: .touchUpInside)
-                expenseStackView.addArrangedSubview(actionButton)
-            }
         }
     }
 
@@ -1108,11 +1102,6 @@ class AnalyticsViewController: UIViewController {
 
             cardView.heightAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
 
-            if viewModel.viewMode == .expenses || viewModel.viewMode == .trends {
-                let actionButton = createCardActionButton(title: "View Transactions", icon: "doc.text")
-                actionButton.addTarget(self, action: #selector(viewTransactionsTapped), for: .touchUpInside)
-                dailySpendingStackView.addArrangedSubview(actionButton)
-            }
         } else if viewModel.viewMode != .income {
             addEmptyState(to: dailySpendingStackView, message: "No expenses for this month yet.")
         }
@@ -1168,12 +1157,6 @@ class AnalyticsViewController: UIViewController {
             incomeStackView.addArrangedSubview(cardView)
 
             cardView.heightAnchor.constraint(greaterThanOrEqualToConstant: 280).isActive = true
-
-            if viewModel.viewMode == .income || viewModel.viewMode == .overview {
-                let actionButton = createCardActionButton(title: "View Income", icon: "list.bullet")
-                actionButton.addTarget(self, action: #selector(viewIncomeTapped), for: .touchUpInside)
-                incomeStackView.addArrangedSubview(actionButton)
-            }
         }
     }
 
@@ -1211,7 +1194,7 @@ class AnalyticsViewController: UIViewController {
             chart.configure(with: viewModel.monthlyExpenseComparisonData, emptyMessage: emptyMsg)
             monthlyComparisonStackView.addArrangedSubview(chart)
             chart.heightAnchor.constraint(equalToConstant: 320).isActive = true
-        } else if viewModel.timeRange != .thisMonth {
+        } else {
             addEmptyState(to: monthlyComparisonStackView, message: emptyMsg)
         }
     }
@@ -1227,7 +1210,7 @@ class AnalyticsViewController: UIViewController {
             chart.configure(with: viewModel.incomeVsExpenseOverTimeData, emptyMessage: emptyMsg)
             incomeVsExpenseOverTimeStackView.addArrangedSubview(chart)
             chart.heightAnchor.constraint(equalToConstant: 320).isActive = true
-        } else if viewModel.timeRange != .thisMonth {
+        } else {
             addEmptyState(to: incomeVsExpenseOverTimeStackView, message: emptyMsg)
         }
     }
@@ -1242,7 +1225,7 @@ class AnalyticsViewController: UIViewController {
             chart.configure(with: viewModel.categoryTrendData, topCategories: viewModel.topTrendCategories, emptyMessage: emptyMsg)
             categoryTrendStackView.addArrangedSubview(chart)
             chart.heightAnchor.constraint(equalToConstant: 340).isActive = true
-        } else if viewModel.timeRange != .thisMonth {
+        } else {
             addEmptyState(to: categoryTrendStackView, message: emptyMsg)
         }
     }
@@ -1478,15 +1461,6 @@ class AnalyticsViewController: UIViewController {
             AppTheme.Colors.accent
         ]
         return colors[index % colors.count]
-    }
-
-    @objc private func viewExpensesTapped() {
-    }
-
-    @objc private func viewIncomeTapped() {
-    }
-
-    @objc private func viewTransactionsTapped() {
     }
 
     private func addInsightRow(icon: String, title: String, value: String, color: UIColor) {
