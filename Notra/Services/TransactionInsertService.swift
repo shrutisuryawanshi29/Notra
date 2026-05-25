@@ -382,4 +382,63 @@ final class TransactionInsertService {
             }
         }.resume()
     }
+
+    func updateTransaction(
+        pageId: String,
+        values: [DynamicFormValue],
+        token: String,
+        completion: @escaping (Result<Void, TransactionInsertError>) -> Void
+    ) {
+        print("[TransactionInsert] Updating page: \(pageId)")
+        print("[TransactionInsert] Building property payload with \(values.count) fields")
+
+        let properties = buildPropertyPayload(values: values)
+        let payload: [String: Any] = ["properties": properties]
+
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+
+        guard let url = URL(string: baseURL + "/pages/\(pageId)") else {
+            completion(.failure(.invalidDatabaseId))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(notionVersion, forHTTPHeaderField: "Notion-Version")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+
+        session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("[TransactionInsert] Network error updating: \(error.localizedDescription)")
+                DispatchQueue.main.async { completion(.failure(.networkError(error))) }
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
+                return
+            }
+
+            print("[TransactionInsert] Update response status: \(httpResponse.statusCode)")
+
+            guard httpResponse.statusCode == 200 else {
+                var errorMessage = "Status: \(httpResponse.statusCode)"
+                if let data = data,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["message"] as? String {
+                    errorMessage = message
+                }
+                print("[TransactionInsert] API error: \(errorMessage)")
+                DispatchQueue.main.async { completion(.failure(.apiError(errorMessage))) }
+                return
+            }
+
+            DispatchQueue.main.async { completion(.success(())) }
+        }.resume()
+    }
 }

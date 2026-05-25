@@ -255,6 +255,48 @@ final class SessionCacheManager {
         return !mappings.isEmpty
     }
 
+    // MARK: - Targeted Cache Updates (for edit/delete)
+
+    func replaceExpense(_ transaction: NormalizedTransaction) {
+        lock.lock()
+        var all = cache["expenses"] as? [NormalizedTransaction] ?? []
+        if let idx = all.firstIndex(where: { $0.id == transaction.id }) {
+            all[idx] = transaction
+            cache["expenses"] = all
+        }
+        lock.unlock()
+        self.expenseSections = groupTransactionsByDate(all)
+    }
+
+    func replaceIncome(_ transaction: NormalizedTransaction) {
+        lock.lock()
+        var all = cache["incomes"] as? [NormalizedTransaction] ?? []
+        if let idx = all.firstIndex(where: { $0.id == transaction.id }) {
+            all[idx] = transaction
+            cache["incomes"] = all
+        }
+        lock.unlock()
+        self.incomeSections = groupTransactionsByDate(all)
+    }
+
+    func removeExpense(byPageId pageId: String) {
+        lock.lock()
+        var all = cache["expenses"] as? [NormalizedTransaction] ?? []
+        all.removeAll(where: { $0.id == pageId })
+        cache["expenses"] = all
+        lock.unlock()
+        self.expenseSections = groupTransactionsByDate(all)
+    }
+
+    func removeIncome(byPageId pageId: String) {
+        lock.lock()
+        var all = cache["incomes"] as? [NormalizedTransaction] ?? []
+        all.removeAll(where: { $0.id == pageId })
+        cache["incomes"] = all
+        lock.unlock()
+        self.incomeSections = groupTransactionsByDate(all)
+    }
+
     func clearSession() {
         lock.lock()
         cache.removeAll()

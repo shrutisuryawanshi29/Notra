@@ -243,4 +243,47 @@ final class NotionService {
             DispatchQueue.main.async { completion(.success(properties)) }
         }.resume()
     }
+
+    func trashPage(pageId: String, token: String, completion: @escaping (Result<Void, NotionError>) -> Void) {
+        print("[NotionService] Trashing page: \(pageId)")
+
+        guard let url = URL(string: baseURL + "/pages/\(pageId)") else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(notionVersion, forHTTPHeaderField: "Notion-Version")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["in_trash": true]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                DispatchQueue.main.async { completion(.failure(.networkError(error))) }
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
+                return
+            }
+
+            guard httpResponse.statusCode == 200 else {
+                var errorMessage = "Status: \(httpResponse.statusCode)"
+                if let data = data,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["message"] as? String {
+                    errorMessage = message
+                }
+                DispatchQueue.main.async { completion(.failure(.apiError(errorMessage))) }
+                return
+            }
+
+            DispatchQueue.main.async { completion(.success(())) }
+        }.resume()
+    }
 }

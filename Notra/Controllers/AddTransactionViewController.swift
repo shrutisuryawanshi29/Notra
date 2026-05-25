@@ -50,7 +50,7 @@ final class AddTransactionViewController: UIViewController {
 
     private let saveButton: UIButton = {
         var config = UIButton.Configuration.filled()
-        config.title = "Save Transaction"
+        // set dynamically in viewDidLoad
         config.image = UIImage(systemName: "checkmark.circle.fill")
         config.imagePadding = 8
         config.imagePlacement = .leading
@@ -115,10 +115,13 @@ final class AddTransactionViewController: UIViewController {
     private var datePickers: [String: UIDatePicker] = [:]
     private var switchControls: [String: UISwitch] = [:]
     private var pickerButtons: [String: UIButton] = [:]
+    private var editingTransaction: NormalizedTransaction?
+    var onEditComplete: ((_ updatedTransaction: NormalizedTransaction, _ oldMonthKey: String?) -> Void)?
 
-    init(prefillData: [String: String] = [:], initialRole: DatabaseRole = .expense) {
+    init(prefillData: [String: String] = [:], initialRole: DatabaseRole = .expense, editingTransaction: NormalizedTransaction? = nil) {
         self.prefillData = prefillData
         self.initialRole = initialRole
+        self.editingTransaction = editingTransaction
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -130,7 +133,7 @@ final class AddTransactionViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
 
-        viewModel = AddTransactionViewModel(prefillData: prefillData, initialRole: initialRole)
+        viewModel = AddTransactionViewModel(prefillData: prefillData, initialRole: initialRole, editingTransaction: editingTransaction)
         viewModel.delegate = self
 
         segmentedControl.selectedSegmentIndex = initialRole == .expense ? 0 : 1
@@ -139,10 +142,11 @@ final class AddTransactionViewController: UIViewController {
         saveButton.configuration?.baseBackgroundColor = tint
 
         viewModel.generateFields()
+        saveButton.configuration?.title = editingTransaction != nil ? "Update Transaction" : "Save Transaction"
     }
 
     private func setupUI() {
-        title = "Add Transaction"
+        title = editingTransaction != nil ? "Edit \(editingTransaction!.databaseRole.displayName)" : "Add Transaction"
         view.backgroundColor = AppTheme.Colors.background
         AppTheme.styleNavigationBar(navigationController?.navigationBar ?? UINavigationBar())
 
@@ -345,15 +349,32 @@ final class AddTransactionViewController: UIViewController {
     }
 
     private func showSuccess() {
-        let alert = UIAlertController(
-            title: "Transaction Added",
-            message: "The transaction has been saved to Notion.\n\nRefresh the Dashboard to see your updated data.",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
-            self?.resetFormAfterSuccessfulSave()
-        })
-        present(alert, animated: true)
+        if editingTransaction != nil {
+            let alert = UIAlertController(
+                title: "Transaction Updated",
+                message: "Transaction updated successfully.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+                guard let self = self, let tx = self.viewModel.editingTransaction else { return }
+                let oldMonthKey = MonthMetadata(date: tx.date).monthKey
+                // Build updated transaction from current field values
+                let updatedTx = self.buildUpdatedTransaction(from: tx)
+                self.onEditComplete?(updatedTx, oldMonthKey)
+                self.dismiss(animated: true)
+            })
+            present(alert, animated: true)
+        } else {
+            let alert = UIAlertController(
+                title: "Transaction Added",
+                message: "The transaction has been saved to Notion.\n\nRefresh the Dashboard to see your updated data.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+                self?.resetFormAfterSuccessfulSave()
+            })
+            present(alert, animated: true)
+        }
     }
 
     private func resetFormAfterSuccessfulSave() {
@@ -374,9 +395,65 @@ final class AddTransactionViewController: UIViewController {
     }
 
     private func showError(_ message: String) {
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
+        let title = editingTransaction != nil ? "Update Failed" : "Error"
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+}
+
+// MARK: - Edit Mode Helpers
+
+extension AddTransactionViewController {
+    private func buildUpdatedTransaction(from original: NormalizedTransaction) -> NormalizedTransaction {
+        let dateField = fieldsByName.values.first(where: { $0.propertyType == .date })
+        let amountField = fieldsByName.values.first(where: { $0.propertyType == .number })
+        let categoryField = fieldsByName.values.first(where: { $0.propertyType == .select || $0.propertyType == .relation || $0.propertyType == .multiSelect || $0.propertyType == .status })
+
+        let newDate = dateField.flatMap { viewModel.fieldValues[$0.propertyName]?.dateValue } ?? original.date
+        let newAmount = amountField.flatMap { viewModel.fieldValues[$0.propertyName]?.numberValue } ?? original.amount
+
+        return NormalizedTransaction(
+            id: original.id,
+            title: titleFieldValue ?? original.title,
+            amount: abs(newAmount),
+            category: categoryFieldValue ?? original.category,
+            date: newDate,
+            databaseId: original.databaseId,
+            databaseRole: original.databaseRole,
+            rawProperties: original.rawProperties
+        )
+    }
+
+    private var titleFieldValue: String? {
+        for field in viewModel.fields where field.propertyType == .title {
+            if let val = viewModel.fieldValues[field.propertyName]?.stringValue, !val.isEmpty {
+                return val
+            }
+        }
+        return nil
+    }
+
+    private var categoryFieldValue: String? {
+        for field in viewModel.fields {
+            if field.propertyType == .select || field.propertyType == .status {
+                if let val = viewModel.fieldValues[field.propertyName]?.selectValue { return val }
+            }
+            if field.propertyType == .multiSelect {
+                if let vals = viewModel.fieldValues[field.propertyName]?.multiSelectValues, !vals.isEmpty {
+                    return vals.joined(separator: ", ")
+                }
+            }
+            if field.propertyType == .relation {
+                if let ids = viewModel.fieldValues[field.propertyName]?.relationIds, let firstId = ids.first {
+                    let opts = viewModel.relationOptions[field.propertyName] ?? []
+                    if let match = opts.first(where: { $0.id == firstId }) {
+                        return match.title
+                    }
+                }
+            }
+        }
+        return nil
     }
 }
 
@@ -398,18 +475,35 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
         case .title:
             let cell = tableView.dequeueReusableCell(withIdentifier: "FormFieldCell", for: indexPath) as! FormFieldCell
             cell.configure(with: field, role: viewModel.selectedRole)
+            if let existingValue = viewModel.fieldValues[field.propertyName]?.stringValue {
+                cell.textField.text = existingValue
+            }
             fieldViews[field.propertyName] = cell.textField
             return cell
 
         case .richText:
             let cell = tableView.dequeueReusableCell(withIdentifier: "FormTextViewCell", for: indexPath) as! FormTextViewCell
             cell.configure(with: field, role: viewModel.selectedRole)
+            if let existingValue = viewModel.fieldValues[field.propertyName]?.stringValue {
+                cell.textView.text = existingValue
+            }
             fieldViews[field.propertyName] = cell.textView
             return cell
 
         case .number, .url, .email, .phoneNumber:
             let cell = tableView.dequeueReusableCell(withIdentifier: "FormFieldCell", for: indexPath) as! FormFieldCell
             cell.configure(with: field, role: viewModel.selectedRole)
+            if let existingValue = viewModel.fieldValues[field.propertyName] {
+                if field.propertyType == .number, let num = existingValue.numberValue {
+                    let formatter = NumberFormatter()
+                    formatter.numberStyle = .decimal
+                    formatter.minimumFractionDigits = 2
+                    formatter.maximumFractionDigits = 2
+                    cell.textField.text = formatter.string(from: NSNumber(value: num))
+                } else if let str = existingValue.stringValue {
+                    cell.textField.text = str
+                }
+            }
             fieldViews[field.propertyName] = cell.textField
             return cell
 
@@ -417,6 +511,15 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
             let cell = tableView.dequeueReusableCell(withIdentifier: "FormPickerCell", for: indexPath) as! FormPickerCell
             let options = field.options.map { $0.name }
             cell.configure(with: field, role: viewModel.selectedRole, options: options)
+            if let existingValue = viewModel.fieldValues[field.propertyName] {
+                if field.propertyType == .select, let val = existingValue.selectValue {
+                    cell.valueButton.setTitle(val, for: .normal)
+                    cell.valueButton.setTitleColor(AppTheme.Colors.textPrimary, for: .normal)
+                } else if field.propertyType == .multiSelect, let vals = existingValue.multiSelectValues, !vals.isEmpty {
+                    cell.valueButton.setTitle(vals.joined(separator: ", "), for: .normal)
+                    cell.valueButton.setTitleColor(AppTheme.Colors.textPrimary, for: .normal)
+                }
+            }
             pickerButtons[field.propertyName] = cell.valueButton
             cell.onTap = { [weak self] in
                 self?.showPickerAlert(for: field, options: options, button: cell.valueButton)
@@ -458,6 +561,9 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
         case .checkbox:
             let cell = tableView.dequeueReusableCell(withIdentifier: "FormSwitchCell", for: indexPath) as! FormSwitchCell
             cell.configure(with: field, role: viewModel.selectedRole)
+            if let existingValue = viewModel.fieldValues[field.propertyName], let val = existingValue.boolValue {
+                cell.switchControl.isOn = val
+            }
             switchControls[field.propertyName] = cell.switchControl
             return cell
 
@@ -465,6 +571,10 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
             let cell = tableView.dequeueReusableCell(withIdentifier: "FormPickerCell", for: indexPath) as! FormPickerCell
             let options = field.options.map { $0.name }
             cell.configure(with: field, role: viewModel.selectedRole, options: options)
+            if let existingValue = viewModel.fieldValues[field.propertyName], let val = existingValue.selectValue {
+                cell.valueButton.setTitle(val, for: .normal)
+                cell.valueButton.setTitleColor(AppTheme.Colors.textPrimary, for: .normal)
+            }
             pickerButtons[field.propertyName] = cell.valueButton
             cell.onTap = { [weak self] in
                 self?.showPickerAlert(for: field, options: options, button: cell.valueButton)
@@ -624,7 +734,7 @@ extension AddTransactionViewController: AddTransactionViewModelDelegate {
         updateSaveButtonColor()
         saveButton.isEnabled = true
         saveButton.configuration?.showsActivityIndicator = false
-        saveButton.configuration?.title = "Save Transaction"
+        saveButton.configuration?.title = editingTransaction != nil ? "Update Transaction" : "Save Transaction"
         errorLabel.isHidden = true
         loadingIndicator.stopAnimating()
     }
@@ -658,7 +768,7 @@ extension AddTransactionViewController: AddTransactionViewModelDelegate {
         loadingIndicator.stopAnimating()
         saveButton.isEnabled = true
         saveButton.configuration?.showsActivityIndicator = false
-        saveButton.configuration?.title = "Save Transaction"
+        saveButton.configuration?.title = editingTransaction != nil ? "Update Transaction" : "Save Transaction"
         updateSaveButtonColor()
         showSuccess()
     }
@@ -668,7 +778,7 @@ extension AddTransactionViewController: AddTransactionViewModelDelegate {
         loadingIndicator.stopAnimating()
         saveButton.isEnabled = true
         saveButton.configuration?.showsActivityIndicator = false
-        saveButton.configuration?.title = "Save Transaction"
+        saveButton.configuration?.title = editingTransaction != nil ? "Update Transaction" : "Save Transaction"
         updateSaveButtonColor()
         showError(error)
     }

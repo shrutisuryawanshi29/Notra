@@ -410,6 +410,56 @@ class ExpenseListViewController: UIViewController {
 
         return (properties, selectOptions, relationOptions, needsFetch)
     }
+
+    // MARK: - Edit & Delete
+
+    private func editTransaction(_ transaction: NormalizedTransaction) {
+        let editVC = AddTransactionViewController(
+            prefillData: [:],
+            initialRole: transaction.databaseRole,
+            editingTransaction: transaction
+        )
+        editVC.onEditComplete = { [weak self] updatedTx, oldMonthKey in
+            guard let self = self else { return }
+            SessionCacheManager.shared.replaceExpense(updatedTx)
+            self.viewModel.loadFromCache()
+            let newMonthKey = MonthMetadata(date: updatedTx.date).monthKey
+            if oldMonthKey != newMonthKey {
+                // Date changed to a different month; cache was already updated via replace
+            }
+        }
+        let nav = UINavigationController(rootViewController: editVC)
+        nav.modalPresentationStyle = .fullScreen
+        present(nav, animated: true)
+    }
+
+    private func deleteTransaction(_ transaction: NormalizedTransaction, at indexPath: IndexPath) {
+        let alert = UIAlertController(
+            title: "Delete Transaction?",
+            message: "This will move the transaction to trash in Notion.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            guard let self = self, let token = UserDefaultsManager.shared.notionToken else { return }
+            NotionService.shared.trashPage(pageId: transaction.id, token: token) { result in
+                switch result {
+                case .success:
+                    SessionCacheManager.shared.removeExpense(byPageId: transaction.id)
+                    self.viewModel.loadFromCache()
+                case .failure(let error):
+                    let alert = UIAlertController(
+                        title: "Couldn't delete transaction.",
+                        message: error.localizedDescription,
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self.present(alert, animated: true)
+                }
+            }
+        })
+        present(alert, animated: true)
+    }
 }
 
 extension ExpenseListViewController: ExpenseListViewModelDelegate {
@@ -477,5 +527,27 @@ extension ExpenseListViewController: UITableViewDataSource, UITableViewDelegate 
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
+    }
+
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        guard let transaction = viewModel.getTransaction(at: indexPath) else { return nil }
+
+        let editAction = UIContextualAction(style: .normal, title: "Edit") { [weak self] _, _, completion in
+            self?.editTransaction(transaction)
+            completion(true)
+        }
+        editAction.backgroundColor = AppTheme.Colors.primaryBrown
+        editAction.image = UIImage(systemName: "pencil")
+
+        let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
+            self?.deleteTransaction(transaction, at: indexPath)
+            completion(true)
+        }
+        deleteAction.backgroundColor = AppTheme.Colors.expense.withAlphaComponent(0.8)
+        deleteAction.image = UIImage(systemName: "trash")
+
+        let config = UISwipeActionsConfiguration(actions: [deleteAction, editAction])
+        config.performsFirstActionWithFullSwipe = false
+        return config
     }
 }

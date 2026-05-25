@@ -30,6 +30,8 @@ final class AddTransactionViewModel {
     private var mappings: [String: DatabaseMappingData] = [:]
     private var prefillData: [String: String]
     private var prefillApplied = false
+    private(set) var editingTransaction: NormalizedTransaction?
+    var isEditMode: Bool { editingTransaction != nil }
 
     private var token: String {
         return UserDefaultsManager.shared.notionToken ?? ""
@@ -43,8 +45,9 @@ final class AddTransactionViewModel {
         return mappings.values.first { $0.role == selectedRole }
     }
 
-    init(prefillData: [String: String] = [:], initialRole: DatabaseRole = .expense) {
+    init(prefillData: [String: String] = [:], initialRole: DatabaseRole = .expense, editingTransaction: NormalizedTransaction? = nil) {
         self.prefillData = prefillData
+        self.editingTransaction = editingTransaction
         self.selectedRole = initialRole
         loadMappings()
         applyPrefillIfNeeded()
@@ -109,6 +112,91 @@ final class AddTransactionViewModel {
         }
 
         print("[AddTransactionVM] Prefill applied successfully")
+    }
+
+    private func applyEditPrefill(columnMapping: ColumnMapping?) {
+        guard let editingTx = editingTransaction, let rawProps = editingTx.rawProperties else { return }
+        print("[AddTransactionVM] Applying edit prefill for transaction: \(editingTx.id)")
+
+        for field in fields {
+            guard let propValue = rawProps[field.propertyName] else { continue }
+
+            switch field.propertyType {
+            case .title:
+                if let text = extractText(from: propValue.title) {
+                    updateStringValue(propertyName: field.propertyName, value: text)
+                    print("[AddTransactionVM] Prefilled title: \(text)")
+                }
+            case .richText:
+                if let text = extractText(from: propValue.richText) {
+                    updateStringValue(propertyName: field.propertyName, value: text)
+                    print("[AddTransactionVM] Prefilled richText: \(text)")
+                }
+            case .number:
+                if let number = propValue.number {
+                    updateNumberValue(propertyName: field.propertyName, value: number)
+                    print("[AddTransactionVM] Prefilled number: \(number)")
+                }
+            case .date:
+                if let start = propValue.date?.start {
+                    let isoFormatter = ISO8601DateFormatter()
+                    isoFormatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
+                    if let date = isoFormatter.date(from: start) {
+                        updateDateValue(propertyName: field.propertyName, value: date)
+                        print("[AddTransactionVM] Prefilled date: \(start)")
+                    } else {
+                        let parts = start.components(separatedBy: "-")
+                        if parts.count == 3,
+                           let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]) {
+                            var components = DateComponents()
+                            components.year = year
+                            components.month = month
+                            components.day = day
+                            components.hour = 12
+                            if let date = Calendar.current.date(from: components) {
+                                updateDateValue(propertyName: field.propertyName, value: date)
+                                print("[AddTransactionVM] Prefilled date (manual): \(start)")
+                            }
+                        }
+                    }
+                }
+            case .select, .status:
+                if let name = propValue.select?.name {
+                    updateSelectValue(propertyName: field.propertyName, value: name)
+                    print("[AddTransactionVM] Prefilled select: \(name)")
+                }
+            case .multiSelect:
+                let names = propValue.multiSelect?.compactMap { $0.name } ?? []
+                if !names.isEmpty {
+                    updateMultiSelectValue(propertyName: field.propertyName, values: names)
+                    print("[AddTransactionVM] Prefilled multiSelect: \(names)")
+                }
+            case .relation:
+                let ids = propValue.relation?.compactMap { $0.id } ?? []
+                if !ids.isEmpty {
+                    updateRelationValue(propertyName: field.propertyName, ids: ids)
+                    print("[AddTransactionVM] Prefilled relation: \(ids)")
+                }
+            case .checkbox:
+                if let value = propValue.checkbox {
+                    updateBoolValue(propertyName: field.propertyName, value: value)
+                    print("[AddTransactionVM] Prefilled checkbox: \(value)")
+                }
+            default:
+                break
+            }
+        }
+
+        print("[AddTransactionVM] Edit prefill applied successfully")
+    }
+
+    private func extractText(from richText: [NotionRichText]?) -> String? {
+        guard let items = richText else { return nil }
+        for item in items {
+            if let text = item.plainText, !text.isEmpty { return text }
+            if let text = item.text?.content, !text.isEmpty { return text }
+        }
+        return nil
     }
 
     private func findNotesColumn() -> String? {
@@ -237,6 +325,9 @@ final class AddTransactionViewModel {
         print("[AddTransactionVM] Writable fields: \(fields.map { "\($0.propertyName)(\($0.propertyType.rawValue))" }.joined(separator: ", "))")
 
         applyPrefillToFields(columnMapping: columnMapping)
+        if editingTransaction != nil {
+            applyEditPrefill(columnMapping: columnMapping)
+        }
         delegate?.didLoadFields(fields)
 
         for field in fields where field.propertyType == .relation {
@@ -523,19 +614,37 @@ final class AddTransactionViewModel {
 
         delegate?.didStartSaving()
 
-        TransactionInsertService.shared.insertTransaction(
-            databaseId: databaseId,
-            values: valuesToSave,
-            token: token
-        ) { [weak self] result in
-            switch result {
-            case .success(let page):
-                print("[AddTransactionVM] Transaction saved successfully: \(page.id)")
-                self?.delegate?.didSaveSuccessfully()
+        if let editingTx = editingTransaction {
+            TransactionInsertService.shared.updateTransaction(
+                pageId: editingTx.id,
+                values: valuesToSave,
+                token: token
+            ) { [weak self] result in
+                switch result {
+                case .success:
+                    print("[AddTransactionVM] Transaction updated successfully: \(editingTx.id)")
+                    self?.delegate?.didSaveSuccessfully()
 
-            case .failure(let error):
-                print("[AddTransactionVM] Save failed: \(error.localizedDescription)")
-                self?.delegate?.didFailToSave(error: error.localizedDescription)
+                case .failure(let error):
+                    print("[AddTransactionVM] Update failed: \(error.localizedDescription)")
+                    self?.delegate?.didFailToSave(error: error.localizedDescription)
+                }
+            }
+        } else {
+            TransactionInsertService.shared.insertTransaction(
+                databaseId: databaseId,
+                values: valuesToSave,
+                token: token
+            ) { [weak self] result in
+                switch result {
+                case .success(let page):
+                    print("[AddTransactionVM] Transaction saved successfully: \(page.id)")
+                    self?.delegate?.didSaveSuccessfully()
+
+                case .failure(let error):
+                    print("[AddTransactionVM] Save failed: \(error.localizedDescription)")
+                    self?.delegate?.didFailToSave(error: error.localizedDescription)
+                }
             }
         }
     }
