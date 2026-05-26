@@ -118,6 +118,12 @@ final class AddTransactionViewController: UIViewController {
     private var editingTransaction: NormalizedTransaction?
     var onEditComplete: ((_ updatedTransaction: NormalizedTransaction, _ oldMonthKey: String?) -> Void)?
 
+    private let suggestionEngine = ExpenseCategorySuggestionEngine()
+    private var showSuggestions = false
+    private var currentSuggestions: [CategorySuggestion] = []
+    private var suggestionTimer: Timer?
+    private var hasUserEditedTitleForSuggestions = false
+
     init(prefillData: [String: String] = [:], initialRole: DatabaseRole = .expense, editingTransaction: NormalizedTransaction? = nil) {
         self.prefillData = prefillData
         self.initialRole = initialRole
@@ -296,6 +302,10 @@ final class AddTransactionViewController: UIViewController {
         emptyStateView.isHidden = true
         errorLabel.isHidden = true
         viewModel.switchMode(to: role)
+        suggestionTimer?.invalidate()
+        showSuggestions = false
+        currentSuggestions = []
+        hasUserEditedTitleForSuggestions = false
     }
 
     @objc private func saveTapped() {
@@ -369,6 +379,9 @@ final class AddTransactionViewController: UIViewController {
                 let newTx = buildNewTransaction(from: page)
                 if role == .expense {
                     SessionCacheManager.shared.addExpense(newTx)
+                    if let entry = buildSuggestionEntryForSavedExpense() {
+                        suggestionEngine.noteSavedExpense(title: newTx.title, entry: entry)
+                    }
                 } else {
                     SessionCacheManager.shared.addIncome(newTx)
                 }
@@ -382,6 +395,9 @@ final class AddTransactionViewController: UIViewController {
     private func resetFormAfterSuccessfulSave() {
         print("[AddTransactionVC] Resetting form after successful save")
         viewModel.resetForm()
+        showSuggestions = false
+        currentSuggestions = []
+        hasUserEditedTitleForSuggestions = false
         tableView.reloadData()
         viewModel.autoSelectMonthClassification(for: Date())
         if let monthFieldName = viewModel.monthClassificationFieldName,
@@ -455,6 +471,15 @@ extension AddTransactionViewController {
         return nil
     }
 
+    private var categoryFormField: DynamicFormField? {
+        viewModel.fields.first(where: { $0.mappedRole == "Category" })
+    }
+
+    private var categoryFieldIsEmpty: Bool {
+        guard let f = categoryFormField else { return true }
+        return viewModel.fieldValues[f.propertyName]?.isEmpty ?? true
+    }
+
     private var categoryFieldValue: String? {
         for field in viewModel.fields {
             if field.propertyType == .select || field.propertyType == .status {
@@ -475,6 +500,29 @@ extension AddTransactionViewController {
             }
         }
         return nil
+    }
+
+    private func buildSuggestionEntryForSavedExpense() -> (displayName: String, value: SuggestedCategoryValue)? {
+        guard let categoryField = categoryFormField else { return nil }
+        let fv = viewModel.fieldValues[categoryField.propertyName]
+        switch categoryField.propertyType {
+        case .select:
+            guard let name = fv?.selectValue else { return nil }
+            return (name, .select(name: name))
+        case .status:
+            guard let name = fv?.selectValue else { return nil }
+            return (name, .status(name: name))
+        case .multiSelect:
+            guard let names = fv?.multiSelectValues, let first = names.first else { return nil }
+            return (first, .multiSelect(name: first))
+        case .relation:
+            guard let ids = fv?.relationIds, let firstId = ids.first else { return nil }
+            let opts = viewModel.relationOptions[categoryField.propertyName] ?? []
+            let title = opts.first(where: { $0.id == firstId })?.title ?? firstId
+            return (title, .relation(id: firstId, title: title))
+        default:
+            return nil
+        }
     }
 }
 
@@ -499,6 +547,8 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
             if let existingValue = viewModel.fieldValues[field.propertyName]?.stringValue {
                 cell.textField.text = existingValue
             }
+            cell.textField.addTarget(self, action: #selector(titleTextChanged), for: .editingChanged)
+            cell.textField.addTarget(self, action: #selector(titleEditingEnded), for: .editingDidEnd)
             fieldViews[field.propertyName] = cell.textField
             return cell
 
@@ -635,6 +685,130 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
     }
 }
 
+// MARK: - Category Suggestions
+
+extension AddTransactionViewController {
+    @objc private func titleTextChanged(_ sender: UITextField) {
+        hasUserEditedTitleForSuggestions = true
+        if let titleField = titleFormField {
+            viewModel.updateStringValue(propertyName: titleField.propertyName, value: sender.text ?? "")
+        }
+        suggestionTimer?.invalidate()
+        suggestionTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
+            self?.computeSuggestions()
+        }
+    }
+
+    @objc private func titleEditingEnded(_ sender: UITextField) {
+        suggestionTimer?.invalidate()
+        computeSuggestions()
+    }
+
+    private func computeSuggestions() {
+        guard viewModel.selectedRole == .expense else {
+            hideSuggestions()
+            return
+        }
+
+        if viewModel.isEditMode && !hasUserEditedTitleForSuggestions {
+            hideSuggestions()
+            return
+        }
+
+        guard let titleText = titleFieldValue, titleText.count >= 3 else {
+            hideSuggestions()
+            return
+        }
+
+        guard let categoryField = categoryFormField else {
+            hideSuggestions()
+            return
+        }
+
+        switch categoryField.propertyType {
+        case .select, .relation, .multiSelect, .status: break
+        default:
+            hideSuggestions()
+            return
+        }
+
+        if !categoryFieldIsEmpty && !viewModel.isEditMode {
+            hideSuggestions()
+            return
+        }
+
+        suggestionEngine.rebuild(categoryPropertyName: categoryField.propertyName)
+        let suggestions = suggestionEngine.suggestions(for: titleText)
+        guard !suggestions.isEmpty else {
+            hideSuggestions()
+            return
+        }
+
+        currentSuggestions = Array(suggestions.prefix(3))
+        showSuggestions = true
+        updateTitleCellSuggestions()
+    }
+
+    private func hideSuggestions() {
+        guard showSuggestions else { return }
+        showSuggestions = false
+        currentSuggestions = []
+        updateTitleCellSuggestions()
+    }
+
+    private func applySuggestion(_ suggestion: CategorySuggestion) {
+        guard let categoryField = categoryFormField else { return }
+
+        switch suggestion.value {
+        case .relation(let id, _):
+            viewModel.updateRelationValue(propertyName: categoryField.propertyName, ids: [id])
+        case .select(let name):
+            viewModel.updateSelectValue(propertyName: categoryField.propertyName, value: name)
+        case .status(let name):
+            viewModel.updateSelectValue(propertyName: categoryField.propertyName, value: name)
+        case .multiSelect(let name):
+            viewModel.updateMultiSelectValue(propertyName: categoryField.propertyName, values: [name])
+        }
+
+        showSuggestions = false
+        currentSuggestions = []
+        updateTitleCellSuggestions()
+
+        if let catIdx = viewModel.fields.firstIndex(where: { $0.propertyName == categoryField.propertyName }) {
+            let catPath = IndexPath(row: catIdx, section: 0)
+            if let cell = tableView.cellForRow(at: catPath) as? FormPickerCell {
+                let display: String
+                switch suggestion.value {
+                case .relation(_, let title): display = title
+                case .select(let name): display = name
+                case .status(let name): display = name
+                case .multiSelect(let name): display = name
+                }
+                cell.valueButton.setTitle(display, for: .normal)
+                cell.valueButton.setTitleColor(AppTheme.Colors.textPrimary, for: .normal)
+            }
+        }
+    }
+
+    private var titleFieldIndex: Int? {
+        viewModel.fields.firstIndex(where: { $0.mappedRole == "Title" })
+    }
+
+    private func updateTitleCellSuggestions() {
+        guard let idx = titleFieldIndex else { return }
+        let path = IndexPath(row: idx, section: 0)
+        guard let cell = tableView.cellForRow(at: path) as? FormFieldCell else { return }
+        cell.updateSuggestions(currentSuggestions) { [weak self] suggestion in
+            self?.applySuggestion(suggestion)
+        }
+        tableView.performBatchUpdates(nil)
+    }
+
+    private var titleFormField: DynamicFormField? {
+        viewModel.fields.first(where: { $0.mappedRole == "Title" })
+    }
+}
+
 // MARK: - Picker Alerts
 
 extension AddTransactionViewController {
@@ -655,6 +829,7 @@ extension AddTransactionViewController {
                     self?.viewModel.updateMultiSelectValue(propertyName: field.propertyName, values: selected)
                     let display = selected.isEmpty ? "Select \(field.displayName)..." : selected.joined(separator: ", ")
                     button.setTitle(display, for: .normal)
+                    if !selected.isEmpty { self?.hideSuggestions() }
                     self?.showPickerAlert(for: field, options: options, button: button)
                 })
             }
@@ -663,6 +838,7 @@ extension AddTransactionViewController {
                 alert.addAction(UIAlertAction(title: option, style: .default) { [weak self] _ in
                     self?.viewModel.updateSelectValue(propertyName: field.propertyName, value: option)
                     button.setTitle(option, for: .normal)
+                    self?.hideSuggestions()
                 })
             }
         }
@@ -693,6 +869,7 @@ extension AddTransactionViewController {
             alert.addAction(UIAlertAction(title: option.title, style: .default) { [weak self] _ in
                 self?.viewModel.updateRelationValue(propertyName: field.propertyName, ids: [option.id])
                 button.setTitle(option.title, for: .normal)
+                self?.hideSuggestions()
             })
         }
 
@@ -825,6 +1002,10 @@ private class FormFieldCell: UITableViewCell {
     let textField = UITextField()
     private let nameLabel = UILabel()
     private let badgeLabel = UILabel()
+    private let contentStack = UIStackView()
+    private let suggestionRowStack = UIStackView()
+    private let suggestionLabel = UILabel()
+    let suggestionChipStack = UIStackView()
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -855,7 +1036,34 @@ private class FormFieldCell: UITableViewCell {
         textField.font = AppTheme.Fonts.body
         textField.textColor = AppTheme.Colors.textPrimary
         textField.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(textField)
+
+        suggestionLabel.text = "Suggestions"
+        suggestionLabel.font = AppTheme.Fonts.small
+        suggestionLabel.textColor = AppTheme.Colors.textMuted
+        suggestionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        suggestionLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+
+        suggestionChipStack.axis = .horizontal
+        suggestionChipStack.spacing = 6
+        suggestionChipStack.alignment = .center
+        suggestionChipStack.translatesAutoresizingMaskIntoConstraints = false
+
+        suggestionRowStack.axis = .horizontal
+        suggestionRowStack.alignment = .center
+        suggestionRowStack.spacing = 6
+        suggestionRowStack.translatesAutoresizingMaskIntoConstraints = false
+        suggestionRowStack.isHidden = true
+        suggestionRowStack.addArrangedSubview(suggestionLabel)
+        suggestionRowStack.addArrangedSubview(suggestionChipStack)
+        suggestionRowStack.addArrangedSubview(UIView())
+
+        contentStack.axis = .vertical
+        contentStack.spacing = 0
+        contentStack.alignment = .fill
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.addArrangedSubview(textField)
+        contentStack.addArrangedSubview(suggestionRowStack)
+        contentView.addSubview(contentStack)
 
         NSLayoutConstraint.activate([
             nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
@@ -866,10 +1074,12 @@ private class FormFieldCell: UITableViewCell {
             badgeLabel.heightAnchor.constraint(equalToConstant: 18),
             badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 48),
 
-            textField.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8),
-            textField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            textField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            textField.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -14)
+            contentStack.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8),
+            contentStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            contentStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            contentStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -14),
+
+            textField.heightAnchor.constraint(greaterThanOrEqualToConstant: 30)
         ])
     }
 
@@ -877,6 +1087,7 @@ private class FormFieldCell: UITableViewCell {
         nameLabel.text = field.displayName
         badgeLabel.isHidden = !field.isMappedCoreField
         textField.text = ""
+        suggestionRowStack.isHidden = true
 
         switch field.propertyType {
         case .title:
@@ -902,6 +1113,17 @@ private class FormFieldCell: UITableViewCell {
             textField.placeholder = field.displayName
             textField.keyboardType = .default
         }
+    }
+
+    func updateSuggestions(_ suggestions: [CategorySuggestion], onTap: @escaping (CategorySuggestion) -> Void) {
+        suggestionChipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for suggestion in suggestions {
+            let chip = SuggestionChipView(title: suggestion.displayName)
+            chip.translatesAutoresizingMaskIntoConstraints = false
+            chip.onTap = { onTap(suggestion) }
+            suggestionChipStack.addArrangedSubview(chip)
+        }
+        suggestionRowStack.isHidden = suggestions.isEmpty
     }
 }
 
