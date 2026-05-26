@@ -74,8 +74,8 @@ class ExpenseListViewController: UIViewController {
         setupUI()
         viewModel.delegate = self
         viewModel.loadFromCache()
-        if let filters = initialFilters, let dateRange = initialDateRange {
-            viewModel.applyFilters(filters: filters, dateRange: dateRange)
+        if initialFilters != nil || initialDateRange != nil {
+            viewModel.applyFilters(filters: initialFilters ?? [], dateRange: initialDateRange)
         }
     }
 

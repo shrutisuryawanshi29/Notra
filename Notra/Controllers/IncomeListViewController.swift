@@ -3,6 +3,18 @@ import UIKit
 class IncomeListViewController: UIViewController {
 
     private let viewModel = IncomeListViewModel()
+    private var initialFilters: [TransactionFilter]?
+    private var initialDateRange: DateRangeFilter?
+
+    init(initialFilters: [TransactionFilter]? = nil, initialDateRange: DateRangeFilter? = nil) {
+        self.initialFilters = initialFilters
+        self.initialDateRange = initialDateRange
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
     private let tableView: UITableView = {
         let tv = UITableView(frame: .zero, style: .plain)
         tv.backgroundColor = AppTheme.Colors.background
@@ -61,6 +73,9 @@ class IncomeListViewController: UIViewController {
         setupUI()
         viewModel.delegate = self
         viewModel.loadFromCache()
+        if initialFilters != nil || initialDateRange != nil {
+            viewModel.applyFilters(filters: initialFilters ?? [], dateRange: initialDateRange)
+        }
     }
 
     private func setupUI() {

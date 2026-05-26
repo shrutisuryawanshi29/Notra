@@ -230,6 +230,9 @@ class DashboardViewController: UIViewController {
         incomeCard.configure(title: "Total Income", icon: "arrow.down.circle.fill", color: AppTheme.Colors.income)
         balanceCard.configure(title: "Net Balance", icon: "wallet.pass.fill", color: AppTheme.Colors.accent)
 
+        spentCard.onTap = { [weak self] in self?.openExpenseListForSelectedMonth() }
+        incomeCard.onTap = { [weak self] in self?.openIncomeListForSelectedMonth() }
+
         summaryStackView.addArrangedSubview(spentCard)
         summaryStackView.addArrangedSubview(incomeCard)
         summaryStackView.addArrangedSubview(balanceCard)
@@ -461,6 +464,27 @@ class DashboardViewController: UIViewController {
         present(nav, animated: true)
     }
 
+    private func selectedMonthDateRange() -> DateRangeFilter {
+        let calendar = Calendar.current
+        var components = DateComponents()
+        components.year = viewModel.selectedMonth.year
+        components.month = viewModel.selectedMonth.month
+        components.day = 1
+        let monthStart = calendar.date(from: components) ?? Date()
+        let monthEnd = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: monthStart) ?? Date()
+        return DateRangeFilter(fromDate: monthStart, toDate: monthEnd)
+    }
+
+    private func openExpenseListForSelectedMonth() {
+        let vc = ExpenseListViewController(initialDateRange: selectedMonthDateRange())
+        navigationController?.pushViewController(vc, animated: true)
+    }
+
+    private func openIncomeListForSelectedMonth() {
+        let vc = IncomeListViewController(initialDateRange: selectedMonthDateRange())
+        navigationController?.pushViewController(vc, animated: true)
+    }
+
     private func openExpenseListFiltered(to categoryItem: BudgetCategoryItem) {
         let mappings = ColumnMappingService.shared.loadDatabaseMappings()
         let expenseMappings = mappings.values.filter { $0.role == .expense && $0.columnMapping != nil }
@@ -668,10 +692,16 @@ class SummaryCardView: UIView {
     private let titleLabel = UILabel()
     private let valueLabel = UILabel()
     private let subtitleLabel = UILabel()
+    private let chevronImageView = UIImageView()
+    var onTap: (() -> Void)? {
+        didSet { chevronImageView.isHidden = onTap == nil }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupView()
+        let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
+        addGestureRecognizer(tap)
     }
 
     required init?(coder: NSCoder) {
@@ -705,6 +735,13 @@ class SummaryCardView: UIView {
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(subtitleLabel)
 
+        chevronImageView.image = UIImage(systemName: "chevron.right")
+        chevronImageView.tintColor = AppTheme.Colors.textMuted
+        chevronImageView.contentMode = .scaleAspectFit
+        chevronImageView.translatesAutoresizingMaskIntoConstraints = false
+        chevronImageView.isHidden = true
+        addSubview(chevronImageView)
+
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: 100),
 
@@ -718,14 +755,22 @@ class SummaryCardView: UIView {
             iconImageView.widthAnchor.constraint(equalToConstant: 22),
             iconImageView.heightAnchor.constraint(equalToConstant: 22),
 
+            chevronImageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            chevronImageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            chevronImageView.widthAnchor.constraint(equalToConstant: 12),
+            chevronImageView.heightAnchor.constraint(equalToConstant: 16),
+
             titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 20),
             titleLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 14),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: chevronImageView.leadingAnchor, constant: -8),
 
             valueLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
             valueLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 14),
+            valueLabel.trailingAnchor.constraint(lessThanOrEqualTo: chevronImageView.leadingAnchor, constant: -8),
 
             subtitleLabel.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: 2),
-            subtitleLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 14)
+            subtitleLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 14),
+            subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: chevronImageView.leadingAnchor, constant: -8)
         ])
     }
 
@@ -745,6 +790,10 @@ class SummaryCardView: UIView {
 
     func setSubtitle(_ subtitle: String) {
         subtitleLabel.text = subtitle
+    }
+
+    @objc private func tapped() {
+        onTap?()
     }
 }
 
