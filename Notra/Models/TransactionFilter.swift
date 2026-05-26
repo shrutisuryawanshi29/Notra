@@ -38,7 +38,7 @@ enum FilterCondition: String, CaseIterable {
         case .number:
             return [.equals, .greaterThan, .lessThan, .between, .isEmpty, .isNotEmpty]
         case .date:
-            return [.before, .after, .between, .isEmpty, .isNotEmpty]
+            return [.before, .after, .isEmpty, .isNotEmpty]
         case .select, .status:
             return [.equals, .notEquals, .isEmpty, .isNotEmpty]
         case .multiSelect:
