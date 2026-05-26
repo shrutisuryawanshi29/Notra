@@ -310,7 +310,7 @@ final class AddTransactionViewController: UIViewController {
             if let tf = view as? UITextField {
                 let fieldType = fieldsByName[propertyName]?.propertyType
                 if fieldType == .number {
-                    let value = Double(tf.text?.replacingOccurrences(of: ",", with: ".") ?? "")
+                    let value = Double(tf.text?.replacingOccurrences(of: ",", with: "") ?? "")
                     viewModel.updateNumberValue(propertyName: propertyName, value: value)
                 } else {
                     viewModel.updateStringValue(propertyName: propertyName, value: tf.text ?? "")
@@ -355,7 +355,7 @@ final class AddTransactionViewController: UIViewController {
             let message = role == .expense ? "Expense updated" : "Income updated"
             let toast = ToastView(message: message)
             let oldMonthKey = MonthMetadata(date: tx.date).monthKey
-            let updatedTx = buildUpdatedTransaction(from: tx)
+            let updatedTx = buildUpdatedTransaction(from: tx, updatedPage: viewModel.lastCreatedPage)
             toast.show(in: view, duration: 1.8) { [weak self] in
                 self?.onEditComplete?(updatedTx, oldMonthKey)
                 self?.dismiss(animated: true)
@@ -364,6 +364,16 @@ final class AddTransactionViewController: UIViewController {
             let role = viewModel.selectedRole
             let message = role == .expense ? "Expense saved" : "Income saved"
             let toast = ToastView(message: message)
+
+            if let page = viewModel.lastCreatedPage {
+                let newTx = buildNewTransaction(from: page)
+                if role == .expense {
+                    SessionCacheManager.shared.addExpense(newTx)
+                } else {
+                    SessionCacheManager.shared.addIncome(newTx)
+                }
+            }
+
             toast.show(in: view, duration: 1.8)
             resetFormAfterSuccessfulSave()
         }
@@ -397,7 +407,7 @@ final class AddTransactionViewController: UIViewController {
 // MARK: - Edit Mode Helpers
 
 extension AddTransactionViewController {
-    private func buildUpdatedTransaction(from original: NormalizedTransaction) -> NormalizedTransaction {
+    private func buildUpdatedTransaction(from original: NormalizedTransaction, updatedPage: NotionPage? = nil) -> NormalizedTransaction {
         let dateField = fieldsByName.values.first(where: { $0.propertyType == .date })
         let amountField = fieldsByName.values.first(where: { $0.propertyType == .number })
         let categoryField = fieldsByName.values.first(where: { $0.propertyType == .select || $0.propertyType == .relation || $0.propertyType == .multiSelect || $0.propertyType == .status })
@@ -413,7 +423,26 @@ extension AddTransactionViewController {
             date: newDate,
             databaseId: original.databaseId,
             databaseRole: original.databaseRole,
-            rawProperties: original.rawProperties
+            rawProperties: updatedPage?.properties ?? original.rawProperties
+        )
+    }
+
+    private func buildNewTransaction(from page: NotionPage) -> NormalizedTransaction {
+        let dateField = fieldsByName.values.first(where: { $0.propertyType == .date })
+        let amountField = fieldsByName.values.first(where: { $0.propertyType == .number })
+
+        let newDate = dateField.flatMap { viewModel.fieldValues[$0.propertyName]?.dateValue } ?? Date()
+        let newAmount = amountField.flatMap { viewModel.fieldValues[$0.propertyName]?.numberValue } ?? 0
+
+        return NormalizedTransaction(
+            id: page.id,
+            title: titleFieldValue ?? "\(viewModel.selectedRole.displayName) - \(page.id.prefix(8))",
+            amount: abs(newAmount),
+            category: categoryFieldValue,
+            date: newDate,
+            databaseId: viewModel.targetDatabaseId ?? page.parent.databaseId ?? "",
+            databaseRole: viewModel.selectedRole,
+            rawProperties: page.properties
         )
     }
 

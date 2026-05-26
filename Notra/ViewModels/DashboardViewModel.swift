@@ -185,10 +185,16 @@ final class DashboardViewModel {
     }
 
     private func privateFormatPercent(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .percent
-        formatter.maximumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: value / 100)) ?? "0%"
+        if value >= 1 {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .percent
+            formatter.maximumFractionDigits = 0
+            return formatter.string(from: NSNumber(value: value / 100)) ?? "0%"
+        } else if value > 0 {
+            return "<1%"
+        } else {
+            return "0%"
+        }
     }
 
     var availableMonths: [MonthMetadata] = []
@@ -622,6 +628,14 @@ private func fetchRelationTargetDatabases(completion: @escaping () -> Void) {
             }
         }
         return String(page.id.prefix(8))
+    }
+
+    func reloadFromCache() {
+        allExpenses = SessionCacheManager.shared.allExpenses
+        allIncomes = SessionCacheManager.shared.allIncomes
+        updateSelectedMonthTotals()
+        computeBudgetUtilization()
+        delegate?.didFinishLoading(success: true, error: nil)
     }
 }
 

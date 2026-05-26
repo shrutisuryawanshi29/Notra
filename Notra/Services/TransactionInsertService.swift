@@ -387,7 +387,7 @@ final class TransactionInsertService {
         pageId: String,
         values: [DynamicFormValue],
         token: String,
-        completion: @escaping (Result<Void, TransactionInsertError>) -> Void
+        completion: @escaping (Result<NotionPage, TransactionInsertError>) -> Void
     ) {
         print("[TransactionInsert] Updating page: \(pageId)")
         print("[TransactionInsert] Building property payload with \(values.count) fields")
@@ -438,7 +438,19 @@ final class TransactionInsertService {
                 return
             }
 
-            DispatchQueue.main.async { completion(.success(())) }
+            guard let data = data else {
+                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
+                return
+            }
+
+            do {
+                let page = try JSONDecoder().decode(NotionPage.self, from: data)
+                print("[TransactionInsert] Successfully updated page: \(page.id)")
+                DispatchQueue.main.async { completion(.success(page)) }
+            } catch {
+                print("[TransactionInsert] Decode error: \(error)")
+                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
+            }
         }.resume()
     }
 }

@@ -31,6 +31,7 @@ final class AddTransactionViewModel {
     private var prefillData: [String: String]
     private var prefillApplied = false
     private(set) var editingTransaction: NormalizedTransaction?
+    private(set) var lastCreatedPage: NotionPage?
     var isEditMode: Bool { editingTransaction != nil }
 
     private var token: String {
@@ -139,24 +140,17 @@ final class AddTransactionViewModel {
                 }
             case .date:
                 if let start = propValue.date?.start {
-                    let isoFormatter = ISO8601DateFormatter()
-                    isoFormatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
-                    if let date = isoFormatter.date(from: start) {
-                        updateDateValue(propertyName: field.propertyName, value: date)
-                        print("[AddTransactionVM] Prefilled date: \(start)")
-                    } else {
-                        let parts = start.components(separatedBy: "-")
-                        if parts.count == 3,
-                           let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]) {
-                            var components = DateComponents()
-                            components.year = year
-                            components.month = month
-                            components.day = day
-                            components.hour = 12
-                            if let date = Calendar.current.date(from: components) {
-                                updateDateValue(propertyName: field.propertyName, value: date)
-                                print("[AddTransactionVM] Prefilled date (manual): \(start)")
-                            }
+                    let parts = start.prefix(10).components(separatedBy: "-")
+                    if parts.count == 3,
+                       let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]) {
+                        var components = DateComponents()
+                        components.year = year
+                        components.month = month
+                        components.day = day
+                        components.hour = 12
+                        if let date = Calendar.current.date(from: components) {
+                            updateDateValue(propertyName: field.propertyName, value: date)
+                            print("[AddTransactionVM] Prefilled date: \(start)")
                         }
                     }
                 }
@@ -621,8 +615,9 @@ final class AddTransactionViewModel {
                 token: token
             ) { [weak self] result in
                 switch result {
-                case .success:
-                    print("[AddTransactionVM] Transaction updated successfully: \(editingTx.id)")
+                case .success(let page):
+                    print("[AddTransactionVM] Transaction updated successfully: \(page.id)")
+                    self?.lastCreatedPage = page
                     self?.delegate?.didSaveSuccessfully()
 
                 case .failure(let error):
@@ -639,6 +634,7 @@ final class AddTransactionViewModel {
                 switch result {
                 case .success(let page):
                     print("[AddTransactionVM] Transaction saved successfully: \(page.id)")
+                    self?.lastCreatedPage = page
                     self?.delegate?.didSaveSuccessfully()
 
                 case .failure(let error):

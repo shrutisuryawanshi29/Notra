@@ -297,6 +297,24 @@ final class SessionCacheManager {
         self.incomeSections = groupTransactionsByDate(all)
     }
 
+    func addExpense(_ transaction: NormalizedTransaction) {
+        lock.lock()
+        var all = cache["expenses"] as? [NormalizedTransaction] ?? []
+        all.append(transaction)
+        cache["expenses"] = all
+        lock.unlock()
+        self.expenseSections = groupTransactionsByDate(all)
+    }
+
+    func addIncome(_ transaction: NormalizedTransaction) {
+        lock.lock()
+        var all = cache["incomes"] as? [NormalizedTransaction] ?? []
+        all.append(transaction)
+        cache["incomes"] = all
+        lock.unlock()
+        self.incomeSections = groupTransactionsByDate(all)
+    }
+
     func clearSession() {
         lock.lock()
         cache.removeAll()

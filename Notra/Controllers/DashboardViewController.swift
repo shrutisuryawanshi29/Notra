@@ -101,6 +101,13 @@ class DashboardViewController: UIViewController {
         viewModel.loadData()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        if !SessionCacheManager.shared.allExpenses.isEmpty || !SessionCacheManager.shared.allIncomes.isEmpty {
+            viewModel.reloadFromCache()
+        }
+    }
+
     private func setupUI() {
         title = "Dashboard"
         view.backgroundColor = AppTheme.Colors.background
@@ -450,6 +457,7 @@ class DashboardViewController: UIViewController {
     @objc private func addTransactionTapped() {
         let vc = AddTransactionViewController()
         let nav = UINavigationController(rootViewController: vc)
+        nav.modalPresentationStyle = .fullScreen
         present(nav, animated: true)
     }
 

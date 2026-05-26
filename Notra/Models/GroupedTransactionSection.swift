@@ -84,7 +84,7 @@ struct BudgetCategoryItem {
     var status: BudgetStatus {
         guard let budget = budget, budget > 0 else { return .noBudget }
         let pct = spent / budget
-        if pct >= 1.0 { return .overBudget }
+        if pct > 1.0 { return .overBudget }
         if pct >= 0.8 { return .warning }
         return .safe
     }
