@@ -11,118 +11,72 @@ xcodebuild -project Notra.xcodeproj -scheme Notra -configuration Debug \
 
 No tests, no CocoaPods/SPM, no CI. Deployment target 26.0. Swift 5.0. Dev team `85R4T7NRSX`. Bundle `com.loml.Notra`.
 
-## Entry & Navigation Flow
+## Entry & Navigation
 
-`SceneDelegate.swift` → `SetupStateManager.nextRequiredScreen()` routes to: `TokenEntry` → `PagePicker` → `DatabaseRoleAssignment` → `ColumnMapping` → `Dashboard`
+`SceneDelegate.swift` → `SetupStateManager.nextRequiredScreen()` routes: `TokenEntry` → `PagePicker` → `DatabaseRoleAssignment` → `ColumnMapping` → `Dashboard`.
 
 Only `DashboardViewModel` calls the Notion API directly; setup screens read from `SessionCacheManager`.
-
-**Dashboard → Analytics** (button, selected-month data, no API calls). **ExpenseList / IncomeList** → tap row opens `TransactionDetailViewController` (view/edit/delete). Both lists present `FilterPanelViewController` modally.
 
 ## Known Bug — Do Not Fix
 
 `SceneDelegate.swift:152` returns `DatabaseRoleAssignmentViewController()` for `.columnMapping` instead of `ColumnMappingViewController()`.
 
-## Month Classification Gotcha
+## Fixed Bugs (don't reintroduce)
 
-`tableView.reloadData()` is not synchronous — `didAutoSelectMonthClassification` fires before cells exist. **Do not** move auto-select to `viewDidLoad`. Fix in `cellForRowAt`: after configuring `.relation` cell, check `viewModel.fieldValues[field.propertyName]` and set button title from match.
+- **NotionPropertyValue missing CodingKeys**: `NotionPropertyValue.richText` was always `nil` because the struct had no `CodingKeys` mapping the Notion API's `"rich_text"` (snake_case) to `richText` (camelCase). Every `JSONDecoder()` in the app uses default config (no `.convertFromSnakeCase`). Fix: added `CodingKeys` with `case richText = "rich_text"`, `case multiSelect = "multi_select"`, `case phoneNumber = "phone_number"`. This caused `extractSplitMetadata()` to always return `nil`, so split metadata was never parsed from saved Notion pages.
+
+- **Month classification**: `tableView.reloadData()` isn't synchronous → `didAutoSelectMonthClassification` fires before cells exist. Fix in `cellForRowAt`: after configuring `.relation` cell, check `viewModel.fieldValues[field.propertyName]` and set button title from match. Do NOT move to `viewDidLoad`.
+- **Date-shift in edits**: `applyEditPrefill()` using `ISO8601DateFormatter` for date-only strings parses midnight UTC → previous day in local tz. Use `DateComponents` with `hour=12` local (`TransactionNormalizer.extractDate()`).
+- **Number parsing**: Strip commas (`replacingOccurrences(of: ",", with: "")`), not replace commas with dots.
+- **Stale rawProperties**: `updateTransaction` must return `NotionPage` from PATCH response so re-edit shows fresh values. Parse response in `buildUpdatedTransaction(from:updatedPage:)`.
+- **Cache gap**: New transactions must be added to `SessionCacheManager` (`addExpense`/`addIncome`) in `showSuccess()` via `lastCreatedPage`.
+- **Edit mode keyboard flicker**: Suggestion chips embedded in `FormFieldCell`, not a separate table row. No `tableView.reloadData()`/`reloadRows()` for suggestion lifecycle — only `cell.updateSuggestions()`. Re-enabled via `hasUserEditedTitleForSuggestions`.
+- **iOS 26 performBatchUpdates crash**: `tableView.reloadRows()` wraps in `performBatchUpdates` on iOS 26, conflicting with `UIDatePicker.compact`. Fix: suggestions in title cell, only `performBatchUpdates(nil)` for height recalculation — no row count changes.
+- **Placeholder disappears**: Suggestions `contentStack` taller than cell height compresses text field below 30pt. `performBatchUpdates(nil)` recalculates height.
+- **Single match suppressed**: Two-rule gate: `totalMatched >= 2 && confidence >= 0.5` OR `totalMatched == 1 && confidence >= 0.5 && matchStrength >= .strong`.
+- **Budget 100%**: `GroupedTransactionSection.swift:87`: use `pct > 1.0` (not `>= 1.0`) for overBudget.
+- **Sub-1% format**: `privateFormatPercent` — use `<1%` (was `maximumFractionDigits=0` rounding <0.5% to `0%`).
+- **Mapping cell info icon on recycled cells**: `MappingCell.configure()` must explicitly `infoButton.isHidden = true` at start (not just `false` for `.appMetadata`). Otherwise recycled `.appMetadata` cells keep the icon visible on standard rows.
+- **Split Details filter misses `text` type**: Column picker filter for `.appMetadata` must accept both `"rich_text"` and `"text"` since the Notion API may return either.
+- **Mapping picker uses sheet, not alert**: `showColumnPicker` presents `ColumnPickerViewController` (modal sheet), not `UIAlertController`. Do not revert to action sheet — it looks like a confirm dialog when only one option exists.
+- **Split metadata parsing**: `extractSplitPaidFromMetadata()` only extracted `paidAmount`. Use `extractSplitMetadata()` which returns `SplitMetadata?` with `myShare`, `theyOwe`, `type`, `status`, `splitWith`. `NormalizedTransaction.isSplit` now checks `splitMetadata?.enabled == true`. `effectiveAmount` reads `split.myShare` first. `reimbursementAmount` reads `split.theyOwe` first.
+- **Split status hardcoded**: `TransactionDetailViewController.setupSplitDetails()` had `"Pending"` hardcoded. Now reads `transaction.splitStatus?.capitalized` and `transaction.splitType`.
+- **Split status not preserved on edit**: `buildSplitMetadataJSON` always set `status: "pending"`. Now uses `splitStatus` stored property which preserves the original status from JSON on edits.
+- **Raw Split Details JSON in detail screen**: `setupDetails()` looped all `rawProperties` but never excluded `expenseAppMetadataProperty`. Raw JSON `{"version":1,"split":{...}}` appeared as a generic field row. Fix: add `expenseAppMetadataProperty` to `mappedColumnNames` exclusion set in `TransactionDetailViewController.init`.
+- **Detail split section plain/left-aligned**: Old `setupSplitDetails()` used vertical `DetailRowView` stack with empty right side. Now uses two-column grid of border stat tiles via `makeStatTile(label:value:)`. Rows: Counted/Paid, Owed/Status. Bottom row: Method, Split with.
+- **Expense list split text truncated**: `paidAmountLabel` defaulted to 1 line, `.byTruncatingTail`. Now `numberOfLines = 0`, `.byWordWrapping`, two-line format: `"Split · 50/50\nPaid $25.00 · Owed $12.50"`.
+- **Expense list hidden-label residual gap**: `paidAmountLabel` used direct constraints — `isHidden = true` did not collapse its frame. Non-split cards had ~15pt dead space from font line height. Fix: `contentStack` UIStackView (vertical, `.fill`) with title + paidAmountLabel as arranged subviews. Stack auto-collapses hidden subviews. categoryContainer kept outside stack, top-anchored to `contentStack.bottom + 8`. Card padding increased to 16pt top/bottom.
+- **Filtered Total footer covers last row**: Both `ExpenseListViewController` and `IncomeListViewController` had no `contentInset.bottom`. Last cell flush against summary separator. Fix: `contentInset.bottom = 60`, `scrollIndicatorInsets.bottom = 60`.
 
 ## Edit & Delete
 
-Triggered from `TransactionDetailViewController` (tapped from list).
-- **Edit**: `AddTransactionViewController` init with `editingTransaction`; ViewModel `applyEditPrefill(columnMapping:)` populates `fieldValues` from `rawProperties`. Save via `TransactionInsertService.updateTransaction(pageId:)` (PATCH returns updated `NotionPage`), then `onEditComplete` → `replaceExpense`/`replaceIncome` on cache.
-- **Delete**: confirmation alert → `NotionService.trashPage(pageId:)` (PATCH `in_trash: true`), then cache remove helpers.
+Triggered from `TransactionDetailViewController`. Edit: `AddTransactionViewController` init with `editingTransaction`; ViewModel `applyEditPrefill(columnMapping:)`. Save via `TransactionInsertService.updateTransaction(pageId:)` (PATCH returns updated `NotionPage`), then cache `replaceExpense`/`replaceIncome`. Delete: confirmation → `NotionService.trashPage(pageId:)` (PATCH `in_trash: true`), then cache remove helpers.
 
-### Fixed bugs to avoid reintroducing
-- **Date-shift**: `applyEditPrefill()` using `ISO8601DateFormatter` for date-only strings parses `"2024-01-15"` as midnight UTC → previous day in local tz. Use `DateComponents` with `hour=12` local (`TransactionNormalizer.extractDate()`).
-- **Number parsing**: `collectFieldValues()` replacing `","` with `"."` on formatted numbers (`"1,600"` → `"1.600"` → `1.6`). Strip commas: `replacingOccurrences(of: ",", with: "")`.
-- **Stale rawProperties**: `updateTransaction` must return `NotionPage` for PATCH response so re-edit shows fresh values. Parse response in `buildUpdatedTransaction(from:updatedPage:)`.
-- **Cache gap**: new transactions saved to Notion must be added to `SessionCacheManager` (stored via `lastCreatedPage` → `NormalizedTransaction` in `showSuccess()` → `addExpense`/`addIncome`).
-- Cache helpers (NSLock-protected): `replaceExpense`, `replaceIncome`, `removeExpense(byPageId:)`, `removeIncome(byPageId:)`, `addExpense`, `addIncome`.
-- **Edit mode keyboard flicker**: In edit mode, `computeSuggestions()` found the existing transaction in the cache (it matches itself). Guard `!categoryFieldIsEmpty && !viewModel.isEditMode` passed because `!isEditMode` short-circuits to `false`. Suggestion row insertion triggered `tableView.reloadData()`, destroying the title cell and dismissing the keyboard. Fix: embed suggestion chips directly in `FormFieldCell` (title cell) instead of a separate table row. No table update methods are called for suggestion updates — only `cell.updateSuggestions()` which modifies subviews in-place. Re-enabled edit mode suggestions with `hasUserEditedTitleForSuggestions` flag.
-- **iOS 26 performBatchUpdates crash**: `tableView.reloadRows()` internally wraps in `performBatchUpdates` on iOS 26, which conflicts with `UIDatePicker.compact`'s internal variant selector tracking, causing "1 inserted, 1 deleted" assertion failure. Fix: suggestions are embedded inside the title `FormFieldCell`. `performBatchUpdates(nil)` is called after cell update for height recalculation only — no row count changes, so no batch validation conflict.
-- **Suggestions at bottom**: `computeSuggestions()` never set `showSuggestions = true` — the old `refreshSuggestionRow()` always computed `shouldShow = false`. Set `showSuggestions = true` before calling the refresh method.
-- **Placeholder disappears**: When suggestions appear, the `contentStack` grew taller than the cell's fixed height, compressing the text field below 30pt and hiding the placeholder. `performBatchUpdates(nil)` recalculates the cell height so the text field stays full height.
-- **Single match suppressed**: `suggestions()` required `totalMatched >= 2` unconditionally. Now uses two-rule gate: `totalMatched >= 2 && confidence >= 0.5` (existing) OR `totalMatched == 1 && confidence >= 0.5 && matchStrength >= .strong`.
+## Cache (NSLock-protected)
+
+`SessionCacheManager` with `replaceExpense`, `replaceIncome`, `removeExpense(byPageId:)`, `removeIncome(byPageId:)`, `addExpense`, `addIncome`. Regroups by date after every mutation.
 
 ## Expense Category Suggestions
 
-Add Transaction shows up to 3 suggestion chips ("Use Category?") inline below the title field when typing an expense title. No Notion calls, no AI, no auto-apply without tap.
+Up to 3 suggestion chips inline in the title `FormFieldCell` (not a separate row). No Notion calls, no auto-apply. 400ms debounce + immediate on `editingDidEnd`. Min 3 normalized chars. Hidden when: income tab, no title, no category field, unsupported category type, category already set, edit mode without title edit. `performBatchUpdates(nil)` only for height — no row insert/delete/reload.
 
-### Files
-- `Notra/Helpers/ExpenseCategorySuggestionEngine.swift` — model + merchant→category map engine
-- `Notra/Helpers/SuggestionChipView.swift` — tappable pill chip view
-- `Notra/Controllers/AddTransactionViewController.swift` — integration (title observation, suggestion chips embedded in FormFieldCell, apply)
+## Split Details Column (`expenseAppMetadataProperty`)
 
-### Engine behavior
-Reads `SessionCacheManager.shared.allExpenses` on first `computeSuggestions()`. For each cached expense, normalizes the title (lowercase, strip punctuation/numbers, remove noise words: store/order/purchase/transaction/inc/llc/com/ltd/corp) and extracts the category from `rawProperties[categoryPropertyName]` (select name, relation page ID+title, multi-select name, status name), falling back to `NormalizedTransaction.category`.
+Optional Text column in Expense DB for JSON metadata (split info). Notion API type is `rich_text`; filter must accept both `"rich_text"` and `"text"`. User-facing type name is "Text". Backward-compatible `CodingKeys`: decodes old `expenseSplitDetailsProperty` key. Mapped column skipped from the Add Transaction form (`buildFields`). Can be unmapped — split works in-session with warning toast. `TransactionInsertService.buildPropertyPayload` handles rich-text Notion format. Main Amount column always stores my share/effective amount.
 
-**Matching**: exact → contains → first-token (pooled).  
-**Min matching past expenses**: 2. **Min confidence**: 0.50. **Max chips**: 3.  
-**Sort**: count desc → confidence desc → name alpha.  
-**After save**: `noteSavedExpense()` updates the in-memory map via `buildSuggestionEntryForSavedExpense()`.
+`SplitMetadata` struct (Codable) holds `enabled`, `paidAmount`, `myShare`, `theyOwe`, `type`, `status`, `splitWith`. Parsed via `TransactionNormalizer.extractSplitMetadata()`. `NormalizedTransaction` stores `splitMetadata: SplitMetadata?` — this is the source of truth for splits, not the old `paidAmount` fallback. Computed properties `isSplit`, `effectiveAmount`, `reimbursementAmount`, `splitType`, `splitStatus`, `splitWith` all read from `splitMetadata` first, falling back to legacy `paidAmount` for backward compatibility.
 
-### Suggestion container in title cell
-Suggestions chips are embedded directly inside the title `FormFieldCell` (not a separate table row). `FormFieldCell` has a `suggestionContainer` (UILabel + horizontal chip stack) created once in `setup()`. The container is hidden/shown by toggling `isHidden`. Only chip arranged subviews are swapped on update — zero table view insert/delete/reload/reloadRows methods are ever called for the suggestion lifecycle. `updateSuggestions(_:onTap:)` modifies subviews in-place. `performBatchUpdates(nil)` is called after cell update to recalculate the cell height so the text field isn't compressed (which would hide the placeholder). No row count changes, so no batch validation crash.
+**Detail screen display**: Two-column grid of border stat tiles via `makeStatTile(label:value:)` in `TransactionDetailViewController`. Rows: Counted | Paid, Owed | Status. Bottom: Method, Split with.
 
-### Suggestion UI layout
-The suggestion row is a horizontal `UIStackView` inside the title cell's `contentStack`:
-```
-contentStack (vertical, spacing 0):
-  textField
-  suggestionRowStack (horizontal, spacing 6, isHidden when empty):
-    suggestionLabel ("Suggestions", 12pt regular, textMuted)
-    suggestionChipStack (horizontal, spacing 6)
-    spacer
-```
-When hidden, the vertical stack collapses the suggestion row to 0 height — no blank gap.
-When visible, the row adds ~28pt to the cell height.
-Chips: 28pt height, `accent.withAlphaComponent(0.12)` background, `border.withAlphaComponent(0.3)` border, `accent` text, 12pt medium font, 10pt horizontal padding.
-
-### States
-- **Debounce**: 400ms on `editingChanged` + immediate on `editingDidEnd`. Min 3 normalized chars.
-- **Hide when**: Income tab, no title, no category field, unsupported category type, category already set, edit mode without title edit, no matching suggestions.
-- **Manual category** (picker or chip tap): hides suggestions.
-- **Edit mode**: no suggestions until user edits the title (`hasUserEditedTitleForSuggestions`).
-- **Form reset**: clears all suggestion state.
-
-### Category value application
-| Field type | ViewModel method | Payload |
-|---|---|---|
-| `.select` / `.status` | `updateSelectValue(propertyName:value:)` | `{"select"/"status": {"name": "..."}}` |
-| `.relation` | `updateRelationValue(propertyName:ids:)` | `{"relation": [{"id": "..."}]}` |
-| `.multiSelect` | `updateMultiSelectValue(propertyName:values:)` | `{"multi_select": [{"name": "..."}]}` |
-
-For relation suggestions, the page ID is extracted from the past expense's `rawProperties["categoryFieldName"]?.relation?.first?.id`, and the display title from `expense.category`.
+**Expense list display**: Two-line format `"Split · 50/50\nPaid $25.00 · Owed $12.50"` in `FinanceCell.paidAmountLabel`. Multiline, word-wrapping, hidden via stack auto-collapse for non-split.
 
 ## Dashboard
 
-All sections use **selected-month data only** — no API calls for display. Card views defined inline in `DashboardViewController.swift`.
-
-Section hierarchy: Hero → Overview (Spent/Income/Balance) → Monthly Status → Monthly Budget (tappable category cards push ExpenseList filtered by category+month) → Recent Activity → Quick Checks → Explore (Expenses/Income/Analytics cards). `sectionSpacing: CGFloat = 28`. FAB clearance: `scrollView.contentInset.bottom = 96`.
-
-- **Overview cards**: Total Spent/Income push filtered lists (chevron visible); Net Balance not tappable.
-- **Refresh**: `viewWillAppear` calls `viewModel.reloadFromCache()` (reads `SessionCacheManager.shared.allExpenses/allIncomes`, recomputes). No API calls. Skips if cache empty (first load by `loadData()`).
-- **Sub-1% fix**: `privateFormatPercent` → use `<1%` pattern (was `maximumFractionDigits=0` rounding <0.5% to `0%`).
-- **Budget 100% fix**: `GroupedTransactionSection.swift:87`: `if pct > 1.0` for overBudget (was `>= 1.0` marking exactly-at-budget as overBudget).
-- Budget auto-detects number properties: "monthly budget"=100 → "budget"=90 → "limit"=80 → keyword=40, fallback to formula/rollup. Groups expenses by category relation ID.
-- **FAB**: presents `AddTransactionViewController` full-screen (`modalPresentationStyle = .fullScreen` — no swipe-to-dismiss).
-- **Deep-link**: while dashboard is presented, `SceneDelegate.navigateToAddTransaction` dismisses any presented VC first (`nav.dismiss(animated: false)`) before presenting add screen.
+All sections use selected-month data only — no API calls. Section hierarchy: Hero → Overview (Spent/Income/Balance) → Monthly Status → Monthly Budget (tappable, push ExpenseList) → Recent Activity → Quick Checks → Explore. `sectionSpacing = 28`. FAB: full-screen (`modalPresentationStyle = .fullScreen`). Budget auto-detects number properties in category DB by keyword scoring; groups expenses by category relation ID.
 
 ## Filter System
 
-`FilterPanelViewController` (modal) → `FilterPanelViewModel` → `FilterEngine` (AND-logic on `rawProperties`). Relation properties load lazily from target DB. Post-filter search via `LocalSearchService.transactionMatchesSearch(_:query:)` (after FilterEngine, before grouping).
-
-**Date "Between" removed**: `.between` condition excluded from date properties (`TransactionFilter.swift:41`). Date properties show only `Before`, `After`, `Is Empty`, `Is Not Empty`. From/to filtering is handled by separate Date Range section (section 0) with two `.inline` date pickers.
-
-**Initial filter passing**: Both `ExpenseListViewController`/`IncomeListViewController` accept `init(initialFilters:initialDateRange:)`. Apply in `viewDidLoad` after `loadFromCache()`:
-```swift
-if initialFilters != nil || initialDateRange != nil {
-    viewModel.applyFilters(filters: initialFilters ?? [], dateRange: initialDateRange)
-}
-```
-
-`FilterChipView` (28pt pill, `"PropertyName: value"`). Tapping × calls `viewModel.removeFilter(byId:)`/`viewModel.clearDateRange()`.
+`FilterPanelViewController` (modal) → `FilterPanelViewModel` → `FilterEngine` (AND-logic on `rawProperties`). Post-filter search via `LocalSearchService.transactionMatchesSearch`. `.between` excluded from date properties; date pickers handled by separate From/To inline date pickers.
 
 ## Deep Links
 
@@ -130,22 +84,25 @@ if initialFilters != nil || initialDateRange != nil {
 
 ## Theme
 
-`UIUserInterfaceStyle: Light` in Info.plist. `window.overrideUserInterfaceStyle` = `(AppTheme.currentMode == .dark ? .dark : .light)`. Toggle at `AppConstants.swift:105`: `static var currentMode: ThemeMode = .dark`. Warm cream/brown palette via `AppTheme.Colors`.
-
-**Never hardcode `UIColor.white` for segment text** — use `AppTheme.Colors.buttonContent` (adapts to current theme).
-
-### Swipe action colors
-- **Edit**: `AppTheme.Colors.secondaryBrown` (amber/tan)
-- **Delete**: `AppTheme.Colors.expense.withAlphaComponent(0.8)` (coral-red)
+`UIUserInterfaceStyle: Light` in Info.plist. `window.overrideUserInterfaceStyle = (AppTheme.currentMode == .dark ? .dark : .light)`. Default mode: `.dark` (`AppConstants.swift:105`). Warm cream/brown palette. Never hardcode `UIColor.white` for segment text — use `AppTheme.Colors.buttonContent`.
 
 ## Persistence
 
-- **UserDefaults** via `UserDefaultsManager` (shared): token, page ID/title.
-- **`ColumnMappingService`** persists roles & column mappings under `databaseMappings`/`columnMappings` keys.
+- **UserDefaults** via `UserDefaultsManager`: token, page ID/title.
+- **`ColumnMappingService`** persists roles & column mappings under `databaseMappings`/`columnMappings` keys (JSON).
+- **ColumnMapping**: custom `CodingKeys` — decodes old `expenseSplitDetailsProperty` into `expenseAppMetadataProperty`; encodes only the new key.
 
-## Settings — Health
+## Architecture Notes
 
-`SetupMetadataService.loadHealthData()` fires async schema fetches on `viewDidAppear` — caches schemas and relation target DB IDs into `SessionCacheManager`. Two sections: **Notion Connection** (12 rows, read-only) and **Setup Checklist** (12 required + 4 recommended). Checklist reads cached data exclusively; no API calls in computed properties.
+- **AnalyticsViewController**: ~3000 lines — all chart views inline in the same file. USD hardcoded. Top 6 + "Other" in donut chart. Zero API calls.
+- **NotionService**: Two API versions — standard uses `2022-06-28` (`AppConstants.API.notionVersion`), data source APIs hardcode `2025-09-03`.
+- **NotionDataFetcher**: Three-tier fallback: (1) data source API → (2) search → (3) direct DB query. Pagination (page_size=100).
+- **CategoryParserService**: First 100 rows only (no pagination). Relation names show `"Loading..."` until resolved.
+- **TransactionNormalizer**: Amounts are `abs()`'d. Deduplicates by page id. Relation category resolution uses `relationLookupMap`. `extractSplitMetadata()` parses full split JSON from the mapped metadata column into `SplitMetadata`.
+- **DatabaseDiscoveryService**: Searches ALL accessible databases via `POST /search` (not restricted to a page). Manually adds `"title"` property if missing.
+- **NotionService.fetchTopLevelPages**: Only workspace-level pages (`parent.type == "workspace"`).
+- **DynamicFormValue.isEmpty**: For `.checkbox`, always `false`.
+- **FinanceCell** (`Controllers/FinanceCell.swift`): Amount label max width 130pt. Shared for expense/income lists. Uses `contentStack` (UIStackView, vertical, `.fill`) with `titleLabel` + `paidAmountLabel` as arranged subviews. `categoryContainer` is outside the stack (needs `lessThanOrEqualTo` trailing for pill sizing), top-anchored to `contentStack.bottom + 8`. Stack auto-collapses hidden `paidAmountLabel` for non-split expenses — no residual gap. `setCustomSpacing(6, after: titleLabel)` for split, reset to 0 when not split. `prepareForReuse` resets all text, hidden state, and custom spacing.
 
 ## Debug
 
@@ -158,14 +115,11 @@ Log prefixes: `[SetupState]`, `[SessionCache]`, `[DataFetcher]`, `[NotionService
 
 ## Dead Code
 
-- `SetupCompleteViewController.swift` — never instantiated
-- `ViewController.swift` — Xcode boilerplate
+- `SetupCompleteViewController.swift`, `ViewController.swift` — never instantiated
 - `Main.storyboard` — unused (SceneDelegate builds UI in code)
 
 ## Style
 
 - Table views: `.plain` except `AddTransaction` and `Settings` which use `.insetGrouped`
-- All UI programmatic; no storyboard segues or xibs
-- Use `AppTheme.Fonts`, `AppTheme.CornerRadius`, `AppTheme.Shadow`, `AppTheme.styleNavigationBar()` for UI consistency
-- `FinanceCell` in `Controllers/` is the shared cell for expense/income lists
+- Use `AppTheme.Fonts`, `AppTheme.CornerRadius`, `AppTheme.Shadow`, `AppTheme.styleNavigationBar()` for consistency
 - `AGENTS.md` is gitignored (not version controlled)

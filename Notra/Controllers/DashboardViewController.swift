@@ -1402,6 +1402,7 @@ class ActivityRowView: UIView {
     private let dotView = UIView()
     private let titleLabel = UILabel()
     private let categoryDateLabel = UILabel()
+    private let paidAmountLabel = UILabel()
     private let amountLabel = UILabel()
 
     init(transaction: NormalizedTransaction) {
@@ -1431,6 +1432,13 @@ class ActivityRowView: UIView {
         categoryDateLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(categoryDateLabel)
 
+        paidAmountLabel.font = AppTheme.Fonts.small
+        paidAmountLabel.textColor = AppTheme.Colors.textMuted
+        paidAmountLabel.numberOfLines = 1
+        paidAmountLabel.translatesAutoresizingMaskIntoConstraints = false
+        paidAmountLabel.isHidden = true
+        addSubview(paidAmountLabel)
+
         amountLabel.font = AppTheme.Fonts.bodyBold
         amountLabel.textAlignment = .right
         amountLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -1452,7 +1460,11 @@ class ActivityRowView: UIView {
             categoryDateLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1),
             categoryDateLabel.leadingAnchor.constraint(equalTo: dotView.trailingAnchor, constant: 10),
             categoryDateLabel.trailingAnchor.constraint(lessThanOrEqualTo: amountLabel.leadingAnchor, constant: -8),
-            categoryDateLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+
+            paidAmountLabel.topAnchor.constraint(equalTo: categoryDateLabel.bottomAnchor, constant: 0),
+            paidAmountLabel.leadingAnchor.constraint(equalTo: dotView.trailingAnchor, constant: 10),
+            paidAmountLabel.trailingAnchor.constraint(lessThanOrEqualTo: amountLabel.leadingAnchor, constant: -8),
+            paidAmountLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
 
             amountLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             amountLabel.trailingAnchor.constraint(equalTo: trailingAnchor)
@@ -1469,16 +1481,30 @@ class ActivityRowView: UIView {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
-        let formattedAmt = formatter.string(from: NSNumber(value: transaction.amount)) ?? "$0.00"
+        let formattedAmt = formatter.string(from: NSNumber(value: transaction.effectiveAmount)) ?? "$0.00"
 
         if transaction.databaseRole == .expense {
             dotView.backgroundColor = AppTheme.Colors.expense
             amountLabel.textColor = AppTheme.Colors.expense
             amountLabel.text = "-\(formattedAmt)"
+
+            if transaction.isSplit {
+                let paidStr = formatter.string(from: NSNumber(value: transaction.paidAmount ?? transaction.effectiveAmount)) ?? "$0"
+                var text = "Split · Paid \(paidStr)"
+                if transaction.reimbursementAmount > 0 {
+                    let owedStr = formatter.string(from: NSNumber(value: transaction.reimbursementAmount)) ?? "$0"
+                    text += " · Owed \(owedStr)"
+                }
+                paidAmountLabel.text = text
+                paidAmountLabel.isHidden = false
+            } else {
+                paidAmountLabel.isHidden = true
+            }
         } else {
             dotView.backgroundColor = AppTheme.Colors.income
             amountLabel.textColor = AppTheme.Colors.income
             amountLabel.text = "+\(formattedAmt)"
+            paidAmountLabel.isHidden = true
         }
     }
 

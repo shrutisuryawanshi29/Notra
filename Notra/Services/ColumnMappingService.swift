@@ -98,6 +98,13 @@ final class ColumnMappingService {
             if mapping.dateColumn == nil && (lowerName.contains("date") || lowerName.contains("created") || lowerName.contains("purchase") || lowerName.contains("time") || propertyType == "date") {
                 mapping.dateColumn = columnName
             }
+
+            if mapping.expenseAppMetadataProperty == nil && (propertyType == "rich_text" || propertyType == "text") {
+                let metadataCandidates = ["split details", "app metadata", "metadata", "notra metadata", "split metadata", "app data", "notra data"]
+                if metadataCandidates.contains(lowerName) {
+                    mapping.expenseAppMetadataProperty = columnName
+                }
+            }
         }
 
         return mapping

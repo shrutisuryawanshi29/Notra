@@ -124,6 +124,13 @@ struct NotionPropertyValue: Codable {
     let files: [NotionFileValue]?
     let relation: [NotionRelation]?
     let rollup: NotionRollup?
+
+    enum CodingKeys: String, CodingKey {
+        case type, title, number, select, date, checkbox, url, email, people, files, relation, rollup
+        case richText = "rich_text"
+        case multiSelect = "multi_select"
+        case phoneNumber = "phone_number"
+    }
 }
 
 struct NotionSelect: Codable {

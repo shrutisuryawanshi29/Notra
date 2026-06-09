@@ -9,10 +9,21 @@ class FinanceCell: UITableViewCell {
     private let containerView = UIView()
     private let iconContainer = UIView()
     private let iconImageView = UIImageView()
+    private let contentStack = UIStackView()
     private let titleLabel = UILabel()
     private let categoryContainer = UIView()
     private let categoryLabel = UILabel()
     private let amountLabel = UILabel()
+    private let paidAmountLabel: UILabel = {
+        let label = UILabel()
+        label.font = AppTheme.Fonts.small
+        label.textColor = AppTheme.Colors.textMuted
+        label.numberOfLines = 0
+        label.lineBreakMode = .byWordWrapping
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
     private let chevronView = UIImageView()
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -45,13 +56,22 @@ class FinanceCell: UITableViewCell {
         iconImageView.translatesAutoresizingMaskIntoConstraints = false
         iconContainer.addSubview(iconImageView)
 
+        contentStack.axis = .vertical
+        contentStack.alignment = .fill
+        contentStack.distribution = .fill
+        contentStack.spacing = 0
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(contentStack)
+
         titleLabel.font = AppTheme.Fonts.bodyBold
         titleLabel.textColor = AppTheme.Colors.textPrimary
         titleLabel.numberOfLines = 0
         titleLabel.lineBreakMode = .byWordWrapping
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        containerView.addSubview(titleLabel)
+        contentStack.addArrangedSubview(titleLabel)
+
+        contentStack.addArrangedSubview(paidAmountLabel)
 
         categoryContainer.backgroundColor = AppTheme.Colors.secondaryTan
         categoryContainer.layer.cornerRadius = 12
@@ -101,14 +121,14 @@ class FinanceCell: UITableViewCell {
             iconImageView.widthAnchor.constraint(equalToConstant: 20),
             iconImageView.heightAnchor.constraint(equalToConstant: 20),
 
-            titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 10),
-            titleLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 12),
-            titleLabel.trailingAnchor.constraint(equalTo: amountLabel.leadingAnchor, constant: -12),
+            contentStack.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 16),
+            contentStack.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 12),
+            contentStack.trailingAnchor.constraint(equalTo: amountLabel.leadingAnchor, constant: -12),
 
-            categoryContainer.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            categoryContainer.topAnchor.constraint(equalTo: contentStack.bottomAnchor, constant: 8),
             categoryContainer.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 12),
             categoryContainer.trailingAnchor.constraint(lessThanOrEqualTo: chevronView.leadingAnchor, constant: -12),
-            categoryContainer.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -10),
+            categoryContainer.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -16),
 
             categoryLabel.topAnchor.constraint(equalTo: categoryContainer.topAnchor, constant: 4),
             categoryLabel.bottomAnchor.constraint(equalTo: categoryContainer.bottomAnchor, constant: -4),
@@ -135,7 +155,7 @@ class FinanceCell: UITableViewCell {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
-        amountLabel.text = formatter.string(from: NSNumber(value: expense.amount))
+        amountLabel.text = formatter.string(from: NSNumber(value: expense.effectiveAmount))
         amountLabel.textColor = AppTheme.Colors.expense
 
         containerView.backgroundColor = AppTheme.Colors.cardBackground
@@ -144,7 +164,30 @@ class FinanceCell: UITableViewCell {
         iconImageView.tintColor = AppTheme.Colors.expense
         categoryContainer.backgroundColor = AppTheme.Colors.secondaryTan
         categoryLabel.textColor = .white
+
+        if expense.isSplit {
+            let paidStr = Self.currencyFormatter.string(from: NSNumber(value: expense.paidAmount ?? expense.effectiveAmount)) ?? "$0"
+            let owedStr = Self.currencyFormatter.string(from: NSNumber(value: expense.reimbursementAmount)) ?? "$0"
+            if let type = expense.splitType, !type.isEmpty {
+                paidAmountLabel.text = "Split · \(type)\nPaid \(paidStr) · Owed \(owedStr)"
+            } else {
+                paidAmountLabel.text = "Split\nPaid \(paidStr) · Owed \(owedStr)"
+            }
+            paidAmountLabel.isHidden = false
+            contentStack.setCustomSpacing(6, after: titleLabel)
+        } else {
+            paidAmountLabel.text = nil
+            paidAmountLabel.isHidden = true
+            contentStack.setCustomSpacing(0, after: titleLabel)
+        }
     }
+
+    private static let currencyFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        return f
+    }()
 
     func configure(income: NormalizedTransaction) {
         titleLabel.text = income.title
@@ -164,6 +207,10 @@ class FinanceCell: UITableViewCell {
         iconImageView.tintColor = AppTheme.Colors.income
         categoryContainer.backgroundColor = AppTheme.Colors.secondaryTan
         categoryLabel.textColor = .white
+
+        paidAmountLabel.text = nil
+        paidAmountLabel.isHidden = true
+        contentStack.setCustomSpacing(0, after: titleLabel)
     }
 
     override func prepareForReuse() {
@@ -171,6 +218,9 @@ class FinanceCell: UITableViewCell {
         titleLabel.text = nil
         categoryLabel.text = nil
         amountLabel.text = nil
+        paidAmountLabel.text = nil
+        paidAmountLabel.isHidden = true
+        contentStack.setCustomSpacing(0, after: titleLabel)
         containerView.transform = .identity
         containerView.alpha = 1.0
     }

@@ -240,6 +240,7 @@ class ColumnMappingViewController: UIViewController {
             • **Amount** - Money value (positive for income, negative for expense)
             • **Category** - Expense/income category
             • **Date** - Transaction date
+            • **Split Details** - Optional Text column for split expense metadata
 
             Auto-suggestions are based on column names.
             Tap any row to change the mapping.
@@ -255,16 +256,52 @@ class ColumnMappingViewController: UIViewController {
     }
 
     private func showColumnPicker(for field: ColumnField) {
-        let alert = UIAlertController(title: field.rawValue, message: "Select column", preferredStyle: .actionSheet)
-
-        for property in viewModel.propertyNames {
-            alert.addAction(UIAlertAction(title: property, style: .default) { [weak self] _ in
-                self?.viewModel.setMapping(for: field, columnName: property)
-                self?.tableView.reloadData()
-            })
+        let properties: [String]
+        if field == .appMetadata {
+            properties = viewModel.propertyNames.filter { name in
+                let type = viewModel.database.properties[name]?.type ?? ""
+                return type == "rich_text" || type == "text"
+            }
+        } else {
+            properties = viewModel.propertyNames
         }
 
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        let picker = ColumnPickerViewController(
+            title: field.placeholder,
+            options: properties,
+            emptyMessage: field == .appMetadata
+                ? "No Text columns found.\n\nAdd a Text column named \"Split Details\" in your Expense database, then refresh this setup screen."
+                : "No columns available."
+        ) { [weak self] selected in
+            self?.viewModel.setMapping(for: field, columnName: selected)
+            self?.tableView.reloadData()
+        }
+        present(picker, animated: true)
+    }
+
+    private func showAppMetadataInfo() {
+        let message = """
+        Notra can track shared expenses. For example, if you pay $100 for groceries but your share is $50, Notra will count $50 toward your spending while remembering that you paid $100 total.
+
+        To keep split details after the app restarts, add one optional Text column to your Expense database.
+
+        Recommended:
+        Column name: Split Details
+        Type: Text
+
+        Notra stores small metadata in this column. You can hide this column in your Notion view.
+
+        Without this column, your expense amount can still save as your share, but split details like paid amount and owed amount may not persist after reopening the app.
+        """
+        let alert = UIAlertController(
+            title: "Split Expense Details",
+            message: message,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Got it", style: .default))
+        alert.addAction(UIAlertAction(title: "Copy \"Split Details\"", style: .default) { _ in
+            UIPasteboard.general.string = "Split Details"
+        })
         present(alert, animated: true)
     }
 }
@@ -279,6 +316,11 @@ extension ColumnMappingViewController: UITableViewDelegate, UITableViewDataSourc
         let field = ColumnField.allCases[indexPath.row]
         let selectedColumn = viewModel.getMapping(for: field)
         cell.configure(field: field, selectedColumn: selectedColumn)
+        if field == .appMetadata {
+            cell.onInfoTap = { [weak self] in
+                self?.showAppMetadataInfo()
+            }
+        }
         return cell
     }
 
@@ -415,6 +457,8 @@ class MappingCell: UITableViewCell {
     private let fieldLabel = UILabel()
     private let valueLabel = UILabel()
     private let arrowImageView = UIImageView()
+    private let infoButton = UIButton(type: .system)
+    var onInfoTap: (() -> Void)?
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -446,6 +490,14 @@ class MappingCell: UITableViewCell {
         fieldLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(fieldLabel)
 
+        let infoConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        infoButton.setImage(UIImage(systemName: "info.circle", withConfiguration: infoConfig), for: .normal)
+        infoButton.tintColor = AppTheme.Colors.textMuted
+        infoButton.translatesAutoresizingMaskIntoConstraints = false
+        infoButton.isHidden = true
+        infoButton.addTarget(self, action: #selector(infoTapped), for: .touchUpInside)
+        contentView.addSubview(infoButton)
+
         valueLabel.font = AppTheme.Fonts.body
         valueLabel.textColor = AppTheme.Colors.textSecondary
         valueLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -465,9 +517,13 @@ class MappingCell: UITableViewCell {
 
             fieldLabel.leadingAnchor.constraint(equalTo: fieldIconView.trailingAnchor, constant: 12),
             fieldLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            fieldLabel.widthAnchor.constraint(equalToConstant: 90),
 
-            valueLabel.leadingAnchor.constraint(equalTo: fieldLabel.trailingAnchor, constant: 8),
+            infoButton.leadingAnchor.constraint(equalTo: fieldLabel.trailingAnchor, constant: 4),
+            infoButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            infoButton.widthAnchor.constraint(equalToConstant: 22),
+            infoButton.heightAnchor.constraint(equalToConstant: 22),
+
+            valueLabel.leadingAnchor.constraint(equalTo: infoButton.trailingAnchor, constant: 8),
             valueLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             valueLabel.trailingAnchor.constraint(equalTo: arrowImageView.leadingAnchor, constant: -8),
 
@@ -478,10 +534,15 @@ class MappingCell: UITableViewCell {
         ])
     }
 
+    @objc private func infoTapped() {
+        onInfoTap?()
+    }
+
     func configure(field: ColumnField, selectedColumn: String?) {
         fieldLabel.text = field.rawValue
 
         let iconConfig = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        infoButton.isHidden = true
         switch field {
         case .title:
             fieldIconView.image = UIImage(systemName: "text.alignleft", withConfiguration: iconConfig)
@@ -495,9 +556,135 @@ class MappingCell: UITableViewCell {
         case .date:
             fieldIconView.image = UIImage(systemName: "calendar", withConfiguration: iconConfig)
             fieldIconView.tintColor = AppTheme.Colors.income
+        case .appMetadata:
+            fieldIconView.image = UIImage(systemName: "square.and.pencil", withConfiguration: iconConfig)
+            fieldIconView.tintColor = AppTheme.Colors.textMuted
+            infoButton.isHidden = false
         }
 
         valueLabel.text = selectedColumn ?? "Not selected"
         valueLabel.textColor = selectedColumn != nil ? AppTheme.Colors.textPrimary : AppTheme.Colors.textMuted
+    }
+}
+
+// MARK: - Column Picker
+
+class ColumnPickerViewController: UIViewController {
+
+    private let pickerTitle: String
+    private let options: [String]
+    private let emptyMessage: String
+    private let onSelect: (String) -> Void
+
+    private let tableView = UITableView(frame: .zero, style: .plain)
+
+    init(title: String, options: [String], emptyMessage: String, onSelect: @escaping (String) -> Void) {
+        self.pickerTitle = title
+        self.options = options
+        self.emptyMessage = emptyMessage
+        self.onSelect = onSelect
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupUI()
+    }
+
+    private func setupUI() {
+        view.backgroundColor = AppTheme.Colors.background
+
+        let navBar = UINavigationBar()
+        navBar.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(navBar)
+
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = AppTheme.Colors.cardBackground
+        appearance.titleTextAttributes = [.foregroundColor: AppTheme.Colors.textPrimary, .font: AppTheme.Fonts.bodyBold]
+        appearance.shadowColor = .clear
+        navBar.standardAppearance = appearance
+        navBar.scrollEdgeAppearance = appearance
+        navBar.compactAppearance = appearance
+
+        let navItem = UINavigationItem(title: pickerTitle)
+        navItem.rightBarButtonItem = UIBarButtonItem(title: "Cancel", style: .done, target: self, action: #selector(dismissTapped))
+        navItem.rightBarButtonItem?.tintColor = AppTheme.Colors.primaryBrown
+        navBar.setItems([navItem], animated: false)
+
+        tableView.delegate = self
+        tableView.dataSource = self
+        tableView.backgroundColor = AppTheme.Colors.background
+        tableView.separatorColor = AppTheme.Colors.border
+        tableView.separatorInset = UIEdgeInsets(top: 0, left: 20, bottom: 0, right: 20)
+        tableView.tableFooterView = UIView()
+        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "OptionCell")
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(tableView)
+
+        NSLayoutConstraint.activate([
+            navBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            navBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            navBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            tableView.topAnchor.constraint(equalTo: navBar.bottomAnchor),
+            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        if #available(iOS 15.0, *) {
+            if let sheet = sheetPresentationController {
+                sheet.detents = [.medium(), .large()]
+                sheet.prefersGrabberVisible = true
+            }
+        }
+    }
+
+    @objc private func dismissTapped() {
+        dismiss(animated: true)
+    }
+}
+
+extension ColumnPickerViewController: UITableViewDelegate, UITableViewDataSource {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return max(options.count, 1)
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        if options.isEmpty {
+            let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
+            cell.textLabel?.text = "No columns available"
+            cell.textLabel?.textColor = AppTheme.Colors.textMuted
+            cell.textLabel?.font = AppTheme.Fonts.body
+            cell.detailTextLabel?.text = emptyMessage
+            cell.detailTextLabel?.textColor = AppTheme.Colors.textSecondary
+            cell.detailTextLabel?.font = AppTheme.Fonts.caption
+            cell.detailTextLabel?.numberOfLines = 0
+            cell.selectionStyle = .none
+            cell.backgroundColor = AppTheme.Colors.background
+            return cell
+        }
+
+        let cell = tableView.dequeueReusableCell(withIdentifier: "OptionCell", for: indexPath)
+        let name = options[indexPath.row]
+        cell.textLabel?.text = name
+        cell.textLabel?.textColor = AppTheme.Colors.textPrimary
+        cell.textLabel?.font = AppTheme.Fonts.body
+        cell.accessoryType = .disclosureIndicator
+        cell.backgroundColor = AppTheme.Colors.background
+        return cell
+    }
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        guard indexPath.row < options.count else { return }
+        dismiss(animated: true) { [weak self] in
+            self?.onSelect(self?.options[indexPath.row] ?? "")
+        }
     }
 }

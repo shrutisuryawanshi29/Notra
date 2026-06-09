@@ -161,6 +161,8 @@ class IncomeListViewController: UIViewController {
         tableView.estimatedRowHeight = 80
         tableView.separatorStyle = .none
         tableView.sectionHeaderTopPadding = 0
+        tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 60, right: 0)
+        tableView.scrollIndicatorInsets = UIEdgeInsets(top: 0, left: 0, bottom: 60, right: 0)
         tableView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(tableView)
 

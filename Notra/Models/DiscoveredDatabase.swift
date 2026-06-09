@@ -38,4 +38,43 @@ struct ColumnMapping: Codable {
     var categoryColumn: String?
     var categoryRelationDataSourceId: String?  // Target data source ID if category is relation
     var dateColumn: String?
+    var expenseAppMetadataProperty: String?
+
+    enum CodingKeys: String, CodingKey {
+        case titleColumn, amountColumn, categoryColumn, categoryRelationDataSourceId, dateColumn
+        case expenseAppMetadataProperty
+        case expenseSplitDetailsProperty
+    }
+
+    init(titleColumn: String? = nil, amountColumn: String? = nil, categoryColumn: String? = nil, categoryRelationDataSourceId: String? = nil, dateColumn: String? = nil, expenseAppMetadataProperty: String? = nil) {
+        self.titleColumn = titleColumn
+        self.amountColumn = amountColumn
+        self.categoryColumn = categoryColumn
+        self.categoryRelationDataSourceId = categoryRelationDataSourceId
+        self.dateColumn = dateColumn
+        self.expenseAppMetadataProperty = expenseAppMetadataProperty
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        titleColumn = try container.decodeIfPresent(String.self, forKey: .titleColumn)
+        amountColumn = try container.decodeIfPresent(String.self, forKey: .amountColumn)
+        categoryColumn = try container.decodeIfPresent(String.self, forKey: .categoryColumn)
+        categoryRelationDataSourceId = try container.decodeIfPresent(String.self, forKey: .categoryRelationDataSourceId)
+        dateColumn = try container.decodeIfPresent(String.self, forKey: .dateColumn)
+        expenseAppMetadataProperty = try container.decodeIfPresent(String.self, forKey: .expenseAppMetadataProperty)
+        if expenseAppMetadataProperty == nil {
+            expenseAppMetadataProperty = try container.decodeIfPresent(String.self, forKey: .expenseSplitDetailsProperty)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(titleColumn, forKey: .titleColumn)
+        try container.encodeIfPresent(amountColumn, forKey: .amountColumn)
+        try container.encodeIfPresent(categoryColumn, forKey: .categoryColumn)
+        try container.encodeIfPresent(categoryRelationDataSourceId, forKey: .categoryRelationDataSourceId)
+        try container.encodeIfPresent(dateColumn, forKey: .dateColumn)
+        try container.encodeIfPresent(expenseAppMetadataProperty, forKey: .expenseAppMetadataProperty)
+    }
 }

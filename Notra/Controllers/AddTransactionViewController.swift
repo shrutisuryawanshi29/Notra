@@ -135,6 +135,10 @@ final class AddTransactionViewController: UIViewController {
         super.init(coder: coder)
     }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
@@ -172,6 +176,8 @@ final class AddTransactionViewController: UIViewController {
         tableView.register(FormDateCell.self, forCellReuseIdentifier: "FormDateCell")
         tableView.register(FormSwitchCell.self, forCellReuseIdentifier: "FormSwitchCell")
         tableView.register(FormTextViewCell.self, forCellReuseIdentifier: "FormTextViewCell")
+        tableView.register(SplitToggleCell.self, forCellReuseIdentifier: "SplitToggleCell")
+        tableView.register(SplitDetailCell.self, forCellReuseIdentifier: "SplitDetailCell")
         tableView.separatorStyle = .none
         tableView.backgroundColor = AppTheme.Colors.background
 
@@ -228,6 +234,9 @@ final class AddTransactionViewController: UIViewController {
             emptyStateView.bottomAnchor.constraint(equalTo: saveButton.topAnchor)
         ])
 
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow), name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
+
         let tap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         tap.cancelsTouchesInView = false
         view.addGestureRecognizer(tap)
@@ -278,6 +287,17 @@ final class AddTransactionViewController: UIViewController {
 
     @objc private func dismissKeyboard() {
         view.endEditing(true)
+    }
+
+    @objc private func keyboardWillShow(_ notification: Notification) {
+        guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        tableView.contentInset.bottom = keyboardFrame.height
+        tableView.verticalScrollIndicatorInsets.bottom = keyboardFrame.height
+    }
+
+    @objc private func keyboardWillHide(_ notification: Notification) {
+        tableView.contentInset.bottom = 0
+        tableView.verticalScrollIndicatorInsets.bottom = 0
     }
 
     @objc private func cancelTapped() {
@@ -359,6 +379,14 @@ final class AddTransactionViewController: UIViewController {
     }
 
     private func showSuccess() {
+        if viewModel.isSplitExpense && viewModel.selectedRole == .expense {
+            let metadataCol = viewModel.targetDatabaseMapping?.columnMapping?.expenseAppMetadataProperty
+            if metadataCol == nil {
+                let warning = ToastView(message: "Split details may not persist. Map a Split Details column in setup.")
+                warning.show(in: view, duration: 2.0)
+            }
+        }
+
         if editingTransaction != nil {
             guard let tx = viewModel.editingTransaction else { return }
             let role = viewModel.selectedRole
@@ -429,17 +457,44 @@ extension AddTransactionViewController {
         let categoryField = fieldsByName.values.first(where: { $0.propertyType == .select || $0.propertyType == .relation || $0.propertyType == .multiSelect || $0.propertyType == .status })
 
         let newDate = dateField.flatMap { viewModel.fieldValues[$0.propertyName]?.dateValue } ?? original.date
-        let newAmount = amountField.flatMap { viewModel.fieldValues[$0.propertyName]?.numberValue } ?? original.amount
+
+        let newAmount: Double
+        let paidAmount: Double?
+        if viewModel.isSplitExpense && viewModel.selectedRole == .expense {
+            newAmount = viewModel.myShareAmountForSplit
+            let paid = viewModel.paidAmountForSplit
+            paidAmount = paid > 0 ? paid : original.paidAmount
+        } else {
+            newAmount = amountField.flatMap { viewModel.fieldValues[$0.propertyName]?.numberValue } ?? original.amount
+            paidAmount = original.paidAmount
+        }
+
+        let split: SplitMetadata?
+        if viewModel.isSplitExpense, let p = paidAmount, p > 0 {
+            split = SplitMetadata(
+                enabled: true,
+                paidAmount: p,
+                myShare: abs(newAmount),
+                theyOwe: viewModel.reimbursementAmountForSplit,
+                type: viewModel.splitMethod.rawValue,
+                status: viewModel.splitStatus,
+                splitWith: nil
+            )
+        } else {
+            split = nil
+        }
 
         return NormalizedTransaction(
             id: original.id,
             title: titleFieldValue ?? original.title,
             amount: abs(newAmount),
+            paidAmount: paidAmount,
             category: categoryFieldValue ?? original.category,
             date: newDate,
             databaseId: original.databaseId,
             databaseRole: original.databaseRole,
-            rawProperties: updatedPage?.properties ?? original.rawProperties
+            rawProperties: updatedPage?.properties ?? original.rawProperties,
+            splitMetadata: split
         )
     }
 
@@ -448,17 +503,44 @@ extension AddTransactionViewController {
         let amountField = fieldsByName.values.first(where: { $0.propertyType == .number })
 
         let newDate = dateField.flatMap { viewModel.fieldValues[$0.propertyName]?.dateValue } ?? Date()
-        let newAmount = amountField.flatMap { viewModel.fieldValues[$0.propertyName]?.numberValue } ?? 0
+
+        let newAmount: Double
+        let paidAmount: Double?
+        if viewModel.isSplitExpense && viewModel.selectedRole == .expense {
+            newAmount = viewModel.myShareAmountForSplit
+            let paid = viewModel.paidAmountForSplit
+            paidAmount = paid > 0 ? paid : nil
+        } else {
+            newAmount = amountField.flatMap { viewModel.fieldValues[$0.propertyName]?.numberValue } ?? 0
+            paidAmount = nil
+        }
+
+        let split: SplitMetadata?
+        if viewModel.isSplitExpense, let p = paidAmount, p > 0 {
+            split = SplitMetadata(
+                enabled: true,
+                paidAmount: p,
+                myShare: abs(newAmount),
+                theyOwe: viewModel.reimbursementAmountForSplit,
+                type: viewModel.splitMethod.rawValue,
+                status: viewModel.splitStatus,
+                splitWith: nil
+            )
+        } else {
+            split = nil
+        }
 
         return NormalizedTransaction(
             id: page.id,
             title: titleFieldValue ?? "\(viewModel.selectedRole.displayName) - \(page.id.prefix(8))",
             amount: abs(newAmount),
+            paidAmount: paidAmount,
             category: categoryFieldValue,
             date: newDate,
             databaseId: viewModel.targetDatabaseId ?? page.parent.databaseId ?? "",
             databaseRole: viewModel.selectedRole,
-            rawProperties: page.properties
+            rawProperties: page.properties,
+            splitMetadata: split
         )
     }
 
@@ -502,6 +584,17 @@ extension AddTransactionViewController {
         return nil
     }
 
+    private func syncPaidAmountFromAmountField() {
+        guard let amountField = viewModel.fields.first(where: { $0.propertyType == .number && $0.mappedRole == "Amount" }) else { return }
+        let rawText = (fieldViews[amountField.propertyName] as? UITextField)?.text ?? ""
+        let cleaned = rawText.replacingOccurrences(of: ",", with: "")
+        let existingValue = Double(cleaned) ?? 0
+        viewModel.setPaidAmountForSplit(existingValue)
+        if viewModel.splitMethod == .half {
+            viewModel.setMyShareForSplit(existingValue / 2)
+        }
+    }
+
     private func buildSuggestionEntryForSavedExpense() -> (displayName: String, value: SuggestedCategoryValue)? {
         guard let categoryField = categoryFormField else { return nil }
         let fv = viewModel.fieldValues[categoryField.propertyName]
@@ -534,10 +627,68 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return viewModel.fields.count
+        let baseCount = viewModel.fields.count
+        if viewModel.selectedRole == .expense {
+            return baseCount + 2
+        }
+        return baseCount
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let fieldCount = viewModel.fields.count
+
+        if viewModel.selectedRole == .expense {
+            if indexPath.row == fieldCount {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SplitToggleCell", for: indexPath) as! SplitToggleCell
+                cell.configure(isOn: viewModel.isSplitExpense)
+                cell.onToggle = { [weak self] isOn in
+                    self?.viewModel.setSplitEnabled(isOn)
+                    if isOn {
+                        self?.syncPaidAmountFromAmountField()
+                    }
+                    let detailsPath = IndexPath(row: fieldCount + 1, section: 0)
+                    self?.tableView.reloadRows(at: [detailsPath], with: .none)
+                    self?.tableView.performBatchUpdates(nil)
+                }
+                return cell
+                } else if indexPath.row == fieldCount + 1 {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SplitDetailCell", for: indexPath) as! SplitDetailCell
+                if viewModel.isSplitExpense {
+                    cell.configure(
+                        method: viewModel.splitMethod,
+                        paidAmount: viewModel.paidAmountForSplit,
+                        myShare: viewModel.myShareAmountForSplit,
+                        reimbursement: viewModel.reimbursementAmountForSplit
+                    )
+                    cell.isHidden = false
+                    let detailPath = indexPath
+                    cell.onMethodChange = { [weak self] method in
+                        self?.viewModel.setSplitMethod(method)
+                        if method == .half {
+                            let paid = self?.viewModel.paidAmountForSplit ?? 0
+                            self?.viewModel.setMyShareForSplit(paid / 2)
+                        }
+                        self?.tableView.reloadRows(at: [detailPath], with: .none)
+                        self?.tableView.performBatchUpdates(nil)
+                    }
+                    cell.onMyShareChange = { [weak self, weak cell] share in
+                        guard let self = self else { return }
+                        self.viewModel.setMyShareForSplit(share)
+                        if let cell = cell {
+                            cell.updateDisplay(
+                                paidAmount: self.viewModel.paidAmountForSplit,
+                                reimbursement: self.viewModel.reimbursementAmountForSplit
+                            )
+                        }
+                        self.tableView.performBatchUpdates(nil)
+                    }
+                } else {
+                    cell.isHidden = true
+                }
+                return cell
+            }
+        }
+
         let field = viewModel.fields[indexPath.row]
 
         switch field.propertyType {
@@ -574,6 +725,9 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
                 } else if let str = existingValue.stringValue {
                     cell.textField.text = str
                 }
+            }
+            if field.mappedRole == "Amount" {
+                cell.textField.addTarget(self, action: #selector(amountTextChanged), for: .editingChanged)
             }
             fieldViews[field.propertyName] = cell.textField
             return cell
@@ -696,6 +850,15 @@ extension AddTransactionViewController {
         suggestionTimer?.invalidate()
         suggestionTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
             self?.computeSuggestions()
+        }
+    }
+
+    @objc private func amountTextChanged(_ sender: UITextField) {
+        guard let amountField = viewModel.fields.first(where: { $0.propertyType == .number && $0.mappedRole == "Amount" }) else { return }
+        let value = Double(sender.text?.replacingOccurrences(of: ",", with: "") ?? "")
+        viewModel.updateNumberValue(propertyName: amountField.propertyName, value: value)
+        if viewModel.isSplitExpense {
+            syncPaidAmountFromAmountField()
         }
     }
 
@@ -1434,5 +1597,223 @@ private class FormTextViewCell: UITableViewCell {
         nameLabel.text = field.displayName
         badgeLabel.isHidden = !field.isMappedCoreField
         textView.text = ""
+    }
+}
+
+// MARK: - Split Toggle Cell
+
+private class SplitToggleCell: UITableViewCell {
+    private let nameLabel = UILabel()
+    private let toggleSwitch = UISwitch()
+    var onToggle: ((Bool) -> Void)?
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        setup()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func setup() {
+        selectionStyle = .none
+        contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+
+        nameLabel.text = "Split Expense"
+        nameLabel.font = AppTheme.Fonts.bodyBold
+        nameLabel.textColor = AppTheme.Colors.textPrimary
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(nameLabel)
+
+        toggleSwitch.onTintColor = AppTheme.Colors.expense
+        toggleSwitch.translatesAutoresizingMaskIntoConstraints = false
+        toggleSwitch.addTarget(self, action: #selector(toggleChanged), for: .valueChanged)
+        contentView.addSubview(toggleSwitch)
+
+        NSLayoutConstraint.activate([
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            nameLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+
+            toggleSwitch.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            toggleSwitch.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+
+            contentView.topAnchor.constraint(equalTo: nameLabel.topAnchor, constant: -14),
+            contentView.bottomAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 14)
+        ])
+    }
+
+    @objc private func toggleChanged() {
+        onToggle?(toggleSwitch.isOn)
+    }
+
+    func configure(isOn: Bool) {
+        toggleSwitch.isOn = isOn
+    }
+}
+
+// MARK: - Split Detail Cell
+
+private class SplitDetailCell: UITableViewCell, UITextFieldDelegate {
+    private let methodSegments = UISegmentedControl(items: ["50/50", "Custom"])
+    private let paidAmountLabel = UILabel()
+    private let myShareField = UITextField()
+    private let theyOweLabel = UILabel()
+    private let helperLabel = UILabel()
+    var onMethodChange: ((SplitMethod) -> Void)?
+    var onMyShareChange: ((Double) -> Void)?
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        setup()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func setup() {
+        selectionStyle = .none
+        contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+
+        let paidHeader = UILabel()
+        paidHeader.text = "Amount paid"
+        paidHeader.font = AppTheme.Fonts.captionBold
+        paidHeader.textColor = AppTheme.Colors.textSecondary
+        paidHeader.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(paidHeader)
+
+        paidAmountLabel.font = AppTheme.Fonts.bodyBold
+        paidAmountLabel.textColor = AppTheme.Colors.textPrimary
+        paidAmountLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(paidAmountLabel)
+
+        methodSegments.selectedSegmentIndex = 0
+        methodSegments.translatesAutoresizingMaskIntoConstraints = false
+        methodSegments.addTarget(self, action: #selector(methodChanged), for: .valueChanged)
+        contentView.addSubview(methodSegments)
+
+        let shareHeader = UILabel()
+        shareHeader.text = "My share"
+        shareHeader.font = AppTheme.Fonts.captionBold
+        shareHeader.textColor = AppTheme.Colors.textSecondary
+        shareHeader.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(shareHeader)
+
+        myShareField.font = AppTheme.Fonts.body
+        myShareField.textColor = AppTheme.Colors.textPrimary
+        myShareField.placeholder = "0.00"
+        myShareField.keyboardType = .decimalPad
+        myShareField.borderStyle = .roundedRect
+        myShareField.backgroundColor = AppTheme.Colors.background
+        myShareField.translatesAutoresizingMaskIntoConstraints = false
+        myShareField.delegate = self
+        myShareField.addTarget(self, action: #selector(myShareChanged), for: .editingChanged)
+        contentView.addSubview(myShareField)
+
+        let oweHeader = UILabel()
+        oweHeader.text = "They owe"
+        oweHeader.font = AppTheme.Fonts.captionBold
+        oweHeader.textColor = AppTheme.Colors.textSecondary
+        oweHeader.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(oweHeader)
+
+        theyOweLabel.font = AppTheme.Fonts.body
+        theyOweLabel.textColor = AppTheme.Colors.expense
+        theyOweLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(theyOweLabel)
+
+        helperLabel.text = "Your share is used for spending, budgets, and analytics."
+        helperLabel.font = AppTheme.Fonts.small
+        helperLabel.textColor = AppTheme.Colors.textMuted
+        helperLabel.numberOfLines = 0
+        helperLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(helperLabel)
+
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+
+        NSLayoutConstraint.activate([
+            paidHeader.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
+            paidHeader.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+
+            paidAmountLabel.topAnchor.constraint(equalTo: paidHeader.bottomAnchor, constant: 2),
+            paidAmountLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            paidAmountLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            methodSegments.topAnchor.constraint(equalTo: paidAmountLabel.bottomAnchor, constant: 12),
+            methodSegments.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            methodSegments.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            methodSegments.heightAnchor.constraint(equalToConstant: 32),
+
+            shareHeader.topAnchor.constraint(equalTo: methodSegments.bottomAnchor, constant: 12),
+            shareHeader.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+
+            myShareField.topAnchor.constraint(equalTo: shareHeader.bottomAnchor, constant: 4),
+            myShareField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            myShareField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            myShareField.heightAnchor.constraint(equalToConstant: 40),
+
+            oweHeader.topAnchor.constraint(equalTo: myShareField.bottomAnchor, constant: 12),
+            oweHeader.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+
+            theyOweLabel.topAnchor.constraint(equalTo: oweHeader.bottomAnchor, constant: 2),
+            theyOweLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            theyOweLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            helperLabel.topAnchor.constraint(equalTo: theyOweLabel.bottomAnchor, constant: 12),
+            helperLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            helperLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            helperLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -14)
+        ])
+    }
+
+    func configure(method: SplitMethod, paidAmount: Double, myShare: Double, reimbursement: Double) {
+        let currencyFormatter = NumberFormatter()
+        currencyFormatter.numberStyle = .currency
+        currencyFormatter.currencyCode = "USD"
+
+        let numericFormatter = NumberFormatter()
+        numericFormatter.numberStyle = .decimal
+        numericFormatter.minimumFractionDigits = 2
+        numericFormatter.maximumFractionDigits = 2
+
+        paidAmountLabel.text = currencyFormatter.string(from: NSNumber(value: paidAmount)) ?? "$0"
+        myShareField.text = numericFormatter.string(from: NSNumber(value: myShare)) ?? "0.00"
+        theyOweLabel.text = currencyFormatter.string(from: NSNumber(value: reimbursement)) ?? "$0"
+
+        switch method {
+        case .half:
+            methodSegments.selectedSegmentIndex = 0
+            myShareField.isEnabled = false
+            myShareField.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        case .customAmount:
+            methodSegments.selectedSegmentIndex = 1
+            myShareField.isEnabled = true
+            myShareField.backgroundColor = AppTheme.Colors.background
+        }
+    }
+
+    func updateDisplay(paidAmount: Double, reimbursement: Double) {
+        let currencyFormatter = NumberFormatter()
+        currencyFormatter.numberStyle = .currency
+        currencyFormatter.currencyCode = "USD"
+        paidAmountLabel.text = currencyFormatter.string(from: NSNumber(value: paidAmount)) ?? "$0"
+        theyOweLabel.text = currencyFormatter.string(from: NSNumber(value: reimbursement)) ?? "$0"
+    }
+
+    @objc private func methodChanged() {
+        let method: SplitMethod = methodSegments.selectedSegmentIndex == 0 ? .half : .customAmount
+        if method == .half {
+            myShareField.isEnabled = false
+            myShareField.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        } else {
+            myShareField.isEnabled = true
+            myShareField.backgroundColor = AppTheme.Colors.background
+        }
+        onMethodChange?(method)
+    }
+
+    @objc private func myShareChanged() {
+        let cleaned = myShareField.text?.replacingOccurrences(of: "[^0-9.]", with: "", options: .regularExpression) ?? ""
+        let value = Double(cleaned) ?? 0
+        onMyShareChange?(value)
     }
 }

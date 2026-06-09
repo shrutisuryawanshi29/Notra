@@ -5,6 +5,24 @@
 
 import Foundation
 
+// MARK: - Split Metadata
+
+struct SplitMetadata: Codable {
+    let enabled: Bool
+    let paidAmount: Double
+    let myShare: Double
+    let theyOwe: Double
+    let type: String?
+    let status: String?
+    let splitWith: String?
+
+    enum CodingKeys: String, CodingKey {
+        case enabled, paidAmount, myShare, theyOwe, type, status, splitWith
+    }
+}
+
+// MARK: - Grouped Transaction Section
+
 struct GroupedTransactionSection {
     let date: String
     let displayDate: String
@@ -16,17 +34,52 @@ struct NormalizedTransaction: Identifiable {
     let id: String
     let title: String
     let amount: Double
+    let paidAmount: Double?
     let category: String?
     let date: Date
     let databaseId: String
     let databaseRole: DatabaseRole
     let rawProperties: [String: NotionPropertyValue]?
+    let splitMetadata: SplitMetadata?
+
+    var isSplit: Bool {
+        splitMetadata?.enabled == true
+    }
+
+    var reimbursementAmount: Double {
+        if let split = splitMetadata, split.enabled {
+            return split.theyOwe
+        }
+        if let paid = paidAmount, paid != amount {
+            return paid - amount
+        }
+        return 0
+    }
+
+    var effectiveAmount: Double {
+        if let split = splitMetadata, split.enabled {
+            return split.myShare
+        }
+        return amount
+    }
+
+    var splitType: String? {
+        splitMetadata?.type
+    }
+
+    var splitStatus: String? {
+        splitMetadata?.status
+    }
+
+    var splitWith: String? {
+        splitMetadata?.splitWith
+    }
 
     var formattedAmount: String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
-        return formatter.string(from: NSNumber(value: amount)) ?? "$0.00"
+        return formatter.string(from: NSNumber(value: effectiveAmount)) ?? "$0.00"
     }
 
     var formattedDate: String {

@@ -38,6 +38,8 @@ final class TransactionNormalizer {
             guard let title = extractTitle(from: row, column: columnMapping.titleColumn) else { continue }
 
             let amount = extractAmount(from: row, column: columnMapping.amountColumn) ?? 0
+            let split = extractSplitMetadata(from: row, column: columnMapping.expenseAppMetadataProperty)
+            let paidAmount = split?.paidAmount
             let date = extractDate(from: row, column: columnMapping.dateColumn) ?? Date()
 
             print("[DEBUG] TRANSACTION: title='\(title)', amount=\(amount), date=\(date), monthKey=\(MonthMetadata(date: date).monthKey)")
@@ -72,11 +74,13 @@ final class TransactionNormalizer {
                     id: row.id,
                     title: title,
                     amount: abs(amount),
+                    paidAmount: paidAmount.map(abs),
                     category: category,
                     date: date,
                     databaseId: mapping.databaseId,
                     databaseRole: role,
-                    rawProperties: row.properties
+                    rawProperties: row.properties,
+                    splitMetadata: split
                 )
 
                 mutex.lock()
@@ -90,11 +94,13 @@ final class TransactionNormalizer {
                     id: row.id,
                     title: title,
                     amount: abs(amount),
+                    paidAmount: paidAmount.map(abs),
                     category: category,
                     date: date,
                     databaseId: mapping.databaseId,
                     databaseRole: role,
-                    rawProperties: row.properties
+                    rawProperties: row.properties,
+                    splitMetadata: split
                 )
 
                 mutex.lock()
@@ -137,6 +143,8 @@ final class TransactionNormalizer {
             guard let title = extractTitle(from: row, column: columnMapping.titleColumn) else { continue }
 
             let amount = extractAmount(from: row, column: columnMapping.amountColumn) ?? 0
+            let split = extractSplitMetadata(from: row, column: columnMapping.expenseAppMetadataProperty)
+            let paidAmount = split?.paidAmount
             let category = extractCategory(from: row, column: columnMapping.categoryColumn, mapping: mapping)
             let date = extractDate(from: row, column: columnMapping.dateColumn) ?? Date()
 
@@ -150,11 +158,13 @@ final class TransactionNormalizer {
                 id: row.id,
                 title: title,
                 amount: abs(amount),
+                paidAmount: paidAmount.map(abs),
                 category: category,
                 date: date,
                 databaseId: mapping.databaseId,
                 databaseRole: role,
-                rawProperties: row.properties
+                rawProperties: row.properties,
+                splitMetadata: split
             )
             transactions.append(transaction)
         }
@@ -205,6 +215,72 @@ final class TransactionNormalizer {
             }
         }
 
+        return nil
+    }
+
+    private func extractSplitMetadata(from row: NotionPage, column: String?) -> SplitMetadata? {
+        guard let column = column, let props = row.properties else {
+            #if DEBUG
+            print("[SplitDetailsParser] No column or props")
+            #endif
+            return nil
+        }
+        guard let prop = props[column], let richText = prop.richText else {
+            #if DEBUG
+            print("[SplitDetailsParser] No property or richText for column: \(column)")
+            #endif
+            return nil
+        }
+
+        for item in richText {
+            guard let text = item.plainText ?? item.text?.content else { continue }
+
+            #if DEBUG
+            print("[SplitDetailsParser] Raw metadata: \(text)")
+            #endif
+
+            guard let data = text.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let split = json["split"] as? [String: Any],
+                  let enabled = split["enabled"] as? Bool, enabled else {
+                #if DEBUG
+                print("[SplitDetailsParser] Failed to parse metadata")
+                #endif
+                continue
+            }
+
+            let paid = split["paidAmount"] as? Double ?? 0
+            let myShare = split["myShare"] as? Double ?? 0
+            let theyOwe = split["theyOwe"] as? Double ?? max(paid - myShare, 0)
+            let type = split["type"] as? String
+            let status = split["status"] as? String
+            let splitWith = split["splitWith"] as? String
+
+            guard paid > 0 else {
+                #if DEBUG
+                print("[SplitDetailsParser] paidAmount <= 0, skipping")
+                #endif
+                continue
+            }
+
+            #if DEBUG
+            print("[SplitDetailsParser] Parsed isSplit: true, paidAmount: \(paid), myShare: \(myShare), theyOwe: \(theyOwe), type: \(type ?? "nil"), status: \(status ?? "nil"), splitWith: \(splitWith ?? "nil")")
+            #endif
+
+            return SplitMetadata(
+                enabled: true,
+                paidAmount: paid,
+                myShare: myShare,
+                theyOwe: theyOwe,
+                type: type,
+                status: status,
+                splitWith: splitWith
+            )
+        }
+
+        #if DEBUG
+        print("[SplitDetailsParser] No valid split metadata found in richText items: \(richText.count)")
+        #endif
         return nil
     }
 

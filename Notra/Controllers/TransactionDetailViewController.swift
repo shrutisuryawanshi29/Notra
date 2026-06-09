@@ -20,6 +20,7 @@ class TransactionDetailViewController: UIViewController {
     private let titleLabel = UILabel()
     private let amountLabel = UILabel()
     private let detailsStack = UIStackView()
+    private var splitContainer: UIView?
     private let buttonStack = UIStackView()
 
     private static let dateFormatter: DateFormatter = {
@@ -43,7 +44,11 @@ class TransactionDetailViewController: UIViewController {
         self.transaction = transaction
         super.init(nibName: nil, bundle: nil)
         if let mapping = ColumnMappingService.shared.loadDatabaseMappings()[transaction.databaseId]?.columnMapping {
-            mappedColumnNames = Set([mapping.titleColumn, mapping.amountColumn, mapping.dateColumn, mapping.categoryColumn].compactMap { $0 })
+            var names = [mapping.titleColumn, mapping.amountColumn, mapping.dateColumn, mapping.categoryColumn].compactMap { $0 }
+            if let metadataCol = mapping.expenseAppMetadataProperty {
+                names.append(metadataCol)
+            }
+            mappedColumnNames = Set(names)
         }
     }
 
@@ -78,6 +83,7 @@ class TransactionDetailViewController: UIViewController {
 
         setupHeader()
         setupDetails()
+        setupSplitDetails()
         setupButtons()
 
         NSLayoutConstraint.activate([
@@ -215,6 +221,139 @@ class TransactionDetailViewController: UIViewController {
         ])
     }
 
+    private func setupSplitDetails() {
+        guard transaction.isSplit else { return }
+
+        let splitContainer = UIView()
+        splitContainer.backgroundColor = AppTheme.Colors.cardBackground
+        splitContainer.layer.cornerRadius = AppTheme.CornerRadius.card
+        if AppTheme.currentMode == .dark {
+            splitContainer.layer.borderWidth = 1
+            splitContainer.layer.borderColor = AppTheme.Colors.border.cgColor
+        }
+        splitContainer.clipsToBounds = true
+        splitContainer.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(splitContainer)
+        self.splitContainer = splitContainer
+
+        let headerLabel = UILabel()
+        headerLabel.text = "Split Details"
+        headerLabel.font = AppTheme.Fonts.captionBold
+        headerLabel.textColor = AppTheme.Colors.textPrimary
+        headerLabel.translatesAutoresizingMaskIntoConstraints = false
+        splitContainer.addSubview(headerLabel)
+
+        let overallStack = UIStackView()
+        overallStack.axis = .vertical
+        overallStack.spacing = 10
+        overallStack.translatesAutoresizingMaskIntoConstraints = false
+        splitContainer.addSubview(overallStack)
+
+        let countedStr = Self.currencyFormatter.string(from: NSNumber(value: transaction.effectiveAmount)) ?? "$0"
+        let paidStr = Self.currencyFormatter.string(from: NSNumber(value: transaction.paidAmount ?? transaction.effectiveAmount)) ?? "$0"
+        let owedStr = Self.currencyFormatter.string(from: NSNumber(value: transaction.reimbursementAmount)) ?? "$0"
+        let statusValue = transaction.splitStatus?.capitalized ?? "Pending"
+
+        let row1 = UIStackView()
+        row1.axis = .horizontal
+        row1.spacing = 12
+        row1.distribution = .fillEqually
+
+        let countedTile = makeStatTile(label: "Counted", value: countedStr)
+        let paidTile = makeStatTile(label: "Paid", value: paidStr)
+        row1.addArrangedSubview(countedTile)
+        row1.addArrangedSubview(paidTile)
+        overallStack.addArrangedSubview(row1)
+
+        let row2 = UIStackView()
+        row2.axis = .horizontal
+        row2.spacing = 12
+        row2.distribution = .fillEqually
+
+        let owedTile = makeStatTile(label: "Owed", value: owedStr)
+        let statusTile = makeStatTile(label: "Status", value: statusValue)
+        row2.addArrangedSubview(owedTile)
+        row2.addArrangedSubview(statusTile)
+        overallStack.addArrangedSubview(row2)
+
+        if let type = transaction.splitType {
+            let methodRow = UILabel()
+            methodRow.text = "Method: \(type)"
+            methodRow.font = AppTheme.Fonts.body
+            methodRow.textColor = AppTheme.Colors.textSecondary
+            methodRow.translatesAutoresizingMaskIntoConstraints = false
+            overallStack.addArrangedSubview(methodRow)
+        }
+
+        if let splitWith = transaction.splitWith, !splitWith.isEmpty {
+            let splitWithRow = UILabel()
+            splitWithRow.text = "Split with: \(splitWith)"
+            splitWithRow.font = AppTheme.Fonts.body
+            splitWithRow.textColor = AppTheme.Colors.textSecondary
+            splitWithRow.translatesAutoresizingMaskIntoConstraints = false
+            overallStack.addArrangedSubview(splitWithRow)
+        }
+
+        NSLayoutConstraint.activate([
+            splitContainer.topAnchor.constraint(equalTo: detailsStack.bottomAnchor, constant: 16),
+            splitContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            splitContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+
+            headerLabel.topAnchor.constraint(equalTo: splitContainer.topAnchor, constant: 16),
+            headerLabel.leadingAnchor.constraint(equalTo: splitContainer.leadingAnchor, constant: 16),
+            headerLabel.trailingAnchor.constraint(equalTo: splitContainer.trailingAnchor, constant: -16),
+
+            overallStack.topAnchor.constraint(equalTo: headerLabel.bottomAnchor, constant: 12),
+            overallStack.leadingAnchor.constraint(equalTo: splitContainer.leadingAnchor, constant: 16),
+            overallStack.trailingAnchor.constraint(equalTo: splitContainer.trailingAnchor, constant: -16),
+            overallStack.bottomAnchor.constraint(equalTo: splitContainer.bottomAnchor, constant: -16)
+        ])
+    }
+
+    private func makeStatTile(label: String, value: String) -> UIView {
+        let tile = UIView()
+        tile.backgroundColor = AppTheme.Colors.cardBackground
+        tile.layer.cornerRadius = 10
+        tile.layer.borderWidth = 1
+        tile.layer.borderColor = AppTheme.Colors.border.withAlphaComponent(AppTheme.currentMode == .dark ? 0.4 : 0.25).cgColor
+        tile.translatesAutoresizingMaskIntoConstraints = false
+
+        let labelLabel = UILabel()
+        labelLabel.text = label
+        labelLabel.font = AppTheme.Fonts.small
+        labelLabel.textColor = AppTheme.Colors.textMuted
+        labelLabel.translatesAutoresizingMaskIntoConstraints = false
+        tile.addSubview(labelLabel)
+
+        let valueLabel = UILabel()
+        valueLabel.text = value
+        valueLabel.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        valueLabel.textColor = AppTheme.Colors.textPrimary
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        tile.addSubview(valueLabel)
+
+        NSLayoutConstraint.activate([
+            labelLabel.topAnchor.constraint(equalTo: tile.topAnchor, constant: 10),
+            labelLabel.leadingAnchor.constraint(equalTo: tile.leadingAnchor, constant: 12),
+            labelLabel.trailingAnchor.constraint(equalTo: tile.trailingAnchor, constant: -12),
+
+            valueLabel.topAnchor.constraint(equalTo: labelLabel.bottomAnchor, constant: 4),
+            valueLabel.leadingAnchor.constraint(equalTo: tile.leadingAnchor, constant: 12),
+            valueLabel.trailingAnchor.constraint(equalTo: tile.trailingAnchor, constant: -12),
+            valueLabel.bottomAnchor.constraint(equalTo: tile.bottomAnchor, constant: -10)
+        ])
+
+        return tile
+    }
+
+    private func separatorView() -> UIView {
+        let separator = UIView()
+        separator.backgroundColor = AppTheme.Colors.border.withAlphaComponent(0.4)
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        separator.heightAnchor.constraint(equalToConstant: 0.5).isActive = true
+        return separator
+    }
+
     private func setupButtons() {
         buttonStack.axis = .horizontal
         buttonStack.spacing = 12
@@ -241,8 +380,15 @@ class TransactionDetailViewController: UIViewController {
         deleteButton.addTarget(self, action: #selector(deleteTapped), for: .touchUpInside)
         buttonStack.addArrangedSubview(deleteButton)
 
+        let buttonTopAnchor: NSLayoutYAxisAnchor
+        if let splitContainer = splitContainer {
+            buttonTopAnchor = splitContainer.bottomAnchor
+        } else {
+            buttonTopAnchor = detailsStack.bottomAnchor
+        }
+
         NSLayoutConstraint.activate([
-            buttonStack.topAnchor.constraint(equalTo: detailsStack.bottomAnchor, constant: 24),
+            buttonStack.topAnchor.constraint(equalTo: buttonTopAnchor, constant: 24),
             buttonStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             buttonStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             buttonStack.heightAnchor.constraint(equalToConstant: 50),

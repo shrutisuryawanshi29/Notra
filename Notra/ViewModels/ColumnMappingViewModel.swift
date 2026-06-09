@@ -10,6 +10,7 @@ enum ColumnField: String, CaseIterable {
     case amount = "Amount"
     case category = "Category"
     case date = "Date"
+    case appMetadata = "Split Details"
 
     var placeholder: String {
         switch self {
@@ -17,6 +18,7 @@ enum ColumnField: String, CaseIterable {
         case .amount: return "Select amount column"
         case .category: return "Select category column"
         case .date: return "Select date column"
+        case .appMetadata: return "Select Split Details column"
         }
     }
 }
@@ -69,6 +71,8 @@ final class ColumnMappingViewModel {
             columnMapping.categoryColumn = columnName
         case .date:
             columnMapping.dateColumn = columnName
+        case .appMetadata:
+            columnMapping.expenseAppMetadataProperty = columnName
         }
     }
 
@@ -78,6 +82,7 @@ final class ColumnMappingViewModel {
         case .amount: return columnMapping.amountColumn
         case .category: return columnMapping.categoryColumn
         case .date: return columnMapping.dateColumn
+        case .appMetadata: return columnMapping.expenseAppMetadataProperty
         }
     }
 

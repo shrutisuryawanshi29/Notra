@@ -5,6 +5,11 @@
 
 import Foundation
 
+enum SplitMethod: String {
+    case half = "50/50"
+    case customAmount = "Custom Amount"
+}
+
 protocol AddTransactionViewModelDelegate: AnyObject {
     func didLoadFields(_ fields: [DynamicFormField])
     func didFailToLoadFields(error: String)
@@ -26,6 +31,12 @@ final class AddTransactionViewModel {
     private(set) var fieldValues: [String: DynamicFormValue] = [:]
     private(set) var relationOptions: [String: [(id: String, title: String)]] = [:]
     private(set) var isFetchingFields = false
+    private(set) var isSplitExpense = false
+    private(set) var splitMethod: SplitMethod = .half
+    private(set) var paidAmountForSplit: Double = 0
+    private(set) var myShareAmountForSplit: Double = 0
+    private(set) var reimbursementAmountForSplit: Double = 0
+    private(set) var splitStatus: String = "pending"
 
     private var mappings: [String: DatabaseMappingData] = [:]
     private var prefillData: [String: String]
@@ -181,6 +192,52 @@ final class AddTransactionViewModel {
             }
         }
 
+        if selectedRole == .expense, let rawProps = editingTx.rawProperties {
+            var parsedFromMetadata = false
+            let metadataCol = columnMapping?.expenseAppMetadataProperty
+                if let col = metadataCol, let prop = rawProps[col], let richText = prop.richText {
+                    for item in richText {
+                        guard let text = item.plainText ?? item.text?.content,
+                              let data = text.data(using: .utf8),
+                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                              let split = json["split"] as? [String: Any],
+                              let enabled = split["enabled"] as? Bool, enabled else { continue }
+                        let paid = split["paidAmount"] as? Double ?? 0
+                        let myShare = split["myShare"] as? Double ?? 0
+                        let theyOwe = split["theyOwe"] as? Double ?? 0
+                        let typeStr = split["type"] as? String ?? "50/50"
+                        let statusStr = split["status"] as? String ?? "pending"
+                        if paid > 0 {
+                            isSplitExpense = true
+                            paidAmountForSplit = paid
+                            myShareAmountForSplit = myShare > 0 ? myShare : (editingTx.amount)
+                            splitMethod = SplitMethod(rawValue: typeStr) ?? .half
+                            reimbursementAmountForSplit = theyOwe
+                            splitStatus = statusStr
+                            recalculateSplit()
+                            parsedFromMetadata = true
+                        }
+                        break
+                    }
+                }
+            if !parsedFromMetadata {
+                let paidField = rawProps.first { key, value in
+                    let lower = key.lowercased()
+                    return (lower.contains("paid amount") || lower.contains("original amount") || lower.contains("total paid") || lower.contains("actual paid")) && value.number != nil
+                }
+                if let (_, paidValue) = paidField, let paidAmount = paidValue.number {
+                    isSplitExpense = true
+                    paidAmountForSplit = paidAmount
+                    let amountColumn = mappings.values.first { $0.role == .expense }?.columnMapping?.amountColumn
+                    if let amountCol = amountColumn, let amountVal = rawProps[amountCol]?.number {
+                        myShareAmountForSplit = amountVal
+                    }
+                    splitMethod = myShareAmountForSplit == paidAmount / 2 ? .half : .customAmount
+                    recalculateSplit()
+                }
+            }
+        }
+
         print("[AddTransactionVM] Edit prefill applied successfully")
     }
 
@@ -299,6 +356,13 @@ final class AddTransactionViewModel {
 
             if isMapped {
                 print("[AddTransactionVM] Mapped core field: \(propName) (\(notionType.rawValue)) = \(mappedRole ?? "")")
+            }
+
+            if propName == columnMapping?.expenseAppMetadataProperty {
+                var formValue = DynamicFormValue(propertyName: propName, propertyType: notionType)
+                fieldValues[propName] = formValue
+                print("[AddTransactionVM] Skipping Split Details column from form: \(propName)")
+                continue
             }
 
             generatedFields.append(field)
@@ -483,9 +547,21 @@ final class AddTransactionViewModel {
             }
             fieldValues[field.propertyName] = formValue
         }
+        resetSplitState()
         print("[AddTransactionVM] Form reset complete. Date set to today.")
         autoSelectMonthClassification(for: Date())
         delegate?.didResetForm()
+    }
+
+    var hasPaidAmountField: Bool {
+        fields.contains { field in
+            field.propertyType == .number && (
+                field.propertyName.lowercased().contains("paid amount") ||
+                field.propertyName.lowercased().contains("original amount") ||
+                field.propertyName.lowercased().contains("total paid") ||
+                field.propertyName.lowercased().contains("actual paid")
+            )
+        }
     }
 
     var monthClassificationFieldName: String? {
@@ -562,6 +638,77 @@ final class AddTransactionViewModel {
         print("[AddTransactionVM] No matching Month Classification option found for \(monthName) \(year)")
     }
 
+    func setSplitEnabled(_ enabled: Bool) {
+        isSplitExpense = enabled
+        recalculateSplit()
+    }
+
+    func setSplitMethod(_ method: SplitMethod) {
+        splitMethod = method
+        recalculateSplit()
+    }
+
+    func setMyShareForSplit(_ share: Double) {
+        myShareAmountForSplit = share
+        reimbursementAmountForSplit = max(paidAmountForSplit - myShareAmountForSplit, 0)
+    }
+
+    func setPaidAmountForSplit(_ amount: Double) {
+        paidAmountForSplit = amount
+        recalculateSplit()
+    }
+
+    private func recalculateSplit() {
+        guard isSplitExpense, paidAmountForSplit > 0 else {
+            myShareAmountForSplit = paidAmountForSplit
+            reimbursementAmountForSplit = 0
+            return
+        }
+        switch splitMethod {
+        case .half:
+            myShareAmountForSplit = paidAmountForSplit / 2
+        case .customAmount:
+            break
+        }
+        reimbursementAmountForSplit = max(paidAmountForSplit - myShareAmountForSplit, 0)
+    }
+
+    private func buildSplitMetadataJSON(existingJSON: String? = nil) -> String {
+        var data: [String: Any] = [:]
+
+        if let existing = existingJSON,
+           let existingData = existing.data(using: .utf8),
+           let parsed = try? JSONSerialization.jsonObject(with: existingData) as? [String: Any] {
+            data = parsed
+        }
+
+        data["version"] = 1
+        data["split"] = [
+            "enabled": true,
+            "paidAmount": paidAmountForSplit,
+            "myShare": myShareAmountForSplit,
+            "theyOwe": reimbursementAmountForSplit,
+            "type": splitMethod.rawValue,
+            "status": splitStatus,
+            "splitWith": NSNull()
+        ] as [String: Any]
+
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: data, options: []),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            return ""
+        }
+        return jsonString
+    }
+
+    func resetSplitState() {
+        isSplitExpense = false
+        splitMethod = .half
+        paidAmountForSplit = 0
+        myShareAmountForSplit = 0
+        reimbursementAmountForSplit = 0
+        splitStatus = "pending"
+    }
+
     func saveTransaction() {
         print("[AddTransactionVM] Save button tapped")
         print("[AddTransactionVM] Transaction type: \(selectedRole.displayName)")
@@ -603,6 +750,31 @@ final class AddTransactionViewModel {
             } else {
                 let display = val.stringValue ?? String(val.numberValue ?? 0)
                 print("[AddTransactionVM] Field '\(val.propertyName)' (\(val.propertyType.rawValue)) = \(display)")
+            }
+        }
+
+        if isSplitExpense && selectedRole == .expense {
+            let amountFieldName = mappings.values.first { $0.role == .expense }?.columnMapping?.amountColumn
+            for i in valuesToSave.indices {
+                if valuesToSave[i].propertyType == .number {
+                    if valuesToSave[i].propertyName == amountFieldName {
+                        valuesToSave[i].numberValue = myShareAmountForSplit
+                    }
+                }
+                if valuesToSave[i].propertyType == .richText {
+                    let metadataCol = targetDatabaseMapping?.columnMapping?.expenseAppMetadataProperty
+                    if let col = metadataCol, valuesToSave[i].propertyName == col {
+                        if let editingTx = editingTransaction,
+                           let rawProps = editingTx.rawProperties,
+                           let existingProp = rawProps[col],
+                           let existingRichText = existingProp.richText,
+                           let existingText = existingRichText.first?.plainText ?? existingRichText.first?.text?.content {
+                            valuesToSave[i].stringValue = buildSplitMetadataJSON(existingJSON: existingText)
+                        } else {
+                            valuesToSave[i].stringValue = buildSplitMetadataJSON()
+                        }
+                    }
+                }
             }
         }
 
