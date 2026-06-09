@@ -117,6 +117,7 @@ final class AddTransactionViewController: UIViewController {
     private var pickerButtons: [String: UIButton] = [:]
     private var editingTransaction: NormalizedTransaction?
     var onEditComplete: ((_ updatedTransaction: NormalizedTransaction, _ oldMonthKey: String?) -> Void)?
+    private var scanCoordinator: ReceiptScanCoordinator?
 
     private let suggestionEngine = ExpenseCategorySuggestionEngine()
     private var showSuggestions = false
@@ -165,6 +166,14 @@ final class AddTransactionViewController: UIViewController {
             target: self,
             action: #selector(cancelTapped)
         )
+
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "camera.viewfinder"),
+            style: .plain,
+            target: self,
+            action: #selector(scanReceiptTapped)
+        )
+        navigationItem.rightBarButtonItem?.tintColor = AppTheme.Colors.accent
 
         segmentedControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
@@ -302,6 +311,25 @@ final class AddTransactionViewController: UIViewController {
 
     @objc private func cancelTapped() {
         dismiss(animated: true)
+    }
+
+    @objc private func scanReceiptTapped() {
+        guard editingTransaction == nil else { return }
+        let token = UserDefaultsManager.shared.notionToken ?? ""
+        guard !token.isEmpty else { return }
+        let coordinator = ReceiptScanCoordinator()
+        self.scanCoordinator = coordinator
+        coordinator.start(from: self, token: token) { [weak self] parseResult in
+            guard let self = self, let result = parseResult else {
+                self?.scanCoordinator = nil
+                return
+            }
+            let vc = ReceiptReviewViewController(parseResult: result, token: token)
+            let nav = UINavigationController(rootViewController: vc)
+            nav.modalPresentationStyle = .fullScreen
+            self.present(nav, animated: true)
+            self.scanCoordinator = nil
+        }
     }
 
     @objc private func modeChanged() {
