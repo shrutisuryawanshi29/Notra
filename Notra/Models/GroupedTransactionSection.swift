@@ -5,6 +5,210 @@
 
 import Foundation
 
+// MARK: - Split Method
+
+enum SplitMethodType: String, Codable, CaseIterable {
+    case splitEqually = "splitEqually"
+    case exactAmounts = "exactAmounts"
+    case percent = "percent"
+    case shares = "shares"
+    case adjustment = "adjustment"
+
+    var displayName: String {
+        switch self {
+        case .splitEqually: return "Split Equally"
+        case .exactAmounts: return "Exact Amounts"
+        case .percent: return "Percent"
+        case .shares: return "Shares"
+        case .adjustment: return "Adjustment"
+        }
+    }
+
+    var chipLabel: String {
+        switch self {
+        case .splitEqually: return "Equal"
+        case .exactAmounts: return "Exact"
+        case .percent: return "Percent"
+        case .shares: return "Shares"
+        case .adjustment: return "Adjust"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .splitEqually: return "Splits the paid amount evenly."
+        case .exactAmounts: return "Enter your share or what they owe."
+        case .percent: return "Enter your percent or their percent."
+        case .shares: return "Legacy method kept for backward compatibility."
+        case .adjustment: return "Add an extra amount that either you or they cover, then split the rest equally."
+        }
+    }
+
+    static let uiCases: [SplitMethodType] = [.splitEqually, .exactAmounts, .percent, .adjustment]
+
+    static func fromLegacy(_ legacy: String) -> SplitMethodType {
+        switch legacy {
+        case "50/50", "half", "Split Equally":
+            return .splitEqually
+        case "Custom Amount", "customAmount", "Exact Amounts":
+            return .exactAmounts
+        case "shares", "Shares":
+            return .shares
+        default:
+            return SplitMethodType(rawValue: legacy) ?? .exactAmounts
+        }
+    }
+}
+
+// MARK: - Split Inputs
+
+struct SplitInputs: Codable {
+    var myShare: Double?
+    var myPercent: Double?
+    var theirPercent: Double?
+    var myShares: Double?
+    var theirShares: Double?
+    var adjustmentAmount: Double?
+    var adjustmentMode: String?
+    var entryMode: String?
+}
+
+// MARK: - Split Calculator
+
+struct SplitCalculator {
+
+    struct SplitResult {
+        let myShare: Double
+        let theyOwe: Double
+        let inputs: SplitInputs
+        let type: SplitMethodType
+    }
+
+    static func calculate(
+        paidAmount: Double,
+        method: SplitMethodType,
+        myShareExact: Double? = nil,
+        theyOweExact: Double? = nil,
+        myPercent: Double? = nil,
+        theirPercent: Double? = nil,
+        adjustmentAmount: Double? = nil,
+        adjustmentMode: String? = nil
+    ) -> SplitResult {
+        guard paidAmount > 0 else {
+            return SplitResult(myShare: 0, theyOwe: 0, inputs: SplitInputs(), type: method)
+        }
+
+        switch method {
+        case .splitEqually:
+            let half = paidAmount / 2
+            return SplitResult(
+                myShare: half,
+                theyOwe: paidAmount - half,
+                inputs: SplitInputs(),
+                type: method
+            )
+
+        case .exactAmounts:
+            var inputs = SplitInputs()
+            if let theyOwe = theyOweExact {
+                let owe = min(max(theyOwe, 0), paidAmount)
+                inputs.myShare = paidAmount - owe
+                inputs.entryMode = "theyOwe"
+                return SplitResult(
+                    myShare: paidAmount - owe,
+                    theyOwe: owe,
+                    inputs: inputs,
+                    type: method
+                )
+            } else {
+                let share = min(max(myShareExact ?? paidAmount, 0), paidAmount)
+                inputs.myShare = share
+                inputs.entryMode = "myShare"
+                return SplitResult(
+                    myShare: share,
+                    theyOwe: paidAmount - share,
+                    inputs: inputs,
+                    type: method
+                )
+            }
+
+        case .percent:
+            var inputs = SplitInputs()
+            if let theirPct = theirPercent {
+                let pct = min(max(theirPct, 0), 100)
+                let theirOwe = paidAmount * pct / 100
+                inputs.theirPercent = pct
+                inputs.entryMode = "theirPercent"
+                return SplitResult(
+                    myShare: paidAmount - theirOwe,
+                    theyOwe: theirOwe,
+                    inputs: inputs,
+                    type: method
+                )
+            } else {
+                let pct = min(max(myPercent ?? 100, 0), 100)
+                let share = paidAmount * pct / 100
+                inputs.myPercent = pct
+                inputs.entryMode = "myPercent"
+                return SplitResult(
+                    myShare: share,
+                    theyOwe: paidAmount - share,
+                    inputs: inputs,
+                    type: method
+                )
+            }
+
+        case .adjustment:
+            let extra = min(max(adjustmentAmount ?? 0, 0), paidAmount)
+            let remainder = paidAmount - extra
+            let mode = adjustmentMode ?? "extraIPay"
+            let share: Double
+            if mode == "extraTheyPay" {
+                share = remainder / 2
+            } else {
+                share = extra + remainder / 2
+            }
+            var inputs = SplitInputs()
+            inputs.adjustmentAmount = extra
+            inputs.adjustmentMode = mode
+            return SplitResult(
+                myShare: share,
+                theyOwe: paidAmount - share,
+                inputs: inputs,
+                type: method
+            )
+
+        case .shares:
+            let half = paidAmount / 2
+            return SplitResult(myShare: half, theyOwe: paidAmount - half, inputs: SplitInputs(), type: method)
+        }
+    }
+
+    static func validate(method: SplitMethodType, paidAmount: Double, myPercent: Double? = nil, theirPercent: Double? = nil, adjustmentAmount: Double? = nil) -> String? {
+        switch method {
+        case .splitEqually:
+            return nil
+        case .exactAmounts:
+            return nil
+        case .percent:
+            if let p = myPercent, (p < 0 || p > 100) {
+                return "Percent must be between 0 and 100."
+            }
+            if let p = theirPercent, (p < 0 || p > 100) {
+                return "Percent must be between 0 and 100."
+            }
+            return nil
+        case .shares:
+            return nil
+        case .adjustment:
+            guard let a = adjustmentAmount, a >= 0, a <= paidAmount else {
+                return "Adjustment must be between 0 and \(Int(paidAmount))."
+            }
+            return nil
+        }
+    }
+}
+
 // MARK: - Split Metadata
 
 struct SplitMetadata: Codable {
@@ -15,9 +219,19 @@ struct SplitMetadata: Codable {
     let type: String?
     let status: String?
     let splitWith: String?
+    let inputs: SplitInputs?
 
     enum CodingKeys: String, CodingKey {
-        case enabled, paidAmount, myShare, theyOwe, type, status, splitWith
+        case enabled, paidAmount, myShare, theyOwe, type, status, splitWith, inputs
+    }
+
+    var resolvedType: SplitMethodType? {
+        guard let t = type else { return nil }
+        return SplitMethodType.fromLegacy(t)
+    }
+
+    var displayTypeName: String {
+        resolvedType?.displayName ?? type?.capitalized ?? "Split"
     }
 }
 

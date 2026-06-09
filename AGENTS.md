@@ -9,7 +9,7 @@ xcodebuild -project Notra.xcodeproj -scheme Notra -configuration Debug \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 
-No tests, no CocoaPods/SPM, no CI. Deployment target 26.0. Swift 5.0. Dev team `85R4T7NRSX`. Bundle `com.loml.Notra`.
+No tests, no CocoaPods/SPM, no CI. Deployment target Debug=26.0, Release=26.4. Swift 5.0. Dev team `85R4T7NRSX`. Bundle `com.loml.Notra`.
 
 ## Entry & Navigation
 
@@ -64,11 +64,25 @@ Up to 3 suggestion chips inline in the title `FormFieldCell` (not a separate row
 
 Optional Text column in Expense DB for JSON metadata (split info). Notion API type is `rich_text`; filter must accept both `"rich_text"` and `"text"`. User-facing type name is "Text". Backward-compatible `CodingKeys`: decodes old `expenseSplitDetailsProperty` key. Mapped column skipped from the Add Transaction form (`buildFields`). Can be unmapped — split works in-session with warning toast. `TransactionInsertService.buildPropertyPayload` handles rich-text Notion format. Main Amount column always stores my share/effective amount.
 
-`SplitMetadata` struct (Codable) holds `enabled`, `paidAmount`, `myShare`, `theyOwe`, `type`, `status`, `splitWith`. Parsed via `TransactionNormalizer.extractSplitMetadata()`. `NormalizedTransaction` stores `splitMetadata: SplitMetadata?` — this is the source of truth for splits, not the old `paidAmount` fallback. Computed properties `isSplit`, `effectiveAmount`, `reimbursementAmount`, `splitType`, `splitStatus`, `splitWith` all read from `splitMetadata` first, falling back to legacy `paidAmount` for backward compatibility.
+`SplitMetadata` struct (Codable) holds `enabled`, `paidAmount`, `myShare`, `theyOwe`, `type`, `status`, `splitWith`, `inputs`. `SplitInputs` holds method-specific values (`myPercent`, `theirPercent`, `myShares`, `theirShares`, `adjustmentAmount`, `adjustmentMode`, `entryMode`). `SplitMethodType` enum: `splitEqually`, `exactAmounts`, `percent`, `shares`, `adjustment`. Backward compat: `"50/50"` maps to `splitEqually`, `"Custom Amount"` maps to `exactAmounts` via `SplitMethodType.fromLegacy()`.
 
-**Detail screen display**: Two-column grid of border stat tiles via `makeStatTile(label:value:)` in `TransactionDetailViewController`. Rows: Counted | Paid, Owed | Status. Bottom: Method, Split with.
+`SplitCalculator.calculate(paidAmount:method:myShareExact:theyOweExact:myPercent:theirPercent:myShares:theirShares:adjustmentAmount:adjustmentMode:)` returns `SplitResult` with `myShare`, `theyOwe`, `inputs`, `type`. Supports both entry modes for exact (`myShare`/`theyOwe`) and percent (`myPercent`/`theirPercent`), and both adjustment directions (`extraIPay`/`extraTheyPay`). Validation via `SplitCalculator.validate()`.
 
-**Expense list display**: Two-line format `"Split · 50/50\nPaid $25.00 · Owed $12.50"` in `FinanceCell.paidAmountLabel`. Multiline, word-wrapping, hidden via stack auto-collapse for non-split.
+`SplitMetadata` JSON structure stores `inputs` dict: `{myShare, myPercent, theirPercent, myShares, theirShares, adjustmentAmount, adjustmentMode, entryMode}`. `SplitMethodType` raw values are the JSON type strings. Old `"50/50"` and `"Custom Amount"` types parsed on read.
+
+**Split method chips**: Visible chip buttons in 3-row wrapping grid layout inside `SplitDetailCell`. No dropdown/action sheet. Selected chip filled with `expense` color + `buttonContent` text; unselected has muted text + `border` border. Tapping a chip calls `onMethodChange`, triggers ViewModel recalculation, and rebuilds entry mode + input fields.
+
+**Entry mode toggle**: `UISegmentedControl` for exact (My share / They owe) and percent (My % / Their %) methods. Hidden for other methods. Changes call `onEntryModeChange` to update `splitEntryMode` in ViewModel.
+
+**Adjustment direction**: Two side-by-side chip buttons ("Extra I pay" / "Extra they pay") inside the adjustment input area. `onAdjustmentModeChange` callback updates `splitAdjustmentMode` in ViewModel.
+
+**Summary tiles**: Two side-by-side `SummaryTileView` cards (50/50 split) showing "Your share" (expense-colored) and "They owe" (primary text). Helper text below: "Your share is used for spending, budgets, and analytics."
+
+**Info sheet**: `SplitHelpViewController` presented as `.overFullScreen` with cross-dissolve, showing a centered card with descriptions of all 5 methods + "Got it" button. Dismiss on overlay tap.
+
+**Detail screen display**: Two-column grid of border stat tiles via `makeStatTile(label:value:)` in `TransactionDetailViewController`. Rows: Counted | Paid, Owed | Status. Bottom: Method (via `displayTypeName`), Split with.
+
+**Expense list display**: Two-line format `"Split · {Method}\nPaid $X.XX · Owed $X.XX"` in `FinanceCell.paidAmountLabel`. Method name from `splitMetadata.displayTypeName`. Multiline, word-wrapping, hidden via stack auto-collapse for non-split.
 
 ## Dashboard
 
@@ -120,6 +134,6 @@ Log prefixes: `[SetupState]`, `[SessionCache]`, `[DataFetcher]`, `[NotionService
 
 ## Style
 
-- Table views: `.plain` except `AddTransaction` and `Settings` which use `.insetGrouped`
+- Table views: `.plain` except `AddTransaction`, `Settings`, and `FilterPanel` which use `.insetGrouped`
 - Use `AppTheme.Fonts`, `AppTheme.CornerRadius`, `AppTheme.Shadow`, `AppTheme.styleNavigationBar()` for consistency
 - `AGENTS.md` is gitignored (not version controlled)

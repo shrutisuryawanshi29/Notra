@@ -70,7 +70,6 @@ class FinanceCell: UITableViewCell {
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         contentStack.addArrangedSubview(titleLabel)
-
         contentStack.addArrangedSubview(paidAmountLabel)
 
         categoryContainer.backgroundColor = AppTheme.Colors.secondaryTan
@@ -166,18 +165,25 @@ class FinanceCell: UITableViewCell {
         categoryLabel.textColor = .white
 
         if expense.isSplit {
+            if !contentStack.arrangedSubviews.contains(paidAmountLabel) {
+                contentStack.addArrangedSubview(paidAmountLabel)
+            }
             let paidStr = Self.currencyFormatter.string(from: NSNumber(value: expense.paidAmount ?? expense.effectiveAmount)) ?? "$0"
             let owedStr = Self.currencyFormatter.string(from: NSNumber(value: expense.reimbursementAmount)) ?? "$0"
-            if let type = expense.splitType, !type.isEmpty {
-                paidAmountLabel.text = "Split · \(type)\nPaid \(paidStr) · Owed \(owedStr)"
+            let typeName = expense.splitMetadata?.displayTypeName ?? ""
+            if !typeName.isEmpty {
+                paidAmountLabel.text = "Split · \(typeName)\nPaid \(paidStr) · Owed \(owedStr)"
             } else {
                 paidAmountLabel.text = "Split\nPaid \(paidStr) · Owed \(owedStr)"
             }
             paidAmountLabel.isHidden = false
             contentStack.setCustomSpacing(6, after: titleLabel)
         } else {
+            if contentStack.arrangedSubviews.contains(paidAmountLabel) {
+                contentStack.removeArrangedSubview(paidAmountLabel)
+                paidAmountLabel.removeFromSuperview()
+            }
             paidAmountLabel.text = nil
-            paidAmountLabel.isHidden = true
             contentStack.setCustomSpacing(0, after: titleLabel)
         }
     }
@@ -210,6 +216,10 @@ class FinanceCell: UITableViewCell {
 
         paidAmountLabel.text = nil
         paidAmountLabel.isHidden = true
+        if contentStack.arrangedSubviews.contains(paidAmountLabel) {
+            contentStack.removeArrangedSubview(paidAmountLabel)
+            paidAmountLabel.removeFromSuperview()
+        }
         contentStack.setCustomSpacing(0, after: titleLabel)
     }
 
@@ -220,6 +230,10 @@ class FinanceCell: UITableViewCell {
         amountLabel.text = nil
         paidAmountLabel.text = nil
         paidAmountLabel.isHidden = true
+        if contentStack.arrangedSubviews.contains(paidAmountLabel) {
+            contentStack.removeArrangedSubview(paidAmountLabel)
+            paidAmountLabel.removeFromSuperview()
+        }
         contentStack.setCustomSpacing(0, after: titleLabel)
         containerView.transform = .identity
         containerView.alpha = 1.0

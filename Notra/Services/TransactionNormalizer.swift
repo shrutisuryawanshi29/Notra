@@ -255,6 +255,18 @@ final class TransactionNormalizer {
             let type = split["type"] as? String
             let status = split["status"] as? String
             let splitWith = split["splitWith"] as? String
+            let rawInputs = split["inputs"] as? [String: Any]
+            let inputs: SplitInputs?
+            if let ri = rawInputs {
+                if let data = try? JSONSerialization.data(withJSONObject: ri),
+                   let decoded = try? JSONDecoder().decode(SplitInputs.self, from: data) {
+                    inputs = decoded
+                } else {
+                    inputs = nil
+                }
+            } else {
+                inputs = nil
+            }
 
             guard paid > 0 else {
                 #if DEBUG
@@ -264,7 +276,7 @@ final class TransactionNormalizer {
             }
 
             #if DEBUG
-            print("[SplitDetailsParser] Parsed isSplit: true, paidAmount: \(paid), myShare: \(myShare), theyOwe: \(theyOwe), type: \(type ?? "nil"), status: \(status ?? "nil"), splitWith: \(splitWith ?? "nil")")
+            print("[SplitDetailsParser] Parsed isSplit: true, paidAmount: \(paid), myShare: \(myShare), theyOwe: \(theyOwe), type: \(type ?? "nil"), status: \(status ?? "nil"), splitWith: \(splitWith ?? "nil"), inputs: \(rawInputs ?? [:])")
             #endif
 
             return SplitMetadata(
@@ -274,7 +286,8 @@ final class TransactionNormalizer {
                 theyOwe: theyOwe,
                 type: type,
                 status: status,
-                splitWith: splitWith
+                splitWith: splitWith,
+                inputs: inputs
             )
         }
 

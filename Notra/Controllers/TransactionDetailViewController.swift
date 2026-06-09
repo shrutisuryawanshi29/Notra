@@ -276,7 +276,7 @@ class TransactionDetailViewController: UIViewController {
         row2.addArrangedSubview(statusTile)
         overallStack.addArrangedSubview(row2)
 
-        if let type = transaction.splitType {
+        if let type = transaction.splitMetadata?.displayTypeName {
             let methodRow = UILabel()
             methodRow.text = "Method: \(type)"
             methodRow.font = AppTheme.Fonts.body

@@ -5,9 +5,28 @@
 
 import Foundation
 
-enum SplitMethod: String {
+enum SplitMethod: String, CaseIterable {
     case half = "50/50"
     case customAmount = "Custom Amount"
+}
+
+extension SplitMethod {
+    var modernType: SplitMethodType {
+        switch self {
+        case .half: return .splitEqually
+        case .customAmount: return .exactAmounts
+        }
+    }
+
+    init(from type: SplitMethodType) {
+        switch type {
+        case .splitEqually: self = .half
+        case .exactAmounts: self = .customAmount
+        case .percent: self = .customAmount
+        case .shares: self = .customAmount
+        case .adjustment: self = .customAmount
+        }
+    }
 }
 
 protocol AddTransactionViewModelDelegate: AnyObject {
@@ -33,10 +52,20 @@ final class AddTransactionViewModel {
     private(set) var isFetchingFields = false
     private(set) var isSplitExpense = false
     private(set) var splitMethod: SplitMethod = .half
+    private(set) var splitMethodType: SplitMethodType = .splitEqually
     private(set) var paidAmountForSplit: Double = 0
     private(set) var myShareAmountForSplit: Double = 0
     private(set) var reimbursementAmountForSplit: Double = 0
     private(set) var splitStatus: String = "pending"
+
+    // Method-specific inputs
+    private(set) var splitMyShareExact: Double = 0
+    private(set) var splitTheyOweExact: Double = 0
+    private(set) var splitMyPercent: Double = 50
+    private(set) var splitTheirPercent: Double = 50
+    private(set) var splitAdjustmentAmount: Double = 0
+    private(set) var splitAdjustmentMode: String = "extraIPay"
+    private(set) var splitEntryMode: String = "myShare"
 
     private var mappings: [String: DatabaseMappingData] = [:]
     private var prefillData: [String: String]
@@ -207,13 +236,41 @@ final class AddTransactionViewModel {
                         let theyOwe = split["theyOwe"] as? Double ?? 0
                         let typeStr = split["type"] as? String ?? "50/50"
                         let statusStr = split["status"] as? String ?? "pending"
+                        let rawInputs = split["inputs"] as? [String: Any]
                         if paid > 0 {
                             isSplitExpense = true
                             paidAmountForSplit = paid
                             myShareAmountForSplit = myShare > 0 ? myShare : (editingTx.amount)
-                            splitMethod = SplitMethod(rawValue: typeStr) ?? .half
+                            let resolvedType = SplitMethodType.fromLegacy(typeStr)
+                            splitMethodType = resolvedType
+                            splitMethod = SplitMethod(from: resolvedType)
                             reimbursementAmountForSplit = theyOwe
                             splitStatus = statusStr
+                            if let inputs = rawInputs {
+                                splitMyPercent = inputs["myPercent"] as? Double ?? 50
+                                splitTheirPercent = inputs["theirPercent"] as? Double ?? 50
+                                splitAdjustmentAmount = inputs["adjustmentAmount"] as? Double ?? 0
+                                splitAdjustmentMode = inputs["adjustmentMode"] as? String ?? "extraIPay"
+                                splitEntryMode = inputs["entryMode"] as? String ?? "myShare"
+                                if let exact = inputs["myShare"] as? Double {
+                                    myShareAmountForSplit = exact
+                                    splitMyShareExact = exact
+                                }
+                                if let owe = inputs["theyOwe"] as? Double {
+                                    splitTheyOweExact = owe
+                                }
+                                // Map old shares to exact for editing
+                                if resolvedType == .shares {
+                                    if let myS = inputs["myShares"] as? Double, let theirS = inputs["theirShares"] as? Double, (myS + theirS) > 0 {
+                                        let ratio = myS / (myS + theirS)
+                                        let shareEstimate = paid * ratio
+                                        myShareAmountForSplit = shareEstimate
+                                        splitMyShareExact = shareEstimate
+                                        splitTheyOweExact = max(paid - shareEstimate, 0)
+                                    }
+                                    splitMethodType = .exactAmounts
+                                }
+                            }
                             recalculateSplit()
                             parsedFromMetadata = true
                         }
@@ -232,7 +289,8 @@ final class AddTransactionViewModel {
                     if let amountCol = amountColumn, let amountVal = rawProps[amountCol]?.number {
                         myShareAmountForSplit = amountVal
                     }
-                    splitMethod = myShareAmountForSplit == paidAmount / 2 ? .half : .customAmount
+                    splitMethodType = myShareAmountForSplit == paidAmount / 2 ? .splitEqually : .exactAmounts
+                    splitMethod = SplitMethod(from: splitMethodType)
                     recalculateSplit()
                 }
             }
@@ -645,6 +703,13 @@ final class AddTransactionViewModel {
 
     func setSplitMethod(_ method: SplitMethod) {
         splitMethod = method
+        splitMethodType = method.modernType
+        recalculateSplit()
+    }
+
+    func setSplitMethodType(_ type: SplitMethodType) {
+        splitMethodType = type
+        splitMethod = SplitMethod(from: type)
         recalculateSplit()
     }
 
@@ -658,19 +723,61 @@ final class AddTransactionViewModel {
         recalculateSplit()
     }
 
+    func setSplitMyPercent(_ pct: Double) {
+        splitMyPercent = pct
+        splitTheirPercent = max(100 - pct, 0)
+        splitEntryMode = "myPercent"
+        recalculateSplit()
+    }
+
+    func setSplitTheirPercent(_ pct: Double) {
+        splitTheirPercent = pct
+        splitMyPercent = max(100 - pct, 0)
+        splitEntryMode = "theirPercent"
+        recalculateSplit()
+    }
+
+    func setSplitMyShareExact(_ amount: Double) {
+        splitMyShareExact = amount
+        splitTheyOweExact = max(paidAmountForSplit - amount, 0)
+        splitEntryMode = "myShare"
+        recalculateSplit()
+    }
+
+    func setSplitTheyOweExact(_ amount: Double) {
+        splitTheyOweExact = amount
+        splitMyShareExact = max(paidAmountForSplit - amount, 0)
+        splitEntryMode = "theyOwe"
+        recalculateSplit()
+    }
+
+    func setSplitAdjustmentAmount(_ amount: Double) {
+        splitAdjustmentAmount = amount
+        recalculateSplit()
+    }
+
+    func setSplitAdjustmentMode(_ mode: String) {
+        splitAdjustmentMode = mode
+        recalculateSplit()
+    }
+
     private func recalculateSplit() {
         guard isSplitExpense, paidAmountForSplit > 0 else {
             myShareAmountForSplit = paidAmountForSplit
             reimbursementAmountForSplit = 0
             return
         }
-        switch splitMethod {
-        case .half:
-            myShareAmountForSplit = paidAmountForSplit / 2
-        case .customAmount:
-            break
-        }
-        reimbursementAmountForSplit = max(paidAmountForSplit - myShareAmountForSplit, 0)
+        let result = SplitCalculator.calculate(
+            paidAmount: paidAmountForSplit,
+            method: splitMethodType,
+            myShareExact: (splitMethodType == .exactAmounts && splitEntryMode != "theyOwe") ? splitMyShareExact : nil,
+            theyOweExact: (splitMethodType == .exactAmounts && splitEntryMode == "theyOwe") ? splitTheyOweExact : nil,
+            myPercent: (splitMethodType == .percent) ? splitMyPercent : nil,
+            adjustmentAmount: splitAdjustmentAmount,
+            adjustmentMode: splitAdjustmentMode
+        )
+        myShareAmountForSplit = result.myShare
+        reimbursementAmountForSplit = result.theyOwe
     }
 
     private func buildSplitMetadataJSON(existingJSON: String? = nil) -> String {
@@ -682,15 +789,35 @@ final class AddTransactionViewModel {
             data = parsed
         }
 
+        var inputs: [String: Any] = [:]
+        switch splitMethodType {
+        case .exactAmounts:
+            inputs["myShare"] = splitMyShareExact
+            inputs["theyOwe"] = splitTheyOweExact
+            inputs["entryMode"] = splitEntryMode
+        case .percent:
+            inputs["myPercent"] = splitMyPercent
+            inputs["theirPercent"] = splitTheirPercent
+            inputs["entryMode"] = splitEntryMode
+        case .shares:
+            break
+        case .adjustment:
+            inputs["adjustmentAmount"] = splitAdjustmentAmount
+            inputs["adjustmentMode"] = splitAdjustmentMode
+        case .splitEqually:
+            break
+        }
+
         data["version"] = 1
         data["split"] = [
             "enabled": true,
             "paidAmount": paidAmountForSplit,
             "myShare": myShareAmountForSplit,
             "theyOwe": reimbursementAmountForSplit,
-            "type": splitMethod.rawValue,
+            "type": splitMethodType.rawValue,
             "status": splitStatus,
-            "splitWith": NSNull()
+            "splitWith": NSNull(),
+            "inputs": inputs
         ] as [String: Any]
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: data, options: []),
@@ -703,10 +830,18 @@ final class AddTransactionViewModel {
     func resetSplitState() {
         isSplitExpense = false
         splitMethod = .half
+        splitMethodType = .splitEqually
         paidAmountForSplit = 0
         myShareAmountForSplit = 0
         reimbursementAmountForSplit = 0
         splitStatus = "pending"
+        splitMyShareExact = 0
+        splitTheyOweExact = 0
+        splitMyPercent = 50
+        splitTheirPercent = 50
+        splitAdjustmentAmount = 0
+        splitAdjustmentMode = "extraIPay"
+        splitEntryMode = "myShare"
     }
 
     func saveTransaction() {

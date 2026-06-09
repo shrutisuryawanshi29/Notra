@@ -340,7 +340,7 @@ final class AddTransactionViewController: UIViewController {
             if let tf = view as? UITextField {
                 let fieldType = fieldsByName[propertyName]?.propertyType
                 if fieldType == .number {
-                    let value = Double(tf.text?.replacingOccurrences(of: ",", with: "") ?? "")
+                    let value = parseInputText(tf.text)
                     viewModel.updateNumberValue(propertyName: propertyName, value: value)
                 } else {
                     viewModel.updateStringValue(propertyName: propertyName, value: tf.text ?? "")
@@ -471,14 +471,23 @@ extension AddTransactionViewController {
 
         let split: SplitMetadata?
         if viewModel.isSplitExpense, let p = paidAmount, p > 0 {
+            let inputs = SplitInputs(
+                myShare: viewModel.splitMethodType == .exactAmounts ? viewModel.splitMyShareExact : nil,
+                myPercent: viewModel.splitMethodType == .percent ? viewModel.splitMyPercent : nil,
+                theirPercent: viewModel.splitMethodType == .percent ? viewModel.splitTheirPercent : nil,
+                adjustmentAmount: viewModel.splitMethodType == .adjustment ? viewModel.splitAdjustmentAmount : nil,
+                adjustmentMode: viewModel.splitMethodType == .adjustment ? viewModel.splitAdjustmentMode : nil,
+                entryMode: viewModel.splitEntryMode
+            )
             split = SplitMetadata(
                 enabled: true,
                 paidAmount: p,
                 myShare: abs(newAmount),
                 theyOwe: viewModel.reimbursementAmountForSplit,
-                type: viewModel.splitMethod.rawValue,
+                type: viewModel.splitMethodType.rawValue,
                 status: viewModel.splitStatus,
-                splitWith: nil
+                splitWith: nil,
+                inputs: inputs
             )
         } else {
             split = nil
@@ -517,14 +526,23 @@ extension AddTransactionViewController {
 
         let split: SplitMetadata?
         if viewModel.isSplitExpense, let p = paidAmount, p > 0 {
+            let inputs = SplitInputs(
+                myShare: viewModel.splitMethodType == .exactAmounts ? viewModel.splitMyShareExact : nil,
+                myPercent: viewModel.splitMethodType == .percent ? viewModel.splitMyPercent : nil,
+                theirPercent: viewModel.splitMethodType == .percent ? viewModel.splitTheirPercent : nil,
+                adjustmentAmount: viewModel.splitMethodType == .adjustment ? viewModel.splitAdjustmentAmount : nil,
+                adjustmentMode: viewModel.splitMethodType == .adjustment ? viewModel.splitAdjustmentMode : nil,
+                entryMode: viewModel.splitEntryMode
+            )
             split = SplitMetadata(
                 enabled: true,
                 paidAmount: p,
                 myShare: abs(newAmount),
                 theyOwe: viewModel.reimbursementAmountForSplit,
-                type: viewModel.splitMethod.rawValue,
+                type: viewModel.splitMethodType.rawValue,
                 status: viewModel.splitStatus,
-                splitWith: nil
+                splitWith: nil,
+                inputs: inputs
             )
         } else {
             split = nil
@@ -584,15 +602,27 @@ extension AddTransactionViewController {
         return nil
     }
 
+    private func parseInputText(_ text: String?) -> Double? {
+        guard let t = text, !t.isEmpty else { return nil }
+        let cleaned = t.replacingOccurrences(of: "[^0-9.]", with: "", options: .regularExpression)
+        return Double(cleaned)
+    }
+
     private func syncPaidAmountFromAmountField() {
         guard let amountField = viewModel.fields.first(where: { $0.propertyType == .number && $0.mappedRole == "Amount" }) else { return }
         let rawText = (fieldViews[amountField.propertyName] as? UITextField)?.text ?? ""
-        let cleaned = rawText.replacingOccurrences(of: ",", with: "")
-        let existingValue = Double(cleaned) ?? 0
+        let existingValue = parseInputText(rawText) ?? 0
         viewModel.setPaidAmountForSplit(existingValue)
-        if viewModel.splitMethod == .half {
+        if viewModel.splitMethodType == .splitEqually {
             viewModel.setMyShareForSplit(existingValue / 2)
         }
+    }
+
+    private func showSplitHelpSheet() {
+        let sheetVC = SplitHelpViewController()
+        sheetVC.modalPresentationStyle = .overFullScreen
+        sheetVC.modalTransitionStyle = .crossDissolve
+        present(sheetVC, animated: true)
     }
 
     private func buildSuggestionEntryForSavedExpense() -> (displayName: String, value: SuggestedCategoryValue)? {
@@ -655,31 +685,79 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
                 let cell = tableView.dequeueReusableCell(withIdentifier: "SplitDetailCell", for: indexPath) as! SplitDetailCell
                 if viewModel.isSplitExpense {
                     cell.configure(
-                        method: viewModel.splitMethod,
+                        type: viewModel.splitMethodType,
                         paidAmount: viewModel.paidAmountForSplit,
                         myShare: viewModel.myShareAmountForSplit,
-                        reimbursement: viewModel.reimbursementAmountForSplit
+                        reimbursement: viewModel.reimbursementAmountForSplit,
+                        myPercent: viewModel.splitMyPercent,
+                        theirPercent: viewModel.splitTheirPercent,
+                        myShareExact: viewModel.splitMyShareExact,
+                        theyOweExact: viewModel.splitTheyOweExact,
+                        adjustmentAmount: viewModel.splitAdjustmentAmount,
+                        adjustmentMode: viewModel.splitAdjustmentMode
                     )
                     cell.isHidden = false
-                    let detailPath = indexPath
-                    cell.onMethodChange = { [weak self] method in
-                        self?.viewModel.setSplitMethod(method)
-                        if method == .half {
-                            let paid = self?.viewModel.paidAmountForSplit ?? 0
-                            self?.viewModel.setMyShareForSplit(paid / 2)
-                        }
-                        self?.tableView.reloadRows(at: [detailPath], with: .none)
-                        self?.tableView.performBatchUpdates(nil)
+                    cell.onMethodChange = { [weak self] type in
+                        guard let self = self else { return }
+                        self.viewModel.setSplitMethodType(type)
+                        self.tableView.reloadRows(at: [indexPath], with: .none)
+                        self.tableView.performBatchUpdates(nil)
+                    }
+                    cell.onInfoTap = { [weak self] in
+                        self?.showSplitHelpSheet()
                     }
                     cell.onMyShareChange = { [weak self, weak cell] share in
                         guard let self = self else { return }
-                        self.viewModel.setMyShareForSplit(share)
-                        if let cell = cell {
-                            cell.updateDisplay(
-                                paidAmount: self.viewModel.paidAmountForSplit,
-                                reimbursement: self.viewModel.reimbursementAmountForSplit
-                            )
-                        }
+                        self.viewModel.setSplitMyShareExact(share)
+                        cell?.refreshDisplay(
+                            myShare: self.viewModel.myShareAmountForSplit,
+                            reimbursement: self.viewModel.reimbursementAmountForSplit
+                        )
+                        self.tableView.performBatchUpdates(nil)
+                    }
+                    cell.onTheyOweChange = { [weak self, weak cell] owe in
+                        guard let self = self else { return }
+                        self.viewModel.setSplitTheyOweExact(owe)
+                        cell?.refreshDisplay(
+                            myShare: self.viewModel.myShareAmountForSplit,
+                            reimbursement: self.viewModel.reimbursementAmountForSplit
+                        )
+                        self.tableView.performBatchUpdates(nil)
+                    }
+                    cell.onMyPercentChange = { [weak self, weak cell] pct in
+                        guard let self = self else { return }
+                        self.viewModel.setSplitMyPercent(pct)
+                        cell?.refreshDisplay(
+                            myShare: self.viewModel.myShareAmountForSplit,
+                            reimbursement: self.viewModel.reimbursementAmountForSplit
+                        )
+                        self.tableView.performBatchUpdates(nil)
+                    }
+                    cell.onTheirPercentChange = { [weak self, weak cell] pct in
+                        guard let self = self else { return }
+                        self.viewModel.setSplitTheirPercent(pct)
+                        cell?.refreshDisplay(
+                            myShare: self.viewModel.myShareAmountForSplit,
+                            reimbursement: self.viewModel.reimbursementAmountForSplit
+                        )
+                        self.tableView.performBatchUpdates(nil)
+                    }
+                    cell.onAdjustmentChange = { [weak self, weak cell] amount in
+                        guard let self = self else { return }
+                        self.viewModel.setSplitAdjustmentAmount(amount)
+                        cell?.refreshDisplay(
+                            myShare: self.viewModel.myShareAmountForSplit,
+                            reimbursement: self.viewModel.reimbursementAmountForSplit
+                        )
+                        self.tableView.performBatchUpdates(nil)
+                    }
+                    cell.onAdjustmentModeChange = { [weak self, weak cell] mode in
+                        guard let self = self else { return }
+                        self.viewModel.setSplitAdjustmentMode(mode)
+                        cell?.refreshDisplay(
+                            myShare: self.viewModel.myShareAmountForSplit,
+                            reimbursement: self.viewModel.reimbursementAmountForSplit
+                        )
                         self.tableView.performBatchUpdates(nil)
                     }
                 } else {
@@ -717,11 +795,11 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
             cell.configure(with: field, role: viewModel.selectedRole)
             if let existingValue = viewModel.fieldValues[field.propertyName] {
                 if field.propertyType == .number, let num = existingValue.numberValue {
-                    let formatter = NumberFormatter()
-                    formatter.numberStyle = .decimal
-                    formatter.minimumFractionDigits = 2
-                    formatter.maximumFractionDigits = 2
-                    cell.textField.text = formatter.string(from: NSNumber(value: num))
+                    if num == floor(num) {
+                        cell.textField.text = String(format: "%.0f", num)
+                    } else {
+                        cell.textField.text = String(format: "%.2f", num)
+                    }
                 } else if let str = existingValue.stringValue {
                     cell.textField.text = str
                 }
@@ -855,7 +933,7 @@ extension AddTransactionViewController {
 
     @objc private func amountTextChanged(_ sender: UITextField) {
         guard let amountField = viewModel.fields.first(where: { $0.propertyType == .number && $0.mappedRole == "Amount" }) else { return }
-        let value = Double(sender.text?.replacingOccurrences(of: ",", with: "") ?? "")
+        let value = parseInputText(sender.text)
         viewModel.updateNumberValue(propertyName: amountField.propertyName, value: value)
         if viewModel.isSplitExpense {
             syncPaidAmountFromAmountField()
@@ -1653,13 +1731,70 @@ private class SplitToggleCell: UITableViewCell {
 // MARK: - Split Detail Cell
 
 private class SplitDetailCell: UITableViewCell, UITextFieldDelegate {
-    private let methodSegments = UISegmentedControl(items: ["50/50", "Custom"])
+    private let paidHeader = UILabel()
     private let paidAmountLabel = UILabel()
-    private let myShareField = UITextField()
-    private let theyOweLabel = UILabel()
+
+    private let methodHeader = UILabel()
+    private let infoButton = UIButton(type: .system)
+
+    private let chipGrid = UIStackView()
+    private var chipButtons: [UIButton] = []
+
+    private let methodInputSection = UIStackView()
+    private var currentInputViews: [UIView] = []
+
+    private var iPayButton: UIButton?
+    private var theyPayButton: UIButton?
+
+    private var activeFieldTag: Int = 0
+    private var exactMyField: UITextField?
+    private var exactTheyField: UITextField?
+    private var pctMyField: UITextField?
+    private var pctTheirField: UITextField?
+    private var adjAmountField: UITextField?
+    private let inlineResultLabel = UILabel()
+
+    private let summaryTileContainer = UIStackView()
+    private let myShareTile = SummaryTileView(label: "Your share", accent: true)
+    private let theyOweTile = SummaryTileView(label: "They owe", accent: false)
+
     private let helperLabel = UILabel()
-    var onMethodChange: ((SplitMethod) -> Void)?
+
+    var onMethodChange: ((SplitMethodType) -> Void)?
+    var onInfoTap: (() -> Void)?
     var onMyShareChange: ((Double) -> Void)?
+    var onTheyOweChange: ((Double) -> Void)?
+    var onMyPercentChange: ((Double) -> Void)?
+    var onTheirPercentChange: ((Double) -> Void)?
+    var onAdjustmentChange: ((Double) -> Void)?
+    var onAdjustmentModeChange: ((String) -> Void)?
+
+    private var selectedMethod: SplitMethodType = .splitEqually
+    private var isUpdatingProgrammatically = false
+
+    private let currencyFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        return f
+    }()
+
+    private func formatPlainAmount(_ value: Double) -> String {
+        if value == floor(value) {
+            return String(format: "%.0f", value)
+        }
+        return String(format: "%.2f", value)
+    }
+
+    private func formatPlainPercent(_ value: Double) -> String {
+        return String(format: "%.0f", value)
+    }
+
+    private func parseInputText(_ text: String?) -> Double? {
+        guard let t = text, !t.isEmpty else { return nil }
+        let cleaned = t.replacingOccurrences(of: "[^0-9.]", with: "", options: .regularExpression)
+        return Double(cleaned)
+    }
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -1668,11 +1803,82 @@ private class SplitDetailCell: UITableViewCell, UITextFieldDelegate {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        onMyShareChange = nil
+        onTheyOweChange = nil
+        onMyPercentChange = nil
+        onTheirPercentChange = nil
+        onAdjustmentChange = nil
+        onAdjustmentModeChange = nil
+        onMethodChange = nil
+        onInfoTap = nil
+        iPayButton = nil
+        theyPayButton = nil
+        isUpdatingProgrammatically = false
+        exactMyField = nil
+        exactTheyField = nil
+        pctMyField = nil
+        pctTheirField = nil
+        adjAmountField = nil
+        activeFieldTag = 0
+    }
+
+    // MARK: - Helpers
+
+    private func makeChip(title: String) -> UIButton {
+        let btn = UIButton(type: .system)
+        btn.setTitle(title, for: .normal)
+        btn.titleLabel?.font = AppTheme.Fonts.bodyMedium
+        btn.contentEdgeInsets = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
+        btn.layer.cornerRadius = 10
+        btn.layer.borderWidth = 1
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        btn.heightAnchor.constraint(equalToConstant: 40).isActive = true
+        btn.addTarget(self, action: #selector(chipTapped(_:)), for: .touchUpInside)
+        return btn
+    }
+
+    private func makeTextField(placeholder: String, keyboardType: UIKeyboardType = .decimalPad) -> UITextField {
+        let tf = UITextField()
+        tf.font = AppTheme.Fonts.body
+        tf.textColor = AppTheme.Colors.textPrimary
+        tf.placeholder = placeholder
+        tf.keyboardType = keyboardType
+        tf.borderStyle = .roundedRect
+        tf.backgroundColor = AppTheme.Colors.background
+        tf.translatesAutoresizingMaskIntoConstraints = false
+        tf.delegate = self
+        return tf
+    }
+
+    private func updateChipSelection() {
+        for chip in chipButtons {
+            guard let title = chip.title(for: .normal) else { continue }
+            let type = SplitMethodType.uiCases.first { $0.chipLabel == title }
+            let isSelected = type == selectedMethod
+            if isSelected {
+                chip.backgroundColor = AppTheme.Colors.expense
+                chip.setTitleColor(AppTheme.Colors.buttonContent, for: .normal)
+                chip.layer.borderColor = AppTheme.Colors.expense.cgColor
+                chip.titleLabel?.font = AppTheme.Fonts.bodyMedium
+            } else {
+                chip.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+                chip.setTitleColor(AppTheme.Colors.textMuted, for: .normal)
+                chip.layer.borderColor = AppTheme.Colors.border.cgColor
+                chip.titleLabel?.font = AppTheme.Fonts.bodyMedium
+            }
+        }
+    }
+
+    // MARK: - Setup
+
     private func setup() {
         selectionStyle = .none
         contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        let pad: CGFloat = 20
 
-        let paidHeader = UILabel()
+        // Paid amount header
         paidHeader.text = "Amount paid"
         paidHeader.font = AppTheme.Fonts.captionBold
         paidHeader.textColor = AppTheme.Colors.textSecondary
@@ -1684,136 +1890,547 @@ private class SplitDetailCell: UITableViewCell, UITextFieldDelegate {
         paidAmountLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(paidAmountLabel)
 
-        methodSegments.selectedSegmentIndex = 0
-        methodSegments.translatesAutoresizingMaskIntoConstraints = false
-        methodSegments.addTarget(self, action: #selector(methodChanged), for: .valueChanged)
-        contentView.addSubview(methodSegments)
+        // Method header + info
+        methodHeader.text = "Split method"
+        methodHeader.font = AppTheme.Fonts.captionBold
+        methodHeader.textColor = AppTheme.Colors.textSecondary
+        methodHeader.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(methodHeader)
 
-        let shareHeader = UILabel()
-        shareHeader.text = "My share"
-        shareHeader.font = AppTheme.Fonts.captionBold
-        shareHeader.textColor = AppTheme.Colors.textSecondary
-        shareHeader.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(shareHeader)
+        infoButton.setImage(UIImage(systemName: "info.circle"), for: .normal)
+        infoButton.tintColor = AppTheme.Colors.textMuted
+        infoButton.translatesAutoresizingMaskIntoConstraints = false
+        infoButton.addTarget(self, action: #selector(infoTapped), for: .touchUpInside)
+        contentView.addSubview(infoButton)
 
-        myShareField.font = AppTheme.Fonts.body
-        myShareField.textColor = AppTheme.Colors.textPrimary
-        myShareField.placeholder = "0.00"
-        myShareField.keyboardType = .decimalPad
-        myShareField.borderStyle = .roundedRect
-        myShareField.backgroundColor = AppTheme.Colors.background
-        myShareField.translatesAutoresizingMaskIntoConstraints = false
-        myShareField.delegate = self
-        myShareField.addTarget(self, action: #selector(myShareChanged), for: .editingChanged)
-        contentView.addSubview(myShareField)
+        // Chip grid (2x2)
+        chipGrid.axis = .vertical
+        chipGrid.spacing = 10
+        chipGrid.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(chipGrid)
 
-        let oweHeader = UILabel()
-        oweHeader.text = "They owe"
-        oweHeader.font = AppTheme.Fonts.captionBold
-        oweHeader.textColor = AppTheme.Colors.textSecondary
-        oweHeader.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(oweHeader)
+        let uiTypes = SplitMethodType.uiCases
+        let row1 = UIStackView()
+        row1.axis = .horizontal
+        row1.spacing = 10
+        row1.distribution = .fillEqually
+        for i in 0..<2 {
+            let chip = makeChip(title: uiTypes[i].chipLabel)
+            row1.addArrangedSubview(chip)
+            chipButtons.append(chip)
+        }
+        chipGrid.addArrangedSubview(row1)
 
-        theyOweLabel.font = AppTheme.Fonts.body
-        theyOweLabel.textColor = AppTheme.Colors.expense
-        theyOweLabel.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(theyOweLabel)
+        let row2 = UIStackView()
+        row2.axis = .horizontal
+        row2.spacing = 10
+        row2.distribution = .fillEqually
+        for i in 2..<4 {
+            let chip = makeChip(title: uiTypes[i].chipLabel)
+            row2.addArrangedSubview(chip)
+            chipButtons.append(chip)
+        }
+        chipGrid.addArrangedSubview(row2)
 
-        helperLabel.text = "Your share is used for spending, budgets, and analytics."
+        // Method input section
+        methodInputSection.axis = .vertical
+        methodInputSection.spacing = 8
+        methodInputSection.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(methodInputSection)
+
+        // Bottom stack: summary tiles → inline result → helper (auto-collapses hidden)
+        summaryTileContainer.axis = .horizontal
+        summaryTileContainer.spacing = 12
+        summaryTileContainer.distribution = .fillEqually
+        summaryTileContainer.translatesAutoresizingMaskIntoConstraints = false
+        summaryTileContainer.addArrangedSubview(myShareTile)
+        summaryTileContainer.addArrangedSubview(theyOweTile)
+
+        inlineResultLabel.font = AppTheme.Fonts.bodyMedium
+        inlineResultLabel.textColor = AppTheme.Colors.textPrimary
+        inlineResultLabel.textAlignment = .center
+        inlineResultLabel.numberOfLines = 0
+        inlineResultLabel.translatesAutoresizingMaskIntoConstraints = false
+
         helperLabel.font = AppTheme.Fonts.small
         helperLabel.textColor = AppTheme.Colors.textMuted
         helperLabel.numberOfLines = 0
         helperLabel.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(helperLabel)
 
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
+        let bottomStack = UIStackView(arrangedSubviews: [summaryTileContainer, inlineResultLabel, helperLabel])
+        bottomStack.axis = .vertical
+        bottomStack.spacing = 12
+        bottomStack.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(bottomStack)
 
         NSLayoutConstraint.activate([
             paidHeader.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            paidHeader.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            paidHeader.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: pad),
 
             paidAmountLabel.topAnchor.constraint(equalTo: paidHeader.bottomAnchor, constant: 2),
-            paidAmountLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            paidAmountLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            paidAmountLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: pad),
+            paidAmountLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -pad),
 
-            methodSegments.topAnchor.constraint(equalTo: paidAmountLabel.bottomAnchor, constant: 12),
-            methodSegments.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            methodSegments.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            methodSegments.heightAnchor.constraint(equalToConstant: 32),
+            methodHeader.topAnchor.constraint(equalTo: paidAmountLabel.bottomAnchor, constant: 12),
+            methodHeader.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: pad),
 
-            shareHeader.topAnchor.constraint(equalTo: methodSegments.bottomAnchor, constant: 12),
-            shareHeader.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            infoButton.centerYAnchor.constraint(equalTo: methodHeader.centerYAnchor),
+            infoButton.leadingAnchor.constraint(equalTo: methodHeader.trailingAnchor, constant: 6),
+            infoButton.widthAnchor.constraint(equalToConstant: 18),
+            infoButton.heightAnchor.constraint(equalToConstant: 18),
 
-            myShareField.topAnchor.constraint(equalTo: shareHeader.bottomAnchor, constant: 4),
-            myShareField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            myShareField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            myShareField.heightAnchor.constraint(equalToConstant: 40),
+            chipGrid.topAnchor.constraint(equalTo: methodHeader.bottomAnchor, constant: 10),
+            chipGrid.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: pad),
+            chipGrid.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -pad),
 
-            oweHeader.topAnchor.constraint(equalTo: myShareField.bottomAnchor, constant: 12),
-            oweHeader.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            methodInputSection.topAnchor.constraint(equalTo: chipGrid.bottomAnchor, constant: 16),
+            methodInputSection.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: pad),
+            methodInputSection.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -pad),
 
-            theyOweLabel.topAnchor.constraint(equalTo: oweHeader.bottomAnchor, constant: 2),
-            theyOweLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            theyOweLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-
-            helperLabel.topAnchor.constraint(equalTo: theyOweLabel.bottomAnchor, constant: 12),
-            helperLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            helperLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            helperLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -14)
+            bottomStack.topAnchor.constraint(equalTo: methodInputSection.bottomAnchor, constant: 16),
+            bottomStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: pad),
+            bottomStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -pad),
+            bottomStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16)
         ])
     }
 
-    func configure(method: SplitMethod, paidAmount: Double, myShare: Double, reimbursement: Double) {
-        let currencyFormatter = NumberFormatter()
-        currencyFormatter.numberStyle = .currency
-        currencyFormatter.currencyCode = "USD"
+    // MARK: - Configure
 
-        let numericFormatter = NumberFormatter()
-        numericFormatter.numberStyle = .decimal
-        numericFormatter.minimumFractionDigits = 2
-        numericFormatter.maximumFractionDigits = 2
+    func configure(
+        type: SplitMethodType,
+        paidAmount: Double,
+        myShare: Double,
+        reimbursement: Double,
+        myPercent: Double,
+        theirPercent: Double,
+        myShareExact: Double,
+        theyOweExact: Double,
+        adjustmentAmount: Double,
+        adjustmentMode: String
+    ) {
+        selectedMethod = type
 
         paidAmountLabel.text = currencyFormatter.string(from: NSNumber(value: paidAmount)) ?? "$0"
-        myShareField.text = numericFormatter.string(from: NSNumber(value: myShare)) ?? "0.00"
-        theyOweLabel.text = currencyFormatter.string(from: NSNumber(value: reimbursement)) ?? "$0"
+        myShareTile.setValue(currencyFormatter.string(from: NSNumber(value: myShare)) ?? "$0")
+        theyOweTile.setValue(currencyFormatter.string(from: NSNumber(value: reimbursement)) ?? "$0")
 
-        switch method {
-        case .half:
-            methodSegments.selectedSegmentIndex = 0
-            myShareField.isEnabled = false
-            myShareField.backgroundColor = AppTheme.Colors.cardBackgroundAlt
-        case .customAmount:
-            methodSegments.selectedSegmentIndex = 1
-            myShareField.isEnabled = true
-            myShareField.backgroundColor = AppTheme.Colors.background
+        updateChipSelection()
+        rebuildInputs(for: type, myShareExact: myShareExact, theyOweExact: theyOweExact, myPercent: myPercent, theirPercent: theirPercent, adjustmentAmount: adjustmentAmount, adjustmentMode: adjustmentMode, myShare: myShare, reimbursement: reimbursement)
+    }
+
+    func refreshDisplay(myShare: Double, reimbursement: Double) {
+        myShareTile.setValue(currencyFormatter.string(from: NSNumber(value: myShare)) ?? "$0")
+        theyOweTile.setValue(currencyFormatter.string(from: NSNumber(value: reimbursement)) ?? "$0")
+        isUpdatingProgrammatically = true
+        if selectedMethod == .exactAmounts {
+            if activeFieldTag != 101 { exactTheyField?.text = formatPlainAmount(reimbursement) }
+            if activeFieldTag != 100 { exactMyField?.text = formatPlainAmount(myShare) }
+        } else if selectedMethod == .percent {
+            if activeFieldTag != 201 { pctTheirField?.text = formatPlainPercent(100 - (parsePercentFromField(pctMyField) ?? 50)) }
+            if activeFieldTag != 200 { pctMyField?.text = formatPlainPercent(100 - (parsePercentFromField(pctTheirField) ?? 50)) }
+            let shareDisplay = currencyFormatter.string(from: NSNumber(value: myShare)) ?? "$0"
+            let oweDisplay = currencyFormatter.string(from: NSNumber(value: reimbursement)) ?? "$0"
+            inlineResultLabel.text = "Your share \(shareDisplay)  ·  They owe \(oweDisplay)"
+        } else if selectedMethod == .adjustment {
+            let shareDisplay = currencyFormatter.string(from: NSNumber(value: myShare)) ?? "$0"
+            let oweDisplay = currencyFormatter.string(from: NSNumber(value: reimbursement)) ?? "$0"
+            inlineResultLabel.text = "Your share \(shareDisplay)  ·  They owe \(oweDisplay)"
+        }
+        isUpdatingProgrammatically = false
+    }
+
+    private func parsePaidAmount() -> Double {
+        guard let text = paidAmountLabel.text else { return 0 }
+        let cleaned = text.replacingOccurrences(of: "[^0-9.]", with: "", options: .regularExpression)
+        return Double(cleaned) ?? 0
+    }
+
+    private func parsePercentFromField(_ field: UITextField?) -> Double? {
+        guard let t = field?.text, !t.isEmpty else { return nil }
+        return Double(t)
+    }
+
+    // MARK: - Inputs
+
+    private func rebuildInputs(for type: SplitMethodType, myShareExact: Double, theyOweExact: Double, myPercent: Double, theirPercent: Double, adjustmentAmount: Double, adjustmentMode: String, myShare: Double = 0, reimbursement: Double = 0) {
+        currentInputViews.forEach { $0.removeFromSuperview() }
+        currentInputViews.removeAll()
+        exactMyField = nil
+        exactTheyField = nil
+        pctMyField = nil
+        pctTheirField = nil
+        adjAmountField = nil
+
+        switch type {
+        case .splitEqually:
+            summaryTileContainer.isHidden = false
+            inlineResultLabel.isHidden = true
+            helperLabel.text = "Your share is used for spending, budgets, and analytics."
+
+        case .exactAmounts:
+            summaryTileContainer.isHidden = true
+            inlineResultLabel.isHidden = true
+            helperLabel.text = "Enter either side. The other updates automatically."
+
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.spacing = 12
+            row.distribution = .fillEqually
+            methodInputSection.addArrangedSubview(row)
+            currentInputViews.append(row)
+
+            let myTf = makeTextField(placeholder: "0.00")
+            myTf.tag = 100
+            if myShareExact > 0 { myTf.text = formatPlainAmount(myShareExact) }
+            myTf.addTarget(self, action: #selector(exactAmountChanged), for: .editingChanged)
+            let myStack = labelAndInput(label: "My share", textField: myTf)
+            row.addArrangedSubview(myStack)
+            exactMyField = myTf
+
+            let theirTf = makeTextField(placeholder: "0.00")
+            theirTf.tag = 101
+            if theyOweExact > 0 { theirTf.text = formatPlainAmount(theyOweExact) }
+            theirTf.addTarget(self, action: #selector(theyOweExactChanged), for: .editingChanged)
+            let theirStack = labelAndInput(label: "They owe", textField: theirTf)
+            row.addArrangedSubview(theirStack)
+            exactTheyField = theirTf
+
+        case .percent:
+            summaryTileContainer.isHidden = true
+            inlineResultLabel.isHidden = false
+            helperLabel.text = "Your share is used for spending, budgets, and analytics."
+
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.spacing = 12
+            row.distribution = .fillEqually
+            methodInputSection.addArrangedSubview(row)
+            currentInputViews.append(row)
+
+            let myTf = makeTextField(placeholder: "50", keyboardType: .numberPad)
+            myTf.tag = 200
+            if myPercent > 0 { myTf.text = formatPlainPercent(myPercent) }
+            myTf.addTarget(self, action: #selector(percentChanged), for: .editingChanged)
+            let myStack = labelAndInput(label: "My %", textField: myTf)
+            row.addArrangedSubview(myStack)
+            pctMyField = myTf
+
+            let theirTf = makeTextField(placeholder: "50", keyboardType: .numberPad)
+            theirTf.tag = 201
+            if theirPercent > 0 { theirTf.text = formatPlainPercent(theirPercent) }
+            theirTf.addTarget(self, action: #selector(theirPercentChanged), for: .editingChanged)
+            let theirStack = labelAndInput(label: "Their %", textField: theirTf)
+            row.addArrangedSubview(theirStack)
+            pctTheirField = theirTf
+
+            let shareDisplay = currencyFormatter.string(from: NSNumber(value: myShare)) ?? "$0"
+            let oweDisplay = currencyFormatter.string(from: NSNumber(value: reimbursement)) ?? "$0"
+            inlineResultLabel.text = "Your share \(shareDisplay)  ·  They owe \(oweDisplay)"
+
+        case .adjustment:
+            summaryTileContainer.isHidden = true
+            inlineResultLabel.isHidden = false
+            helperLabel.text = "Your share is used for spending, budgets, and analytics."
+
+            let label = UILabel()
+            label.text = "Who pays extra?"
+            label.font = AppTheme.Fonts.small
+            label.textColor = AppTheme.Colors.textMuted
+            methodInputSection.addArrangedSubview(label)
+            currentInputViews.append(label)
+
+            let container = UIView()
+            container.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+            container.layer.cornerRadius = 8
+            container.layer.borderWidth = 1
+            container.layer.borderColor = AppTheme.Colors.border.cgColor
+            container.translatesAutoresizingMaskIntoConstraints = false
+            container.heightAnchor.constraint(equalToConstant: 36).isActive = true
+            methodInputSection.addArrangedSubview(container)
+            currentInputViews.append(container)
+
+            let innerStack = UIStackView()
+            innerStack.axis = .horizontal
+            innerStack.spacing = 0
+            innerStack.distribution = .fillEqually
+            innerStack.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(innerStack)
+            NSLayoutConstraint.activate([
+                innerStack.topAnchor.constraint(equalTo: container.topAnchor, constant: 2),
+                innerStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
+                innerStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -2),
+                innerStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -2)
+            ])
+
+            let iPayBtn = UIButton(type: .system)
+            iPayBtn.setTitle("I pay extra", for: .normal)
+            iPayBtn.titleLabel?.font = AppTheme.Fonts.captionMedium
+            iPayBtn.layer.cornerRadius = 6
+            iPayBtn.translatesAutoresizingMaskIntoConstraints = false
+            iPayBtn.addTarget(self, action: #selector(adjustmentModeExtraIPay), for: .touchUpInside)
+            innerStack.addArrangedSubview(iPayBtn)
+            self.iPayButton = iPayBtn
+
+            let theyPayBtn = UIButton(type: .system)
+            theyPayBtn.setTitle("They pay", for: .normal)
+            theyPayBtn.titleLabel?.font = AppTheme.Fonts.captionMedium
+            theyPayBtn.layer.cornerRadius = 6
+            theyPayBtn.translatesAutoresizingMaskIntoConstraints = false
+            theyPayBtn.addTarget(self, action: #selector(adjustmentModeExtraTheyPay), for: .touchUpInside)
+            innerStack.addArrangedSubview(theyPayBtn)
+            self.theyPayButton = theyPayBtn
+
+            updateAdjustmentModeStyle(mode: adjustmentMode)
+
+            let tf = makeTextField(placeholder: "0.00")
+            tf.tag = 300
+            if adjustmentAmount > 0 { tf.text = formatPlainAmount(adjustmentAmount) }
+            tf.addTarget(self, action: #selector(adjustmentChanged), for: .editingChanged)
+            let inputStack = labelAndInput(label: "Extra amount", textField: tf)
+            methodInputSection.addArrangedSubview(inputStack)
+            currentInputViews.append(inputStack)
+            adjAmountField = tf
+
+            let shareDisplay = currencyFormatter.string(from: NSNumber(value: myShare)) ?? "$0"
+            let oweDisplay = currencyFormatter.string(from: NSNumber(value: reimbursement)) ?? "$0"
+            inlineResultLabel.text = "Your share \(shareDisplay)  ·  They owe \(oweDisplay)"
+
+        case .shares:
+            summaryTileContainer.isHidden = false
+            inlineResultLabel.isHidden = true
+            helperLabel.text = "Your share is used for spending, budgets, and analytics."
         }
     }
 
-    func updateDisplay(paidAmount: Double, reimbursement: Double) {
-        let currencyFormatter = NumberFormatter()
-        currencyFormatter.numberStyle = .currency
-        currencyFormatter.currencyCode = "USD"
-        paidAmountLabel.text = currencyFormatter.string(from: NSNumber(value: paidAmount)) ?? "$0"
-        theyOweLabel.text = currencyFormatter.string(from: NSNumber(value: reimbursement)) ?? "$0"
+    private func labelAndInput(label: String, textField: UITextField) -> UIView {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 2
+
+        let lbl = UILabel()
+        lbl.text = label
+        lbl.font = AppTheme.Fonts.small
+        lbl.textColor = AppTheme.Colors.textMuted
+        stack.addArrangedSubview(lbl)
+
+        textField.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        stack.addArrangedSubview(textField)
+
+        return stack
     }
 
-    @objc private func methodChanged() {
-        let method: SplitMethod = methodSegments.selectedSegmentIndex == 0 ? .half : .customAmount
-        if method == .half {
-            myShareField.isEnabled = false
-            myShareField.backgroundColor = AppTheme.Colors.cardBackgroundAlt
-        } else {
-            myShareField.isEnabled = true
-            myShareField.backgroundColor = AppTheme.Colors.background
-        }
-        onMethodChange?(method)
+    // MARK: - Adjustment Mode Style
+
+    private func updateAdjustmentModeStyle(mode: String) {
+        let isIPay = mode != "extraTheyPay"
+        iPayButton?.backgroundColor = isIPay ? AppTheme.Colors.expense : .clear
+        iPayButton?.setTitleColor(isIPay ? AppTheme.Colors.buttonContent : AppTheme.Colors.textMuted, for: .normal)
+        theyPayButton?.backgroundColor = isIPay ? .clear : AppTheme.Colors.expense
+        theyPayButton?.setTitleColor(isIPay ? AppTheme.Colors.textMuted : AppTheme.Colors.buttonContent, for: .normal)
     }
 
-    @objc private func myShareChanged() {
-        let cleaned = myShareField.text?.replacingOccurrences(of: "[^0-9.]", with: "", options: .regularExpression) ?? ""
-        let value = Double(cleaned) ?? 0
+    // MARK: - UITextFieldDelegate
+
+    func textFieldDidBeginEditing(_ textField: UITextField) {
+        activeFieldTag = textField.tag
+    }
+
+    // MARK: - Actions
+
+    @objc private func chipTapped(_ sender: UIButton) {
+        guard let title = sender.title(for: .normal),
+              let type = SplitMethodType.uiCases.first(where: { $0.chipLabel == title }) else { return }
+        selectedMethod = type
+        activeFieldTag = 0
+        updateChipSelection()
+        rebuildInputs(for: type, myShareExact: 0, theyOweExact: 0, myPercent: 50, theirPercent: 50, adjustmentAmount: 0, adjustmentMode: "extraIPay")
+        if type == .adjustment { updateAdjustmentModeStyle(mode: "extraIPay") }
+        onMethodChange?(type)
+    }
+
+    @objc private func infoTapped() {
+        onInfoTap?()
+    }
+
+    @objc private func exactAmountChanged(_ sender: UITextField) {
+        guard !isUpdatingProgrammatically, let value = parseInputText(sender.text) else { return }
         onMyShareChange?(value)
+    }
+
+    @objc private func theyOweExactChanged(_ sender: UITextField) {
+        guard !isUpdatingProgrammatically, let value = parseInputText(sender.text) else { return }
+        onTheyOweChange?(value)
+    }
+
+    @objc private func percentChanged(_ sender: UITextField) {
+        guard !isUpdatingProgrammatically, let value = parseInputText(sender.text) else { return }
+        onMyPercentChange?(value)
+    }
+
+    @objc private func theirPercentChanged(_ sender: UITextField) {
+        guard !isUpdatingProgrammatically, let value = parseInputText(sender.text) else { return }
+        onTheirPercentChange?(value)
+    }
+
+    @objc private func adjustmentChanged(_ sender: UITextField) {
+        guard !isUpdatingProgrammatically, let value = parseInputText(sender.text) else { return }
+        onAdjustmentChange?(value)
+    }
+
+    @objc private func adjustmentModeExtraIPay() {
+        updateAdjustmentModeStyle(mode: "extraIPay")
+        onAdjustmentModeChange?("extraIPay")
+    }
+
+    @objc private func adjustmentModeExtraTheyPay() {
+        updateAdjustmentModeStyle(mode: "extraTheyPay")
+        onAdjustmentModeChange?("extraTheyPay")
+    }
+}
+
+// MARK: - Summary Tile
+
+private class SummaryTileView: UIView {
+    private let label = UILabel()
+    private let valueLabel = UILabel()
+
+    init(label text: String, accent: Bool) {
+        super.init(frame: .zero)
+        layer.cornerRadius = 8
+        layer.borderWidth = 1
+        layer.borderColor = AppTheme.Colors.border.cgColor
+        backgroundColor = AppTheme.Colors.background
+
+        label.text = text
+        label.font = AppTheme.Fonts.small
+        label.textColor = AppTheme.Colors.textMuted
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+
+        valueLabel.font = AppTheme.Fonts.headingMedium
+        valueLabel.textColor = accent ? AppTheme.Colors.expense : AppTheme.Colors.textPrimary
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(valueLabel)
+
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+
+            valueLabel.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 2),
+            valueLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            valueLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+        ])
+    }
+
+    func setValue(_ val: String) {
+        valueLabel.text = val
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+}
+
+// MARK: - Split Help Bottom Sheet
+
+private class SplitHelpViewController: UIViewController {
+    private let container = UIView()
+    private let titleLabel = UILabel()
+    private let stack = UIStackView()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+
+        container.backgroundColor = AppTheme.Colors.cardBackground
+        container.layer.cornerRadius = 16
+        container.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(container)
+
+        let tap = UITapGestureRecognizer(target: self, action: #selector(dismissTap))
+        view.addGestureRecognizer(tap)
+
+        titleLabel.text = "Split methods"
+        titleLabel.font = AppTheme.Fonts.sectionHeader
+        titleLabel.textColor = AppTheme.Colors.textPrimary
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(titleLabel)
+
+        stack.axis = .vertical
+        stack.spacing = 16
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(stack)
+
+        for type in SplitMethodType.uiCases {
+            let row = UIView()
+
+            let name = UILabel()
+            name.text = type.displayName
+            name.font = AppTheme.Fonts.bodyBold
+            name.textColor = AppTheme.Colors.textPrimary
+            name.translatesAutoresizingMaskIntoConstraints = false
+            row.addSubview(name)
+
+            let desc = UILabel()
+            desc.text = type.helpText
+            desc.font = AppTheme.Fonts.small
+            desc.textColor = AppTheme.Colors.textMuted
+            desc.numberOfLines = 0
+            desc.translatesAutoresizingMaskIntoConstraints = false
+            row.addSubview(desc)
+
+            NSLayoutConstraint.activate([
+                name.topAnchor.constraint(equalTo: row.topAnchor),
+                name.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+                name.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+                desc.topAnchor.constraint(equalTo: name.bottomAnchor, constant: 2),
+                desc.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+                desc.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+                desc.bottomAnchor.constraint(equalTo: row.bottomAnchor)
+            ])
+
+            stack.addArrangedSubview(row)
+        }
+
+        let gotItBtn = UIButton(type: .system)
+        gotItBtn.setTitle("Got it", for: .normal)
+        gotItBtn.titleLabel?.font = AppTheme.Fonts.bodyBold
+        gotItBtn.backgroundColor = AppTheme.Colors.expense
+        gotItBtn.setTitleColor(AppTheme.Colors.buttonContent, for: .normal)
+        gotItBtn.layer.cornerRadius = 8
+        gotItBtn.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        gotItBtn.addTarget(self, action: #selector(dismissSheet), for: .touchUpInside)
+        gotItBtn.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(gotItBtn)
+
+        NSLayoutConstraint.activate([
+            container.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            container.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            container.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+
+            titleLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 20),
+            titleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            titleLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+
+            stack.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 16),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+
+            gotItBtn.topAnchor.constraint(equalTo: stack.bottomAnchor, constant: 20),
+            gotItBtn.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            gotItBtn.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            gotItBtn.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -20),
+        ])
+    }
+
+    @objc private func dismissTap(_ sender: UITapGestureRecognizer) {
+        let loc = sender.location(in: view)
+        if !container.frame.contains(loc) {
+            dismiss(animated: true)
+        }
+    }
+
+    @objc private func dismissSheet() {
+        dismiss(animated: true)
     }
 }
