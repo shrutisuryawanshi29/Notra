@@ -53,7 +53,6 @@ final class ReceiptReviewViewModel {
     var hasWarnings: Bool { !receiptResult.warnings.isEmpty }
     var hasReceiptSummary: Bool { !receiptResult.summary.isEmpty }
 
-    // Backwards-compatible accessors for ReceiptSummaryCardCell
     var receiptSubtotal: Double? { receiptResult.summary.itemsSubtotal }
     var receiptTax: Double? { receiptResult.summary.tax }
     var receiptDeliveryFee: Double? { receiptResult.summary.deliveryFee }
@@ -61,7 +60,6 @@ final class ReceiptReviewViewModel {
     var receiptTip: Double? { receiptResult.summary.tip }
     var receiptTotal: Double? { receiptResult.summary.totalCharged ?? receiptResult.summary.total }
 
-    // Kept for backward compat with ReceiptSummaryCardCell check
     var hasReceiptSummaryData: Bool { !receiptResult.summary.isEmpty }
 
     var includeTaxProportionally: Bool = true
@@ -101,7 +99,6 @@ final class ReceiptReviewViewModel {
         categoryColumnType = expenseMapping.categoryType ?? "select"
         isRelationCategoryField = columnMapping.categoryRelationDataSourceId != nil
 
-        // First, suggest a category from merchant name using engine
         if let merchant = receiptResult.merchant {
             let engine = ExpenseCategorySuggestionEngine()
             let suggestions = engine.suggestions(for: merchant)
@@ -112,10 +109,8 @@ final class ReceiptReviewViewModel {
         }
 
         if let dsId = columnMapping.categoryRelationDataSourceId {
-            // Relation field: load actual options from the target database (Notion pages)
             isLoadingCategories = true
             transactionInsertService.loadRelationOptions(databaseId: dsId, token: token) { [weak self] result in
-                // loadRelationOptions already dispatches to .main
                 guard let self = self else { return }
                 self.isLoadingCategories = false
                 switch result {
@@ -193,6 +188,40 @@ final class ReceiptReviewViewModel {
         delegate?.didUpdateSummary()
     }
 
+    // MARK: - Multi-Person Split
+
+    var splitPeople: [SplitPerson] { SplitPeopleStore.shared.getPeople() }
+
+    func addPerson(name: String) {
+        SplitPeopleStore.shared.addPerson(name: name)
+        delegate?.didUpdateSummary()
+    }
+
+    func deletePerson(id: String) {
+        for i in receiptResult.items.indices {
+            receiptResult.items[i].sharedWith.removeAll { $0 == id }
+        }
+        SplitPeopleStore.shared.deletePerson(id: id)
+        delegate?.didUpdateSummary()
+    }
+
+    func setSharedWith(for itemId: String, personIds: [String]) {
+        if let idx = receiptResult.items.firstIndex(where: { $0.id == itemId }) {
+            receiptResult.items[idx].sharedWith = personIds
+            delegate?.didUpdateSummary()
+        }
+    }
+
+    func sharedWithPersonNames(for itemId: String) -> [String] {
+        guard let item = receiptResult.items.first(where: { $0.id == itemId }) else { return [] }
+        let people = SplitPeopleStore.shared.getPeople()
+        return item.sharedWith.compactMap { pid in people.first(where: { $0.id == pid })?.name }
+    }
+
+    var hasSharedItemsWithoutPeople: Bool {
+        receiptResult.items.contains { $0.classification == .shared && $0.sharedWith.isEmpty }
+    }
+
     // MARK: - Split Calculations
 
     var hasTax: Bool { (receiptResult.summary.tax ?? 0) > 0 }
@@ -229,16 +258,22 @@ final class ReceiptReviewViewModel {
     }
 
     var myShare: Double {
-        guard sharedTotal > 0 else { return 0 }
-        return SplitCalculator.calculate(paidAmount: sharedTotal, method: splitMethod).myShare
+        if hasSharedItems {
+            return multiPersonSettlement.myShare
+        }
+        return personalTotal
     }
 
     var theyOwe: Double {
-        guard sharedTotal > 0 else { return 0 }
-        return SplitCalculator.calculate(paidAmount: sharedTotal, method: splitMethod).theyOwe
+        if hasSharedItems {
+            return multiPersonSettlement.theyOwe
+        }
+        return 0
     }
 
-    var totalCounted: Double { personalTotal + myShare }
+    var totalCounted: Double {
+        myShare
+    }
 
     var hasPersonalItems: Bool { receiptResult.items.contains { $0.classification == .mine } }
     var hasSharedItems: Bool { receiptResult.items.contains { $0.classification == .shared } }
@@ -251,8 +286,77 @@ final class ReceiptReviewViewModel {
         receiptResult.items.filter { $0.classification == .shared }.count
     }
 
-    /// Relation categories require an explicit page ID selection.
-    /// Non-relation (select/status) categories are optional — the suggested name is used if available.
+    var includedTotal: Double {
+        let sub = receiptResult.items
+            .filter { $0.classification != .ignore }
+            .reduce(0.0) { $0 + $1.finalPrice }
+        if includeTaxProportionally, let tax = receiptResult.summary.tax, tax > 0 {
+            return sub + tax
+        }
+        return sub
+    }
+
+    var personOwes: [(name: String, amount: Double)] {
+        guard hasSharedItems else { return [] }
+        let settlement = multiPersonSettlement
+        let people = SplitPeopleStore.shared.getPeople()
+        return settlement.personOwes.compactMap { pid, amount in
+            guard let person = people.first(where: { $0.id == pid }) else { return nil }
+            return (person.name, amount)
+        }
+    }
+
+    /// Multi-person settlement: compute myShare, theyOwe, and per-person owes.
+    /// Each shared item is split equally among Me + selected people.
+    /// Tax is allocated proportionally when includeTaxProportionally is ON.
+    private var multiPersonSettlement: (myShare: Double, theyOwe: Double, personOwes: [String: Double]) {
+        var myShare = 0.0
+        var personOwes: [String: Double] = [:]
+        var allPreTaxTotal = 0.0
+
+        let includedItems = receiptResult.items.filter { $0.classification != .ignore }
+
+        struct ItemAlloc {
+            var myPreTax: Double
+            var personPreTax: [String: Double]
+        }
+        var allocs: [ItemAlloc] = []
+
+        for item in includedItems {
+            if item.classification == .mine {
+                allPreTaxTotal += item.finalPrice
+                allocs.append(ItemAlloc(myPreTax: item.finalPrice, personPreTax: [:]))
+            } else if item.classification == .shared {
+                let sharedWith = item.sharedWith
+                guard !sharedWith.isEmpty else { continue }
+                let count = 1 + sharedWith.count
+                let share = item.finalPrice / Double(count)
+                allPreTaxTotal += item.finalPrice
+                var pMap: [String: Double] = [:]
+                for pid in sharedWith {
+                    pMap[pid] = share
+                }
+                allocs.append(ItemAlloc(myPreTax: share, personPreTax: pMap))
+            }
+        }
+
+        let tax = includeTaxProportionally ? (receiptResult.summary.tax ?? 0) : 0
+
+        for alloc in allocs {
+            let myTax = allPreTaxTotal > 0 ? (alloc.myPreTax / allPreTaxTotal) * tax : 0
+            myShare += alloc.myPreTax + myTax
+            for (pid, preTax) in alloc.personPreTax {
+                let personTax = allPreTaxTotal > 0 ? (preTax / allPreTaxTotal) * tax : 0
+                personOwes[pid, default: 0] += preTax + personTax
+            }
+        }
+
+        let theyOwe = personOwes.values.reduce(0, +)
+        return (myShare, theyOwe, personOwes)
+    }
+
+    var isRelationCategory: Bool { isRelationCategoryField }
+
     var isCategoryRequired: Bool {
         isRelationCategory
     }
@@ -265,16 +369,22 @@ final class ReceiptReviewViewModel {
     }
 
     var canCreateExpenses: Bool {
-        (mineCount + sharedCount > 0) && (!isCategoryRequired || selectedCategoryId != nil)
+        guard mineCount + sharedCount > 0 else { return false }
+        guard !isCategoryRequired || selectedCategoryId != nil else { return false }
+        guard !hasSharedItemsWithoutPeople else { return false }
+        return true
     }
 
     var createButtonTitle: String {
-        let expenseCount = (hasPersonalItems ? 1 : 0) + (hasSharedItems ? 1 : 0)
-        if expenseCount == 0 { return "Create Expenses" }
-        return expenseCount == 1 ? "Create 1 Expense" : "Create 2 Expenses"
+        if mineCount + sharedCount == 0 { return "Create Expenses" }
+        if hasSharedItems { return "Create Split Expense" }
+        return "Create 1 Expense"
     }
 
     var helperText: String {
+        if hasSharedItemsWithoutPeople {
+            return "Select at least one person for each shared item"
+        }
         if isCategoryRequired && selectedCategoryId == nil {
             return "Select a category to continue"
         }
@@ -284,12 +394,6 @@ final class ReceiptReviewViewModel {
         return ""
     }
 
-    // MARK: - Category Validation
-
-    /// Whether the category column is backed by a Notion relation field that requires a page ID.
-    /// Cached during loadCategoryOptions() — does NOT reload mappings on every access.
-    var isRelationCategory: Bool { isRelationCategoryField }
-
     var isCategoryRequiredAndMissing: Bool {
         isRelationCategory && selectedCategoryId == nil
     }
@@ -297,8 +401,6 @@ final class ReceiptReviewViewModel {
     // MARK: - Transaction Creation
 
     func createTransactions(completion: @escaping (Result<Void, ReceiptReviewError>) -> Void) {
-        // If this is a relation-type category, we ALWAYS require selection — even if options
-        // haven't loaded yet. Otherwise the expense saves without a relation → "Uncategorized".
         if isRelationCategory {
             if isLoadingCategories {
                 completion(.failure(.insertFailed("Categories are still loading. Please wait.")))
@@ -308,6 +410,16 @@ final class ReceiptReviewViewModel {
                 completion(.failure(.noCategorySelected))
                 return
             }
+        }
+
+        guard mineCount + sharedCount > 0 else {
+            completion(.failure(.noItemsToCreate))
+            return
+        }
+
+        if hasSharedItemsWithoutPeople {
+            completion(.failure(.insertFailed("Select at least one person for each shared item.")))
+            return
         }
 
         delegate?.didStartCreatingTransactions()
@@ -323,41 +435,80 @@ final class ReceiptReviewViewModel {
             return
         }
 
-        var createCount = 0
-        var lastError: ReceiptReviewError?
-        let group = DispatchGroup()
-
-        if hasPersonalItems {
-            group.enter()
-            createPersonalTransaction(databaseId: databaseId, columnMapping: columnMapping, expenseMapping: expenseMapping) { result in
-                switch result {
-                case .success: createCount += 1
-                case .failure(let e): lastError = e
-                }
-                group.leave()
-            }
-        }
         if hasSharedItems {
-            group.enter()
-            createSharedTransaction(databaseId: databaseId, columnMapping: columnMapping, expenseMapping: expenseMapping) { result in
-                switch result {
-                case .success: createCount += 1
-                case .failure(let e): lastError = e
-                }
-                group.leave()
+            createCombinedTransaction(databaseId: databaseId, columnMapping: columnMapping, expenseMapping: expenseMapping, completion: completion)
+        } else {
+            createPersonalTransaction(databaseId: databaseId, columnMapping: columnMapping, expenseMapping: expenseMapping, completion: completion)
+        }
+    }
+
+    /// Creates one combined receipt expense with version 2 split metadata.
+    private func createCombinedTransaction(databaseId: String, columnMapping: ColumnMapping, expenseMapping: DatabaseMappingData, completion: @escaping (Result<Void, ReceiptReviewError>) -> Void) {
+        let settlement = multiPersonSettlement
+        let amount = settlement.myShare
+        let date = receiptDate ?? Date()
+        let merchant = merchantName.isEmpty ? "Receipt" : merchantName
+        let title = "\(merchant) Receipt"
+
+        var values = buildCoreValues(title: title, amount: amount, date: date, columnMapping: columnMapping, expenseMapping: expenseMapping)
+
+        if let amountCol = columnMapping.amountColumn {
+            for i in values.indices where values[i].propertyName == amountCol {
+                values[i].numberValue = amount
             }
         }
 
-        group.notify(queue: .main) { [weak self] in
-            if createCount > 0 {
-                self?.delegate?.didCreateTransactions()
+        let paidAmount = includedTotal
+        let receiptMeta = ReceiptScanMetadata(
+            source: "geminiReceiptScan",
+            merchant: merchant,
+            itemCount: items.count,
+            originalTotal: receiptResult.summary.totalCharged ?? receiptResult.summary.total
+        )
+
+        if let metadataCol = columnMapping.expenseAppMetadataProperty {
+            let metaJSON = buildMultiPersonSplitMetadataJSON(paidAmount: paidAmount, myShare: settlement.myShare, theyOwe: settlement.theyOwe, personOwes: settlement.personOwes, receiptMeta: receiptMeta)
+            var metaValue = DynamicFormValue(propertyName: metadataCol, propertyType: .richText)
+            metaValue.stringValue = metaJSON
+            values.append(metaValue)
+        }
+
+        appendCategoryValue(&values, columnMapping: columnMapping, expenseMapping: expenseMapping)
+
+        TransactionInsertService.shared.insertTransaction(databaseId: databaseId, values: values, token: token) { [weak self] result in
+            switch result {
+            case .success(let page):
+                guard let self = self else { return }
+                let people = SplitPeopleStore.shared.getPeople()
+                let splitWithStr = settlement.personOwes.keys.compactMap { pid in
+                    people.first(where: { $0.id == pid })?.name
+                }.joined(separator: ", ")
+                let splitMeta = SplitMetadata(
+                    enabled: true,
+                    paidAmount: paidAmount,
+                    myShare: settlement.myShare,
+                    theyOwe: settlement.theyOwe,
+                    type: "receiptMultiPerson",
+                    status: "pending",
+                    splitWith: splitWithStr.isEmpty ? nil : splitWithStr,
+                    inputs: nil
+                )
+                let tx = NormalizedTransaction(
+                    id: page.id,
+                    title: title,
+                    amount: abs(amount),
+                    paidAmount: paidAmount,
+                    category: self.selectedCategoryName,
+                    date: date,
+                    databaseId: databaseId,
+                    databaseRole: .expense,
+                    rawProperties: page.properties,
+                    splitMetadata: splitMeta
+                )
+                SessionCacheManager.shared.addExpense(tx)
                 completion(.success(()))
-            } else if let error = lastError {
-                self?.delegate?.didFailWithError(error.localizedDescription)
-                completion(.failure(error))
-            } else {
-                self?.delegate?.didFailWithError("No items to create.")
-                completion(.failure(.noItemsToCreate))
+            case .failure(let e):
+                completion(.failure(.insertFailed(e.localizedDescription)))
             }
         }
     }
@@ -366,7 +517,7 @@ final class ReceiptReviewViewModel {
         let amount = personalTotal
         let date = receiptDate ?? Date()
         let merchant = merchantName.isEmpty ? "Receipt" : merchantName
-        let title = "\(merchant) - Personal"
+        let title = "\(merchant) Receipt"
 
         var values = buildCoreValues(title: title, amount: amount, date: date, columnMapping: columnMapping, expenseMapping: expenseMapping)
         appendCategoryValue(&values, columnMapping: columnMapping, expenseMapping: expenseMapping)
@@ -375,7 +526,6 @@ final class ReceiptReviewViewModel {
             switch result {
             case .success(let page):
                 guard let self = self else { return }
-                print("[ReceiptReview] Selected category before save: id=\(self.selectedCategoryId ?? "nil"), name=\(self.selectedCategoryName ?? "nil")")
                 let tx = NormalizedTransaction(
                     id: page.id,
                     title: title,
@@ -388,75 +538,6 @@ final class ReceiptReviewViewModel {
                     rawProperties: page.properties,
                     splitMetadata: nil
                 )
-                print("[SessionCache] Added transaction category: \(self.selectedCategoryName ?? "nil")")
-                SessionCacheManager.shared.addExpense(tx)
-                completion(.success(()))
-            case .failure(let e):
-                completion(.failure(.insertFailed(e.localizedDescription)))
-            }
-        }
-    }
-
-    private func createSharedTransaction(databaseId: String, columnMapping: ColumnMapping, expenseMapping: DatabaseMappingData, completion: @escaping (Result<Void, ReceiptReviewError>) -> Void) {
-        let sharedAmt = sharedTotal
-        let myShareAmt = myShare
-        let theyOweAmt = theyOwe
-        let date = receiptDate ?? Date()
-        let merchant = merchantName.isEmpty ? "Receipt" : merchantName
-        let title = "\(merchant) - Shared"
-
-        var values = buildCoreValues(title: title, amount: myShareAmt, date: date, columnMapping: columnMapping, expenseMapping: expenseMapping)
-
-        if let amountCol = columnMapping.amountColumn {
-            for i in values.indices where values[i].propertyName == amountCol {
-                values[i].numberValue = myShareAmt
-            }
-        }
-
-        let receiptMeta = ReceiptScanMetadata(
-            source: "geminiReceiptScan",
-            merchant: merchant,
-            itemCount: items.count,
-            originalTotal: receiptResult.summary.totalCharged ?? receiptResult.summary.total
-        )
-
-        if let metadataCol = columnMapping.expenseAppMetadataProperty {
-            let metaJSON = buildSplitMetadataJSON(paidAmount: sharedAmt, myShare: myShareAmt, theyOwe: theyOweAmt, receiptMeta: receiptMeta)
-            var metaValue = DynamicFormValue(propertyName: metadataCol, propertyType: .richText)
-            metaValue.stringValue = metaJSON
-            values.append(metaValue)
-        }
-
-        appendCategoryValue(&values, columnMapping: columnMapping, expenseMapping: expenseMapping)
-
-        TransactionInsertService.shared.insertTransaction(databaseId: databaseId, values: values, token: token) { [weak self] result in
-            switch result {
-            case .success(let page):
-                guard let self = self else { return }
-                print("[ReceiptReview] Selected category before save: id=\(self.selectedCategoryId ?? "nil"), name=\(self.selectedCategoryName ?? "nil")")
-                let splitMeta = SplitMetadata(
-                    enabled: true,
-                    paidAmount: sharedAmt,
-                    myShare: myShareAmt,
-                    theyOwe: theyOweAmt,
-                    type: self.splitMethod.rawValue,
-                    status: "pending",
-                    splitWith: nil,
-                    inputs: nil
-                )
-                let tx = NormalizedTransaction(
-                    id: page.id,
-                    title: title,
-                    amount: abs(myShareAmt),
-                    paidAmount: sharedAmt,
-                    category: self.selectedCategoryName,
-                    date: date,
-                    databaseId: databaseId,
-                    databaseRole: .expense,
-                    rawProperties: page.properties,
-                    splitMetadata: splitMeta
-                )
-                print("[SessionCache] Added transaction category: \(self.selectedCategoryName ?? "nil")")
                 SessionCacheManager.shared.addExpense(tx)
                 completion(.success(()))
             case .failure(let e):
@@ -487,23 +568,18 @@ final class ReceiptReviewViewModel {
     }
 
     /// Append category value with correct property type and relation IDs
-    /// Append category value with correct property type and relation IDs
-    /// Uses `categoryRelationDataSourceId` to detect relation type reliably.
     private func appendCategoryValue(_ values: inout [DynamicFormValue], columnMapping: ColumnMapping, expenseMapping: DatabaseMappingData) {
         guard let catCol = columnMapping.categoryColumn else { return }
 
         let isRelation = isRelationCategoryField
 
         if isRelation {
-            // Relation type: use the page ID — if no ID selected, skip entirely
-            // rather than sending an incorrect payload type.
             guard let id = selectedCategoryId else { return }
             print("[ReceiptReview] Appending category as relation: id=\(id)")
             var catValue = DynamicFormValue(propertyName: catCol, propertyType: .relation)
             catValue.relationIds = [id]
             values.append(catValue)
         } else if categoryColumnType == "select" || categoryColumnType == "status" {
-            // Select/status: use the name directly
             guard let name = selectedCategoryName else { return }
             print("[ReceiptReview] Appending category as \(categoryColumnType): \(name)")
             var catValue = DynamicFormValue(propertyName: catCol, propertyType: .select)
@@ -515,17 +591,41 @@ final class ReceiptReviewViewModel {
         }
     }
 
-    private func buildSplitMetadataJSON(paidAmount: Double, myShare: Double, theyOwe: Double, receiptMeta: ReceiptScanMetadata) -> String {
+    // MARK: - Split Metadata JSON
+
+    /// Build version 2 split metadata JSON for multi-person receipt splits.
+    private func buildMultiPersonSplitMetadataJSON(paidAmount: Double, myShare: Double, theyOwe: Double, personOwes: [String: Double], receiptMeta: ReceiptScanMetadata) -> String {
+        let people = SplitPeopleStore.shared.getPeople()
+        let participants: [[String: Any]] = personOwes.compactMap { pid, owes in
+            guard let person = people.first(where: { $0.id == pid }) else { return nil }
+            return [
+                "id": pid,
+                "name": person.name,
+                "owes": owes
+            ]
+        }
+
+        let itemsJSON: [[String: Any]] = receiptResult.items.map { item in
+            [
+                "name": item.name,
+                "price": item.finalPrice,
+                "assignment": item.classification.rawValue,
+                "sharedWith": item.sharedWith
+            ]
+        }
+
         var data: [String: Any] = [:]
-        data["version"] = 1
+        data["version"] = 2
         data["split"] = [
             "enabled": true,
+            "status": "pending",
+            "type": "receiptMultiPerson",
             "paidAmount": paidAmount,
             "myShare": myShare,
             "theyOwe": theyOwe,
-            "type": splitMethod.rawValue,
-            "status": "pending",
             "splitWith": NSNull(),
+            "participants": participants,
+            "items": itemsJSON,
             "inputs": [:]
         ] as [String: Any]
         if let metaData = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(receiptMeta)) as? [String: Any] {

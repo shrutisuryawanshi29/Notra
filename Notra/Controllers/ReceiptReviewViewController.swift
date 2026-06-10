@@ -150,6 +150,7 @@ final class ReceiptReviewViewController: UIViewController {
         tableView.register(ActionCell.self, forCellReuseIdentifier: "ActionCell")
         tableView.register(EditableFieldCell.self, forCellReuseIdentifier: "EditableFieldCell")
         tableView.register(ToggleCell.self, forCellReuseIdentifier: "ToggleCell")
+        tableView.register(PeopleCell.self, forCellReuseIdentifier: "PeopleCell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(tableView)
@@ -188,6 +189,10 @@ final class ReceiptReviewViewController: UIViewController {
             loadingIndicator.centerXAnchor.constraint(equalTo: loadingOverlay.centerXAnchor),
             loadingIndicator.centerYAnchor.constraint(equalTo: loadingOverlay.centerYAnchor)
         ])
+
+        let bottomBarHeight: CGFloat = 160
+        tableView.contentInset.bottom = bottomBarHeight
+        tableView.verticalScrollIndicatorInsets.bottom = bottomBarHeight
     }
 
     @objc private func cancelTapped() {
@@ -303,7 +308,12 @@ final class ReceiptReviewViewController: UIViewController {
             createButton.isEnabled = enabled
             createButton.backgroundColor = enabled ? AppTheme.Colors.expense : AppTheme.Colors.expense.withAlphaComponent(0.4)
             createButton.setTitle(viewModel.createButtonTitle, for: .normal)
-            helperLabel.isHidden = true
+            if enabled {
+                helperLabel.isHidden = true
+            } else {
+                helperLabel.isHidden = false
+                helperLabel.text = viewModel.helperText
+            }
         } else {
             label?.text = "Select Category"
             label?.textColor = AppTheme.Colors.textSecondary
@@ -341,13 +351,14 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
 
     enum Section: Int, CaseIterable {
         case header
+        case people
         case items
-        case receiptSummary  // receipt breakdown: subtotal / tax / delivery / tip / total
-        case categoryPicker  // hidden — handled by bottom bar
-        case adjustments     // refunds, weight adjustments, substitutions
-        case summary         // split calculation: personal / shared / my share
-        case categories      // tax toggle + split method info
-        case actions         // hidden — handled by bottom bar
+        case receiptSummary
+        case categoryPicker
+        case adjustments
+        case summary
+        case categories
+        case actions
     }
 
     func numberOfSections(in tableView: UITableView) -> Int {
@@ -357,6 +368,7 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch Section(rawValue: section) {
         case .header: return 1
+        case .people: return 1
         case .items: return viewModel.items.isEmpty ? 2 : viewModel.items.count + 1
         case .receiptSummary: return viewModel.hasReceiptSummaryData ? 1 : 0
         case .categoryPicker: return 0
@@ -372,6 +384,8 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         switch Section(rawValue: indexPath.section) {
         case .header:
             return configureHeaderCell(tableView, at: indexPath)
+        case .people:
+            return configurePeopleCell(tableView, at: indexPath)
         case .items:
             if indexPath.row == 0 {
                 return configureItemsHeaderCell(tableView, at: indexPath)
@@ -411,6 +425,25 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         return cell
     }
 
+    private func configurePeopleCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "PeopleCell", for: indexPath) as! PeopleCell
+        let people = viewModel.splitPeople
+        cell.configure(
+            people: people,
+            onAdd: { [weak self] name in
+                self?.viewModel.addPerson(name: name)
+                tableView.reloadSections(IndexSet(integer: Section.people.rawValue), with: .none)
+                self?.updateCreateButtonState()
+            },
+            onDelete: { [weak self] id in
+                self?.viewModel.deletePerson(id: id)
+                tableView.reloadData()
+                self?.updateCreateButtonState()
+            }
+        )
+        return cell
+    }
+
     private func configureAdjustmentCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "ActionCell", for: indexPath) as! ActionCell
         let adj = viewModel.adjustments[indexPath.row]
@@ -443,14 +476,25 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         let item = viewModel.items[itemIndex]
         let cell = tableView.dequeueReusableCell(withIdentifier: "ReceiptItemCell", for: indexPath) as! ReceiptItemCell
         cell.configureGemini(id: item.id, name: item.name, price: item.finalPrice, classification: item.classification)
+        cell.configurePeople(
+            available: viewModel.splitPeople,
+            selectedIds: item.sharedWith,
+            isVisible: item.classification == .shared
+        )
         cell.onClassificationChange = { [weak self] classification in
             self?.viewModel.setClassification(for: item.id, classification: classification)
-            // Reload this cell to update chip styles immediately
             if let self = self {
-                // Only reload the item row, not the entire section, for smooth animation
                 let itemRow = IndexPath(row: indexPath.row, section: Section.items.rawValue)
                 self.tableView.reconfigureRows(at: [itemRow])
                 self.tableView.reloadSections(IndexSet(integer: Section.summary.rawValue), with: .none)
+                self.updateCreateButtonState()
+            }
+        }
+        cell.onSharedWithChange = { [weak self] personIds in
+            self?.viewModel.setSharedWith(for: item.id, personIds: personIds)
+            if let self = self {
+                let itemRow = IndexPath(row: indexPath.row, section: Section.items.rawValue)
+                self.tableView.reconfigureRows(at: [itemRow])
                 self.updateCreateButtonState()
             }
         }
@@ -482,7 +526,8 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
             formatter: formatter,
             hasTax: viewModel.hasTax,
             taxAmount: viewModel.taxAmount,
-            includeTax: viewModel.includeTaxProportionally
+            includeTax: viewModel.includeTaxProportionally,
+            personOwes: viewModel.personOwes
         )
         return cell
     }
@@ -509,6 +554,16 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
             cell.configure(title: "Split method: \(viewModel.splitMethod.chipLabel)", icon: "arrow.right.arrow.left")
         }
         return cell
+    }
+
+    func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        let rows = self.tableView(tableView, numberOfRowsInSection: section)
+        return rows == 0 ? 0 : UITableView.automaticDimension
+    }
+
+    func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
+        let rows = self.tableView(tableView, numberOfRowsInSection: section)
+        return rows == 0 ? 0 : UITableView.automaticDimension
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -710,8 +765,15 @@ fileprivate class ReceiptItemCell: UITableViewCell, UITextViewDelegate {
     private var sharedButton: UIButton!
     private var ignoreButton: UIButton!
 
+    private let peopleLabel = UILabel()
+    private let peopleChipStack = UIStackView()
+    private let peopleContainer = UIStackView()
+
     private var itemId: String?
+    private var availablePeople: [SplitPerson] = []
+    private var selectedPersonIds: [String] = []
     var onClassificationChange: ((ReceiptItemClassification) -> Void)?
+    var onSharedWithChange: (([String]) -> Void)?
     var onNameEdit: ((String) -> Void)?
     var onPriceEdit: ((Double) -> Void)?
     var onDelete: (() -> Void)?
@@ -737,19 +799,6 @@ fileprivate class ReceiptItemCell: UITableViewCell, UITextViewDelegate {
         mainStack.spacing = 8
         mainStack.translatesAutoresizingMaskIntoConstraints = false
 
-        // --- Chips at top ---
-        chipStack.axis = .horizontal
-        chipStack.spacing = 8
-        chipStack.distribution = .fillEqually
-
-        mineButton = makeChipButton(title: "Mine", color: AppTheme.Colors.income, action: #selector(mineTapped))
-        sharedButton = makeChipButton(title: "Shared", color: AppTheme.Colors.accent, action: #selector(sharedTapped))
-        ignoreButton = makeChipButton(title: "Ignore", color: AppTheme.Colors.textMuted, action: #selector(ignoreTapped))
-
-        chipStack.addArrangedSubview(mineButton)
-        chipStack.addArrangedSubview(sharedButton)
-        chipStack.addArrangedSubview(ignoreButton)
-
         // --- Name (multiline UITextView, auto-expanding) ---
         nameTextView.font = AppTheme.Fonts.body
         nameTextView.textColor = AppTheme.Colors.textPrimary
@@ -758,10 +807,12 @@ fileprivate class ReceiptItemCell: UITableViewCell, UITextViewDelegate {
         nameTextView.layer.borderWidth = 1
         nameTextView.layer.borderColor = AppTheme.Colors.border.cgColor
         nameTextView.textContainerInset = UIEdgeInsets(top: 8, left: 6, bottom: 8, right: 6)
-        nameTextView.isScrollEnabled = false  // auto-expands vertically
+        nameTextView.isScrollEnabled = false
         nameTextView.textContainer.lineBreakMode = .byWordWrapping
         nameTextView.delegate = self
         nameTextView.translatesAutoresizingMaskIntoConstraints = false
+        nameTextView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        nameTextView.setContentCompressionResistancePriority(.required, for: .vertical)
         nameTextView.heightAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
 
         // --- Bottom row: price + delete ---
@@ -803,10 +854,40 @@ fileprivate class ReceiptItemCell: UITableViewCell, UITextViewDelegate {
         bottomRow.addArrangedSubview(priceTextField)
         bottomRow.addArrangedSubview(deleteButton)
 
+        // --- Chips ---
+        chipStack.axis = .horizontal
+        chipStack.spacing = 8
+        chipStack.distribution = .fillEqually
+
+        mineButton = makeChipButton(title: "Mine", color: AppTheme.Colors.income, action: #selector(mineTapped))
+        sharedButton = makeChipButton(title: "Shared", color: AppTheme.Colors.accent, action: #selector(sharedTapped))
+        ignoreButton = makeChipButton(title: "Ignore", color: AppTheme.Colors.textMuted, action: #selector(ignoreTapped))
+
+        chipStack.addArrangedSubview(mineButton)
+        chipStack.addArrangedSubview(sharedButton)
+        chipStack.addArrangedSubview(ignoreButton)
+
+        // --- People section (shown when Shared is selected) ---
+        peopleLabel.text = "Shared with:"
+        peopleLabel.font = AppTheme.Fonts.captionMedium
+        peopleLabel.textColor = AppTheme.Colors.textSecondary
+
+        peopleChipStack.axis = .horizontal
+        peopleChipStack.spacing = 8
+        peopleChipStack.alignment = .center
+        peopleChipStack.distribution = .fillProportionally
+
+        peopleContainer.axis = .vertical
+        peopleContainer.spacing = 6
+        peopleContainer.addArrangedSubview(peopleLabel)
+        peopleContainer.addArrangedSubview(peopleChipStack)
+        peopleContainer.isHidden = true
+
         // --- Assemble main stack ---
-        mainStack.addArrangedSubview(chipStack)
         mainStack.addArrangedSubview(nameTextView)
         mainStack.addArrangedSubview(bottomRow)
+        mainStack.addArrangedSubview(chipStack)
+        mainStack.addArrangedSubview(peopleContainer)
 
         containerView.addSubview(mainStack)
         contentView.addSubview(containerView)
@@ -836,6 +917,58 @@ fileprivate class ReceiptItemCell: UITableViewCell, UITextViewDelegate {
         nameTextView.text = name
         priceTextField.text = String(format: "%.2f", price)
         updateChipSelection(classification: classification)
+    }
+
+    func configurePeople(available: [SplitPerson], selectedIds: [String], isVisible: Bool) {
+        availablePeople = available
+        selectedPersonIds = selectedIds
+        peopleContainer.isHidden = !isVisible
+
+        peopleChipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        guard isVisible else { return }
+
+        for person in available {
+            let isSelected = selectedIds.contains(person.id)
+            let chip = makePersonChip(name: person.name, isSelected: isSelected)
+            chip.tag = 0
+            chip.accessibilityIdentifier = person.id
+            chip.addTarget(self, action: #selector(personChipTapped(_:)), for: .touchUpInside)
+            peopleChipStack.addArrangedSubview(chip)
+        }
+    }
+
+    private func makePersonChip(name: String, isSelected: Bool) -> UIButton {
+        let b = UIButton(type: .system)
+        b.setTitle(name, for: .normal)
+        b.titleLabel?.font = AppTheme.Fonts.buttonSmall
+        b.layer.cornerRadius = 12
+        b.layer.borderWidth = 1
+        b.contentEdgeInsets = UIEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
+        b.translatesAutoresizingMaskIntoConstraints = false
+        b.setContentHuggingPriority(.required, for: .horizontal)
+        b.setContentCompressionResistancePriority(.required, for: .horizontal)
+        b.heightAnchor.constraint(equalToConstant: 26).isActive = true
+        if isSelected {
+            b.backgroundColor = AppTheme.Colors.accent
+            b.setTitleColor(AppTheme.Colors.buttonContent, for: .normal)
+            b.layer.borderColor = AppTheme.Colors.accent.cgColor
+        } else {
+            b.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+            b.setTitleColor(AppTheme.Colors.textSecondary, for: .normal)
+            b.layer.borderColor = AppTheme.Colors.border.cgColor
+        }
+        return b
+    }
+
+    @objc private func personChipTapped(_ sender: UIButton) {
+        guard let pid = sender.accessibilityIdentifier else { return }
+        var ids = selectedPersonIds
+        if let idx = ids.firstIndex(of: pid) {
+            ids.remove(at: idx)
+        } else {
+            ids.append(pid)
+        }
+        onSharedWithChange?(ids)
     }
 
     private func makeChipButton(title: String, color: UIColor, action: Selector) -> UIButton {
@@ -1015,6 +1148,8 @@ fileprivate class SummaryCell: UITableViewCell {
     private let theyOweLabel = UILabel()
     private let totalLabel = UILabel()
     private let dividerView = UIView()
+    private let personOwesStack = UIStackView()
+    private var personOwesLabels: [UILabel] = []
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -1049,6 +1184,9 @@ fileprivate class SummaryCell: UITableViewCell {
         totalLabel.font = AppTheme.Fonts.headingMedium
         totalLabel.textColor = AppTheme.Colors.textPrimary
 
+        personOwesStack.axis = .vertical
+        personOwesStack.spacing = 4
+
         dividerView.backgroundColor = AppTheme.Colors.border
         dividerView.translatesAutoresizingMaskIntoConstraints = false
         dividerView.heightAnchor.constraint(equalToConstant: 1).isActive = true
@@ -1064,6 +1202,7 @@ fileprivate class SummaryCell: UITableViewCell {
         stack.addArrangedSubview(dividerView)
         stack.addArrangedSubview(myShareLabel)
         stack.addArrangedSubview(theyOweLabel)
+        stack.addArrangedSubview(personOwesStack)
         stack.addArrangedSubview(totalLabel)
 
         containerView.addSubview(stack)
@@ -1082,7 +1221,7 @@ fileprivate class SummaryCell: UITableViewCell {
         ])
     }
 
-    func configure(personalTotal: Double, sharedTotal: Double, myShare: Double, theyOwe: Double, totalCounted: Double, formatter: NumberFormatter, hasTax: Bool, taxAmount: Double, includeTax: Bool) {
+    func configure(personalTotal: Double, sharedTotal: Double, myShare: Double, theyOwe: Double, totalCounted: Double, formatter: NumberFormatter, hasTax: Bool, taxAmount: Double, includeTax: Bool, personOwes: [(name: String, amount: Double)] = []) {
         personalLabel.text = "Personal items: \(formatter.string(from: NSNumber(value: personalTotal)) ?? "$0.00")"
         sharedLabel.text = "Shared items: \(formatter.string(from: NSNumber(value: sharedTotal)) ?? "$0.00")"
         myShareLabel.text = "My share: \(formatter.string(from: NSNumber(value: myShare)) ?? "$0.00")"
@@ -1097,6 +1236,18 @@ fileprivate class SummaryCell: UITableViewCell {
         personalLabel.isHidden = personalTotal == 0
         sharedLabel.isHidden = sharedTotal == 0
         dividerView.isHidden = sharedTotal == 0
+
+        personOwesStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        personOwesLabels.removeAll()
+        personOwesStack.isHidden = personOwes.isEmpty
+        for (name, amount) in personOwes {
+            let label = UILabel()
+            label.text = "\(name) owes: \(formatter.string(from: NSNumber(value: amount)) ?? "$0.00")"
+            label.font = AppTheme.Fonts.body
+            label.textColor = AppTheme.Colors.income
+            personOwesStack.addArrangedSubview(label)
+            personOwesLabels.append(label)
+        }
     }
 }
 
@@ -1147,6 +1298,127 @@ fileprivate class ToggleCell: UITableViewCell {
 
     @objc private func toggleChanged() {
         onToggle?(toggleSwitch.isOn)
+    }
+}
+
+fileprivate class PeopleCell: UITableViewCell {
+    private let containerView = UIView()
+    private let titleLabel = UILabel()
+    private let chipsStack = UIStackView()
+    private let addButton = UIButton(type: .system)
+
+    var onAdd: ((String) -> Void)?
+    var onDelete: ((String) -> Void)?
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        setup()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    private func setup() {
+        selectionStyle = .none
+        backgroundColor = .clear
+        contentView.backgroundColor = .clear
+
+        containerView.backgroundColor = AppTheme.Colors.cardBackground
+        containerView.layer.cornerRadius = AppTheme.CornerRadius.card
+        AppTheme.Shadow.applyCard(to: containerView)
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        titleLabel.text = "Split People"
+        titleLabel.font = AppTheme.Fonts.captionMedium
+        titleLabel.textColor = AppTheme.Colors.textSecondary
+
+        chipsStack.axis = .horizontal
+        chipsStack.spacing = 8
+        chipsStack.alignment = .center
+
+        addButton.setTitle("+ Add Person", for: .normal)
+        addButton.titleLabel?.font = AppTheme.Fonts.bodyMedium
+        addButton.setTitleColor(AppTheme.Colors.accent, for: .normal)
+        addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
+
+        stack.addArrangedSubview(titleLabel)
+        stack.addArrangedSubview(chipsStack)
+        stack.addArrangedSubview(addButton)
+
+        containerView.addSubview(stack)
+        contentView.addSubview(containerView)
+
+        NSLayoutConstraint.activate([
+            containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
+
+            stack.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 16),
+            stack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
+            stack.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -16)
+        ])
+    }
+
+    func configure(people: [SplitPerson], onAdd: @escaping (String) -> Void, onDelete: @escaping (String) -> Void) {
+        self.onAdd = onAdd
+        self.onDelete = onDelete
+
+        chipsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        for person in people {
+            let chip = UIButton(type: .system)
+            chip.setTitle(person.name, for: .normal)
+            chip.titleLabel?.font = AppTheme.Fonts.buttonSmall
+            chip.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+            chip.setTitleColor(AppTheme.Colors.textPrimary, for: .normal)
+            chip.layer.cornerRadius = 12
+            chip.layer.borderWidth = 1
+            chip.layer.borderColor = AppTheme.Colors.border.cgColor
+            chip.contentEdgeInsets = UIEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
+            chip.accessibilityIdentifier = person.id
+            chip.translatesAutoresizingMaskIntoConstraints = false
+            chip.heightAnchor.constraint(equalToConstant: 28).isActive = true
+
+            let deleteAction = UIAction(title: "Delete") { [weak self] _ in
+                self?.onDelete?(person.id)
+            }
+            let menu = UIMenu(title: person.name, children: [deleteAction])
+            chip.menu = menu
+            chip.showsMenuAsPrimaryAction = true
+
+            chipsStack.addArrangedSubview(chip)
+        }
+
+        chipsStack.isHidden = people.isEmpty
+    }
+
+    @objc private func addTapped() {
+        let alert = UIAlertController(title: "Add Person", message: "Enter the person's name", preferredStyle: .alert)
+        alert.addTextField { tf in
+            tf.placeholder = "Name"
+            tf.autocapitalizationType = .words
+        }
+        alert.addAction(UIAlertAction(title: "Add", style: .default) { [weak self] _ in
+            guard let name = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { return }
+            self?.onAdd?(name)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        findViewController()?.present(alert, animated: true)
+    }
+
+    private func findViewController() -> UIViewController? {
+        var responder: UIResponder? = self
+        while let r = responder {
+            if let vc = r as? UIViewController { return vc }
+            responder = r.next
+        }
+        return nil
     }
 }
 

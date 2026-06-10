@@ -102,7 +102,7 @@ struct GeminiReceiptResult {
     var rawText: String
 
     var displayMerchant: String {
-        if let m = merchant, let p = platform, !p.isEmpty {
+        if let m = merchant, let p = platform, !p.isEmpty, m != p {
             return "\(m) via \(p)"
         }
         return merchant ?? "Unknown Store"
@@ -119,6 +119,7 @@ struct GeminiReceiptItem {
     var rawText: String?
     var classification: ReceiptItemClassification
     var isEditable: Bool
+    var sharedWith: [String] = []
 }
 
 struct GeminiReceiptSummary {
@@ -177,7 +178,10 @@ struct GeminiReceiptValidator {
 
         let itemSum = items.reduce(0.0) { $0 + $1.finalPrice }
         if let sub = response.summary?.itemsSubtotal, abs(itemSum - sub) > 0.10 {
-            warnings.append("Item total ($\(String(format: "%.2f", itemSum))) differs from receipt subtotal ($\(String(format: "%.2f", sub))). Please review.")
+            let mismatchMsg = "Item total ($\(String(format: "%.2f", itemSum))) differs from receipt subtotal ($\(String(format: "%.2f", sub))). Please review."
+            if !warnings.contains(where: { $0.contains("differs from receipt subtotal") }) {
+                warnings.append(mismatchMsg)
+            }
         }
 
         if items.isEmpty {

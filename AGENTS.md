@@ -56,6 +56,67 @@ Up to 3 suggestion chips inline in the title `FormFieldCell`. 400ms debounce + i
 
 Gemini key entry: if missing, prompts in-app alert → key stored to Keychain → then proceeds to file picker.
 
+## Multi-Person Receipt Split (Phase 1)
+
+`SplitPeopleStore` (singleton, UserDefaults persistence via `notraSplitPeople` key) manages `SplitPerson` models (`id: String`, `name: String`). Methods: `getPeople()`, `addPerson(name:)`, `deletePerson(id:)`, `updatePersonName(id:name:)`.
+
+`GeminiReceiptItem.sharedWith: [String]` holds person IDs for shared items. Default empty.
+
+### Receipt Review — Multi-Person Flow
+
+- If any Shared items exist: creates ONE combined `"<Merchant> Receipt"` expense with version 2 split metadata.
+- If only Mine items: creates one normal expense (no split metadata).
+- Shared items must have at least one selected person; validation blocks save otherwise.
+- Personal-only and multi-person receipt both use the title `"<Merchant> Receipt"` (not `"<Merchant> - Personal"`).
+
+### Settlement Calculation
+
+`multiPersonSettlement` computed property in `ReceiptReviewViewModel`:
+- Mine items: full price allocated to `myShare`.
+- Shared items: split equally among `1 + sharedWith.count` participants.
+- Tax allocated proportionally when `includeTaxProportionally` is ON.
+- Returns `(myShare, theyOwe, personOwes: [personId: amount])`.
+
+Properties: `myShare`, `theyOwe`, `personOwes` (array of `(name, amount)` tuples), `includedTotal`, `totalCounted` (= `myShare` for multi-person).
+
+### UI Layout (ReceiptItemCell)
+
+Inside each item card, top-to-bottom:
+1. Item name (UITextView)
+2. Price + delete button row
+3. Mine / Shared / Ignore chips
+4. "Shared with:" + person chips (only visible when Shared is selected)
+
+Person chips are tappable toggle buttons, sized intrinsically via `contentEdgeInsets`.
+
+### Split Metadata Version 2
+
+`buildMultiPersonSplitMetadataJSON()` in `ReceiptReviewViewModel`:
+
+```json
+{
+  "version": 2,
+  "split": {
+    "enabled": true, "status": "pending", "type": "receiptMultiPerson",
+    "paidAmount": 72.08, "myShare": 45.00, "theyOwe": 27.08,
+    "participants": [{ "id": "uuid", "name": "Person A", "owes": 12.50 }],
+    "items": [{ "name": "Milk", "price": 4.00, "assignment": "mine", "sharedWith": [] }],
+    "inputs": {}
+  },
+  "receipt": { "source": "geminiReceiptScan", "merchant": "Walmart", "itemCount": 5 }
+}
+```
+
+Version 1 (`buildSplitMetadataJSON`, used historically for single-person Shared) still exists but is no longer called for new receipts.
+
+### Key Gotchas
+
+- **`table.contentInset.bottom`**: Must match bottom bar height (50 + 48 + 8 + 8 + 16) so items scroll above category/create footer.
+- **Empty section gaps**: `heightForHeaderInSection`/`heightForFooterInSection` return 0 for sections with 0 rows to avoid blank gaps in `.insetGrouped` table.
+- **`displayMerchant`**: Guards `merchant != platform` to avoid "Walmart via Walmart".
+- **Warning dedup**: Subtotal mismatch warning checks `warnings.contains` before appending.
+- **Create button**: `hasSharedItems` → "Create Split Expense"; personal-only → "Create 1 Expense".
+
 ## Split Details
 
 Optional `expenseAppMetadataProperty` (Text column in Expense DB) stores JSON `SplitMetadata`. Notion API type is `rich_text`; filter both `"rich_text"` and `"text"`. Decodes old `expenseSplitDetailsProperty` key. Skipped from Add Transaction form. Split works unmapped with warning toast.
