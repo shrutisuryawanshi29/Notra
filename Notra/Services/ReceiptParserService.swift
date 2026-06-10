@@ -21,11 +21,26 @@ final class ReceiptParserService {
         }
     }()
 
-    private let ignoredLinePatterns: Set<String> = [
-        "cash", "visa", "mastercard", "amex", "discover", "credit", "debit",
-        "change", "balance", "approved", "signature", "subtotal", "tax",
-        "total", "sale", "transaction", "receipt", "check", "coupon",
-        "savings", "reward", "member", "loyalty", "earn", "save"
+    // Lines that START with these words are summary/service rows, not purchasable items.
+    // Matching uses word-boundary: prefix must be followed by space, colon, or end-of-string.
+    private let summaryLinePrefixes: [String] = [
+        "subtotal", "sub total", "sub-total",
+        "tax", "sales tax", "hst", "gst", "vat",
+        "total",
+        "tip", "driver tip", "gratuity",
+        "delivery", "free delivery", "standard delivery", "express delivery",
+        "shipping", "handling",
+        "service fee", "service charge",
+        "fee", "fees",
+        "discount", "promo", "promotion", "coupon",
+        "savings", "you saved",
+        "order#", "order #", "invoice",
+        "buyer", "payment",
+        "visa", "mastercard", "amex", "discover",
+        "credit card", "debit card",
+        "change", "balance", "approved",
+        "surcharge", "convenience fee",
+        "bag fee", "fuel surcharge"
     ]
 
     private let paymentLinePatterns: [String] = [
@@ -49,22 +64,27 @@ final class ReceiptParserService {
         var subtotal: Double?
         var tax: Double?
         var total: Double?
+        var deliveryFee: Double?
+        var deliveryCharged: Double?
+        var tip: Double?
 
-        var i = 0
         let totalLines = lines.count
 
-        // Phase 1: Find merchant (first few non-empty lines, skip if looks like a header)
+        // Phase 1: Merchant name from first few non-trivial lines
         for idx in 0..<min(5, totalLines) {
             let line = lines[idx]
             if let parsedDate = findDate(in: line) {
                 date = parsedDate
             }
             if merchantName == nil && !isPaymentLine(line) && findDate(in: line) == nil && !isLikelyPrice(line) {
-                merchantName = line
+                let lc = line.lowercased()
+                if !lc.hasPrefix("order") && !lc.hasPrefix("invoice") && !lc.hasPrefix("#") {
+                    merchantName = line
+                }
             }
         }
 
-        // Phase 2: Find date if not found yet
+        // Phase 2: Find date if still missing
         if date == nil {
             for line in lines {
                 if let parsedDate = findDate(in: line) {
@@ -74,62 +94,84 @@ final class ReceiptParserService {
             }
         }
 
-        // Phase 3: Parse line items, subtotal, tax, total
-        var seenPrices: [String: Int] = [:]
-        var itemLines: [(text: String, price: Double, rawLine: String)] = []
-
+        // Phase 3: Classify and parse every line
         for line in lines {
             if isPaymentLine(line) { continue }
             if line.rangeOfCharacter(from: CharacterSet.decimalDigits) == nil { continue }
 
             let lower = line.lowercased().trimmingCharacters(in: .whitespaces)
 
-            // Skip header/store info lines
-            if lower.contains("store") || lower.contains("market") || lower.contains("pharmacy") {
-                if findDate(in: line) == nil && !isLikelyPrice(line) {
-                    continue
-                }
+            // --- Summary fields (specific checks first) ---
+
+            // Subtotal
+            if lower.hasPrefix("subtotal") || lower.hasPrefix("sub total") || lower.hasPrefix("sub-total") {
+                subtotal = extractPrice(from: line)
+                continue
             }
 
-            // Detect subtotal
-            if lower.contains("subtotal") || lower == "subtotal" {
-                if let price = extractPrice(from: line) {
-                    subtotal = price
+            // Tax
+            if lower.hasPrefix("tax") || lower.contains("sales tax")
+                || lower.hasPrefix("hst") || lower.hasPrefix("gst") || lower.hasPrefix("vat") {
+                if let price = extractPrice(from: line) { tax = price }
+                continue
+            }
+
+            // Total (after subtotal guard to avoid misclassification)
+            if (lower.hasPrefix("total") || lower.contains(" total"))
+                && !lower.hasPrefix("subtotal") && !lower.hasPrefix("sub total") {
+                if let price = extractPrice(from: line) { total = price }
+                continue
+            }
+
+            // Tip / gratuity
+            if lower.hasPrefix("tip") || lower.hasPrefix("driver tip")
+                || lower.hasPrefix("gratuity") || lower.contains("driver tip") {
+                if let price = extractPrice(from: line) { tip = price }
+                continue
+            }
+
+            // Delivery / shipping (may carry two prices: original fee + charged amount)
+            if lower.hasPrefix("delivery") || lower.hasPrefix("free delivery")
+                || lower.hasPrefix("shipping") || lower.hasPrefix("service fee")
+                || lower.contains("delivery fee") || lower.contains("delivery from") {
+                let prices = extractAllPrices(from: line)
+                if prices.count >= 2 {
+                    // e.g. "Free delivery from store $9.95 $0" → fee=9.95, charged=0
+                    deliveryFee = prices.first
+                    deliveryCharged = prices.last
+                } else {
+                    deliveryFee = prices.first
+                    deliveryCharged = prices.first
                 }
                 continue
             }
 
-            // Detect tax
-            if lower.hasPrefix("tax") || lower.contains("sales tax") || lower.contains("tax ") {
-                if let price = extractPrice(from: line) {
-                    tax = price
-                }
+            // General summary/service line check (catches everything else in the keyword list)
+            if isSummaryLine(lower) { continue }
+
+            // --- Item detection ---
+
+            // Walmart format: "Product Name Qty N $price"
+            if let walmartItem = extractWalmartItem(from: line) {
+                let confidence = min(1.0, Double(walmartItem.name.count) / 5.0)
+                items.append(ReceiptItem(
+                    id: UUID().uuidString,
+                    rawText: line,
+                    name: walmartItem.name,
+                    price: walmartItem.price,
+                    classification: .mine,
+                    confidence: confidence,
+                    isEditable: true
+                ))
                 continue
             }
 
-            // Detect total
-            if lower.hasPrefix("total") || lower.contains("total ") {
-                if let price = extractPrice(from: line) {
-                    total = price
-                }
-                continue
-            }
-
-            if lower.contains("subtotal") || lower.contains("tax") || lower.contains("total") {
-                continue
-            }
-
-            if isIgnoredLine(lower) { continue }
-
+            // Standard format: name followed by price
             if let price = extractPrice(from: line) {
                 let cleanName = extractItemName(from: line, price: price)
                 if cleanName.isEmpty { continue }
-
-                let dedupKey = "\(cleanName)|\(String(format: "%.2f", price))"
-                seenPrices[dedupKey, default: 0] += 1
-
                 let confidence = min(1.0, Double(cleanName.count) / 5.0)
-                let item = ReceiptItem(
+                items.append(ReceiptItem(
                     id: UUID().uuidString,
                     rawText: line,
                     name: cleanName,
@@ -137,19 +179,16 @@ final class ReceiptParserService {
                     classification: .mine,
                     confidence: confidence,
                     isEditable: true
-                )
-                items.append(item)
-                itemLines.append((text: cleanName, price: price, rawLine: line))
+                ))
             }
         }
 
-        // Phase 4: Validate totals
-        if let subtotal = subtotal, let total = total {
-            let sumItems = items.reduce(0) { $0 + $1.price }
-            let diff = abs(total - sumItems)
-            if diff > 0.5 && tax == nil {
-                warnings.append("Item total (\(String(format: "%.2f", sumItems))) does not match receipt total (\(String(format: "%.2f", total))).")
-            }
+        // Phase 4: Validate — warn if item sum differs from receipt subtotal
+        let itemSum = items.reduce(0.0) { $0 + $1.price }
+        if let sub = subtotal, abs(itemSum - sub) > 0.05 {
+            warnings.append(
+                "Item total ($\(String(format: "%.2f", itemSum))) differs from receipt subtotal ($\(String(format: "%.2f", sub))). Please review."
+            )
         }
 
         if items.isEmpty {
@@ -171,6 +210,9 @@ final class ReceiptParserService {
             subtotal: subtotal,
             tax: tax,
             total: total,
+            deliveryFee: deliveryFee,
+            deliveryCharged: deliveryCharged,
+            tip: tip,
             warnings: warnings,
             rawText: text
         )
@@ -178,48 +220,74 @@ final class ReceiptParserService {
 
     // MARK: - Private Helpers
 
-    private func findDate(in line: String) -> Date? {
-        let clean = line.trimmingCharacters(in: CharacterSet.whitespaces)
-        for formatter in dateFormatters {
-            if let date = formatter.date(from: clean) {
-                return date
+    /// Returns true when `lower` is a summary/service/payment line that should never be an item row.
+    private func isSummaryLine(_ lower: String) -> Bool {
+        for prefix in summaryLinePrefixes {
+            if lower == prefix
+                || lower.hasPrefix(prefix + " ")
+                || lower.hasPrefix(prefix + ":") {
+                return true
             }
-            // Try to extract date from within the line
+        }
+        return false
+    }
+
+    /// Parses Walmart-style lines: "Product Name Qty N $price"
+    private func extractWalmartItem(from line: String) -> (name: String, price: Double)? {
+        let pattern = "^(.+?)\\s+Qty\\s+\\d+\\s+\\$(\\d+\\.\\d{2})\\s*$"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
+        let nsRange = NSRange(location: 0, length: line.utf16.count)
+        guard let match = regex.firstMatch(in: line, options: [], range: nsRange),
+              match.numberOfRanges >= 3,
+              let nameRange = Range(match.range(at: 1), in: line),
+              let priceRange = Range(match.range(at: 2), in: line) else { return nil }
+        let name = String(line[nameRange]).trimmingCharacters(in: .whitespaces)
+        guard let price = Double(line[priceRange]) else { return nil }
+        return (name: name, price: price)
+    }
+
+    /// Extracts all dollar amounts from a line, including bare "$0" with no decimal.
+    private func extractAllPrices(from line: String) -> [Double] {
+        let pattern = "\\$\\s*\\d+(?:\\.\\d{1,2})?"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(location: 0, length: line.utf16.count)
+        return regex.matches(in: line, options: [], range: range).compactMap { match in
+            let str = (line as NSString).substring(with: match.range)
+                .replacingOccurrences(of: "$", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            return Double(str)
+        }
+    }
+
+    private func findDate(in line: String) -> Date? {
+        let clean = line.trimmingCharacters(in: .whitespaces)
+        for formatter in dateFormatters {
+            if let date = formatter.date(from: clean) { return date }
             let range = NSRange(location: 0, length: clean.utf16.count)
             let regex = try? NSRegularExpression(pattern: "\\d{1,2}[/\\.-]\\d{1,2}[/\\.-]\\d{2,4}")
             if let match = regex?.firstMatch(in: clean, options: [], range: range) {
                 let dateStr = (clean as NSString).substring(with: match.range)
-                if let date = formatter.date(from: dateStr) {
-                    return date
-                }
+                if let date = formatter.date(from: dateStr) { return date }
             }
         }
         return nil
     }
 
     private func extractPrice(from line: String) -> Double? {
-        // Find dollar amounts: $X.XX, X.XX at end of line
         let patterns = [
             "\\$?\\d+\\.\\d{2}\\s*$",
             "\\$?\\d+\\.\\d{2}(?=\\s|$)",
             "\\$\\d+(\\.\\d{1,2})?",
             "\\d+\\.\\d{2}"
         ]
-
         for pattern in patterns {
             if let regex = try? NSRegularExpression(pattern: pattern) {
                 let range = NSRange(location: 0, length: line.utf16.count)
-                let matches = regex.matches(in: line, options: [], range: range)
-                if let match = matches.last {
-                    let priceStr = (line as NSString).substring(with: match.range)
+                if let match = regex.matches(in: line, options: [], range: range).last {
+                    let str = (line as NSString).substring(with: match.range)
                         .replacingOccurrences(of: "$", with: "")
                         .replacingOccurrences(of: ",", with: "")
-                    if let price = Double(priceStr) {
-                        // Filter out prices that are too large (likely not item prices)
-                        if price < 100000 {
-                            return price
-                        }
-                    }
+                    if let price = Double(str), price < 100000 { return price }
                 }
             }
         }
@@ -230,26 +298,19 @@ final class ReceiptParserService {
         var name = line
         let priceStr = String(format: "%.2f", price)
 
-        // Remove price from end of line
         if let range = name.range(of: priceStr, options: .backwards) {
             name = String(name[name.startIndex..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
         }
-
-        // Remove $ prefix if present at end
         name = name.trimmingCharacters(in: CharacterSet(charactersIn: "$ "))
 
-        // Remove leading numbers/quantities
         if let regex = try? NSRegularExpression(pattern: "^\\d+\\s+") {
             let range = NSRange(location: 0, length: name.utf16.count)
             name = regex.stringByReplacingMatches(in: name, options: [], range: range, withTemplate: "")
         }
-
         name = name.trimmingCharacters(in: .whitespaces)
 
-        // Filter out obvious non-item names
         if name.isEmpty || name.count < 2 { return "" }
-        if ignoredLinePatterns.contains(name.lowercased()) { return "" }
-
+        if isSummaryLine(name.lowercased()) { return "" }
         return name
     }
 
@@ -258,18 +319,7 @@ final class ReceiptParserService {
         for pattern in paymentLinePatterns {
             if let regex = try? NSRegularExpression(pattern: pattern) {
                 let range = NSRange(location: 0, length: upper.utf16.count)
-                if regex.firstMatch(in: upper, options: [], range: range) != nil {
-                    return true
-                }
-            }
-        }
-        return false
-    }
-
-    private func isIgnoredLine(_ lower: String) -> Bool {
-        for pattern in ignoredLinePatterns {
-            if lower == pattern || lower.hasPrefix(pattern) {
-                return true
+                if regex.firstMatch(in: upper, options: [], range: range) != nil { return true }
             }
         }
         return false

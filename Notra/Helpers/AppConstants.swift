@@ -19,6 +19,7 @@ struct AppConstants {
         static let databaseMappings = "databaseMappings"
         static let columnMappings = "columnMappings"
         static let categoryValues = "categoryValues"
+        static let geminiModelName = "geminiModelName"
     }
 }
 

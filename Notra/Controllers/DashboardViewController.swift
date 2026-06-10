@@ -494,12 +494,12 @@ class DashboardViewController: UIViewController {
         guard let token = UserDefaultsManager.shared.notionToken else { return }
         let coordinator = ReceiptScanCoordinator()
         self.scanCoordinator = coordinator
-        coordinator.start(from: self, token: token) { [weak self] parseResult in
-            guard let self = self, let result = parseResult else {
+        coordinator.start(from: self, token: token) { [weak self] geminiResult in
+            guard let self = self, let result = geminiResult else {
                 self?.scanCoordinator = nil
                 return
             }
-            let vc = ReceiptReviewViewController(parseResult: result, token: token)
+            let vc = ReceiptReviewViewController(geminiResult: result, token: token)
             let nav = UINavigationController(rootViewController: vc)
             nav.modalPresentationStyle = .fullScreen
             self.present(nav, animated: true)

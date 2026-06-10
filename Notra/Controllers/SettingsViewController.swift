@@ -27,6 +27,7 @@ class SettingsViewController: UIViewController {
         case notionConnection
         case setupChecklist
         case databaseMapping
+        case aiReceiptParser
         case data
         case debug
         case dangerZone
@@ -145,6 +146,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case .notionConnection: return ConnectionRow.allCases.count
         case .setupChecklist: return checklist.allChecks.count
         case .databaseMapping: return 3
+        case .aiReceiptParser: return GeminiKeychainService.shared.hasAPIKey() ? 5 : 1
         case .data: return 2
         case .debug: return 2
         case .dangerZone: return 1
@@ -170,6 +172,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case .notionConnection: return "Notion Connection"
         case .setupChecklist: return "Setup Checklist"
         case .databaseMapping: return "Database Mapping"
+        case .aiReceiptParser: return "AI Receipt Parser"
         case .data: return "Data"
         case .debug: return "Debug"
         case .dangerZone: return "Danger Zone"
@@ -224,6 +227,42 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
                 content.text = "Edit Mapping"
                 content.textProperties.color = AppTheme.Colors.accent
                 cell.accessoryType = .disclosureIndicator
+                cell.selectionStyle = .default
+            }
+
+        case .aiReceiptParser:
+            let hasKey = GeminiKeychainService.shared.hasAPIKey()
+            if indexPath.row == 0 {
+                content.text = "Gemini API Key"
+                if let masked = GeminiKeychainService.shared.maskedKey() {
+                    content.secondaryText = "Connected \(masked)"
+                    content.secondaryTextProperties.color = AppTheme.Colors.income
+                } else {
+                    content.secondaryText = "Not Connected — tap to set up"
+                    content.secondaryTextProperties.color = AppTheme.Colors.textMuted
+                    cell.selectionStyle = .default
+                }
+            } else if hasKey && indexPath.row == 1 {
+                content.text = "Model"
+                if let current = GeminiReceiptConfig.availableModels.first(where: { $0.modelID == GeminiReceiptConfig.modelName }) {
+                    content.secondaryText = current.displayName
+                } else {
+                    content.secondaryText = GeminiReceiptConfig.modelName
+                }
+                content.secondaryTextProperties.color = AppTheme.Colors.textSecondary
+                cell.accessoryType = .disclosureIndicator
+                cell.selectionStyle = .default
+            } else if hasKey && indexPath.row == 2 {
+                content.text = "Update Key"
+                content.textProperties.color = AppTheme.Colors.accent
+                cell.selectionStyle = .default
+            } else if hasKey && indexPath.row == 3 {
+                content.text = "Test Connection"
+                content.textProperties.color = AppTheme.Colors.accent
+                cell.selectionStyle = .default
+            } else if hasKey && indexPath.row == 4 {
+                content.text = "Delete Key"
+                content.textProperties.color = .systemRed
                 cell.selectionStyle = .default
             }
 
@@ -377,6 +416,20 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
                 navigationController?.popToRootViewController(animated: true)
             }
 
+        case .aiReceiptParser:
+            let hasKey = GeminiKeychainService.shared.hasAPIKey()
+            if indexPath.row == 0 && !hasKey {
+                presentGeminiKeySetup()
+            } else if hasKey && indexPath.row == 1 {
+                presentModelSelector()
+            } else if hasKey && indexPath.row == 2 {
+                presentGeminiKeySetup()
+            } else if hasKey && indexPath.row == 3 {
+                testGeminiConnection()
+            } else if hasKey && indexPath.row == 4 {
+                confirmDeleteGeminiKey()
+            }
+
         case .data:
             if indexPath.row == 1 {
                 refreshData()
@@ -404,6 +457,94 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
     private func showDebugAlert(title: String, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    // MARK: - Gemini Key & Model Management
+
+    private func presentModelSelector() {
+        let alert = UIAlertController(title: "Select Gemini Model", message: nil, preferredStyle: .actionSheet)
+        for model in GeminiReceiptConfig.availableModels {
+            let isSelected = model.modelID == GeminiReceiptConfig.modelName
+            let title = isSelected ? "✓ \(model.displayName)" : model.displayName
+            alert.addAction(UIAlertAction(title: title, style: .default) { _ in
+                GeminiReceiptConfig.modelName = model.modelID
+                self.tableView.reloadData()
+            })
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = tableView
+            popover.sourceRect = CGRect(x: tableView.bounds.midX, y: tableView.bounds.midY, width: 0, height: 0)
+        }
+        present(alert, animated: true)
+    }
+
+    private func presentGeminiKeySetup() {
+        let hasKey = GeminiKeychainService.shared.hasAPIKey()
+        let title = hasKey ? "Update Gemini API Key" : "Set Up Gemini API Key"
+        let message = "Your Gemini API key is stored securely in Keychain and never shared. Receipt text or files may be sent to Gemini for parsing."
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addTextField { tf in
+            tf.placeholder = "Paste your Gemini API key"
+            tf.isSecureTextEntry = true
+            tf.autocorrectionType = .no
+            tf.autocapitalizationType = .none
+        }
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak self, weak alert] _ in
+            guard let key = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespaces), !key.isEmpty else { return }
+            do {
+                try GeminiKeychainService.shared.saveAPIKey(key)
+                self?.tableView.reloadData()
+            } catch {
+                let errAlert = UIAlertController(title: "Error", message: error.localizedDescription, preferredStyle: .alert)
+                errAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                self?.present(errAlert, animated: true)
+            }
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func testGeminiConnection() {
+        guard let key = GeminiKeychainService.shared.loadAPIKey() else { return }
+        let loading = UIAlertController(title: "Testing Connection...", message: nil, preferredStyle: .alert)
+        present(loading, animated: true)
+        GeminiReceiptParser.shared.testAPIKey(key) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    let message: String
+                    switch result {
+                    case .success:
+                        message = "Connection successful. Your Gemini key is working."
+                    case .failure(let error):
+                        message = error.localizedDescription
+                    }
+                    let resultAlert = UIAlertController(title: "Gemini Test", message: message, preferredStyle: .alert)
+                    resultAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self?.present(resultAlert, animated: true)
+                }
+            }
+        }
+    }
+
+    private func confirmDeleteGeminiKey() {
+        let alert = UIAlertController(
+            title: "Delete Gemini Key?",
+            message: "AI receipt scanning will no longer work until you add a new key.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            do {
+                try GeminiKeychainService.shared.deleteAPIKey()
+                self?.tableView.reloadData()
+            } catch {
+                let errAlert = UIAlertController(title: "Error", message: error.localizedDescription, preferredStyle: .alert)
+                errAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                self?.present(errAlert, animated: true)
+            }
+        })
         present(alert, animated: true)
     }
 }

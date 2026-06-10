@@ -23,6 +23,9 @@ struct ReceiptParseResult {
     var subtotal: Double?
     var tax: Double?
     var total: Double?
+    var deliveryFee: Double? = nil        // original listed delivery fee
+    var deliveryCharged: Double? = nil    // final charged amount (0 if free)
+    var tip: Double? = nil
     var warnings: [String]
     var rawText: String
 }

@@ -37,8 +37,8 @@ final class ReceiptReviewViewController: UIViewController {
     private var datePicker: UIDatePicker?
     private var includeTaxSwitch: UISwitch?
 
-    init(parseResult: ReceiptParseResult, token: String) {
-        self.viewModel = ReceiptReviewViewModel(parseResult: parseResult, token: token)
+    init(geminiResult: GeminiReceiptResult, token: String) {
+        self.viewModel = ReceiptReviewViewModel(receiptResult: geminiResult, token: token)
         self.token = token
         super.init(nibName: nil, bundle: nil)
     }
@@ -51,6 +51,18 @@ final class ReceiptReviewViewController: UIViewController {
         super.viewDidLoad()
         viewModel.delegate = self
         setupUI()
+        setupKeyboardDismiss()
+    }
+
+    private func setupKeyboardDismiss() {
+        tableView.keyboardDismissMode = .interactive
+        let tap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+        tap.cancelsTouchesInView = false
+        view.addGestureRecognizer(tap)
+    }
+
+    @objc private func dismissKeyboard() {
+        view.endEditing(true)
     }
 
     private func setupUI() {
@@ -68,8 +80,11 @@ final class ReceiptReviewViewController: UIViewController {
         tableView.dataSource = self
         tableView.backgroundColor = AppTheme.Colors.background
         tableView.separatorStyle = .none
+        tableView.estimatedRowHeight = 100
+        tableView.rowHeight = UITableView.automaticDimension
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "HeaderCell")
         tableView.register(ReceiptItemCell.self, forCellReuseIdentifier: "ReceiptItemCell")
+        tableView.register(ReceiptSummaryCardCell.self, forCellReuseIdentifier: "ReceiptSummaryCardCell")
         tableView.register(SummaryCell.self, forCellReuseIdentifier: "SummaryCell")
         tableView.register(ActionCell.self, forCellReuseIdentifier: "ActionCell")
         tableView.register(EditableFieldCell.self, forCellReuseIdentifier: "EditableFieldCell")
@@ -102,6 +117,7 @@ final class ReceiptReviewViewController: UIViewController {
     }
 
     @objc private func createTapped() {
+        view.endEditing(true)
         loadingOverlay.isHidden = false
         loadingIndicator.startAnimating()
         viewModel.createTransactions { [weak self] result in
@@ -134,7 +150,7 @@ final class ReceiptReviewViewController: UIViewController {
 
     @objc private func taxToggleChanged(_ sender: UISwitch) {
         viewModel.includeTaxProportionally = sender.isOn
-        tableView.reloadSections(IndexSet(integer: 2), with: .none)
+        tableView.reloadSections(IndexSet(integer: Section.summary.rawValue), with: .none)
     }
 
     @objc private func addItemTapped() {
@@ -161,7 +177,10 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
     enum Section: Int, CaseIterable {
         case header
         case items
-        case summary
+        case receiptSummary  // receipt breakdown: subtotal / tax / delivery / tip / total
+        case categoryPicker // category/budget selection for created expenses
+        case adjustments     // refunds, weight adjustments, substitutions
+        case summary         // split calculation: personal / shared / my share
         case categories
         case actions
     }
@@ -174,6 +193,9 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         switch Section(rawValue: section) {
         case .header: return 1
         case .items: return viewModel.items.isEmpty ? 2 : viewModel.items.count + 1
+        case .receiptSummary: return viewModel.hasReceiptSummaryData ? 1 : 0
+        case .categoryPicker: return viewModel.hasCategoryOptions ? 1 : 0
+        case .adjustments: return viewModel.hasAdjustments ? viewModel.adjustments.count : 0
         case .summary: return 1
         case .categories: return viewModel.hasTax ? 2 : 1
         case .actions: return 1
@@ -190,6 +212,12 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
                 return configureItemsHeaderCell(tableView, at: indexPath)
             }
             return configureItemCell(tableView, at: indexPath)
+        case .receiptSummary:
+            return configureReceiptSummaryCell(tableView, at: indexPath)
+        case .categoryPicker:
+            return configureCategoryCell(tableView, at: indexPath)
+        case .adjustments:
+            return configureAdjustmentCell(tableView, at: indexPath)
         case .summary:
             return configureSummaryCell(tableView, at: indexPath)
         case .categories:
@@ -207,7 +235,7 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
     private func configureHeaderCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "EditableFieldCell", for: indexPath) as! EditableFieldCell
         cell.configure(
-            merchant: viewModel.merchantName,
+            merchant: viewModel.displayMerchant,
             date: viewModel.receiptDate,
             warnings: viewModel.warnings
         )
@@ -220,9 +248,30 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         return cell
     }
 
+    private func configureAdjustmentCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "ActionCell", for: indexPath) as! ActionCell
+        let adj = viewModel.adjustments[indexPath.row]
+        let amountStr = adj.amount.map { String(format: " $%.2f", $0) } ?? ""
+        cell.configure(title: "\(adj.name)\(amountStr)", icon: "arrow.uturn.backward.circle")
+        return cell
+    }
+
     private func configureItemsHeaderCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "ActionCell", for: indexPath) as! ActionCell
         cell.configure(title: "Add Item Manually", icon: "plus.circle")
+        return cell
+    }
+
+    private func configureReceiptSummaryCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "ReceiptSummaryCardCell", for: indexPath) as! ReceiptSummaryCardCell
+        cell.configure(
+            subtotal: viewModel.receiptSubtotal,
+            tax: viewModel.receiptTax,
+            delivery: viewModel.receiptDeliveryCharged,
+            deliveryFee: viewModel.receiptDeliveryFee,
+            tip: viewModel.receiptTip,
+            total: viewModel.receiptTotal
+        )
         return cell
     }
 
@@ -230,10 +279,16 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         let itemIndex = indexPath.row - 1
         let item = viewModel.items[itemIndex]
         let cell = tableView.dequeueReusableCell(withIdentifier: "ReceiptItemCell", for: indexPath) as! ReceiptItemCell
-        cell.configure(with: item)
+        cell.configureGemini(id: item.id, name: item.name, price: item.finalPrice, classification: item.classification)
         cell.onClassificationChange = { [weak self] classification in
             self?.viewModel.setClassification(for: item.id, classification: classification)
-            tableView.reloadSections(IndexSet(integer: 2), with: .none)
+            // Reload this cell to update chip styles immediately
+            if let self = self {
+                // Only reload the item row, not the entire section, for smooth animation
+                let itemRow = IndexPath(row: indexPath.row, section: Section.items.rawValue)
+                self.tableView.reconfigureRows(at: [itemRow])
+                self.tableView.reloadSections(IndexSet(integer: Section.summary.rawValue), with: .none)
+            }
         }
         cell.onNameEdit = { [weak self] name in
             self?.viewModel.updateItemName(itemId: item.id, name: name)
@@ -274,7 +329,19 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
             isOn: viewModel.includeTaxProportionally
         ) { [weak self] isOn in
             self?.viewModel.includeTaxProportionally = isOn
-            tableView.reloadSections(IndexSet(integer: 2), with: .none)
+            tableView.reloadSections(IndexSet(integer: Section.summary.rawValue), with: .none)
+        }
+        return cell
+    }
+
+    private func configureCategoryCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "ActionCell", for: indexPath) as! ActionCell
+        if let name = viewModel.selectedCategoryName {
+            cell.configure(title: "Category: \(name)", icon: "tag.fill")
+        } else if viewModel.isLoadingCategories {
+            cell.configure(title: "Loading categories...", icon: "hourglass")
+        } else {
+            cell.configure(title: "Select Category (required)", icon: "tag")
         }
         return cell
     }
@@ -295,14 +362,24 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         let cell = tableView.dequeueReusableCell(withIdentifier: "ActionCell", for: indexPath) as! ActionCell
         let hasPersonal = viewModel.hasPersonalItems
         let hasShared = viewModel.hasSharedItems
-        if hasPersonal && hasShared {
+        let noItems = !hasPersonal && !hasShared
+
+        // Check if category is required but missing — block creation
+        let categoryMissing = viewModel.isRelationCategory && viewModel.selectedCategoryId == nil
+        let isLoadingCat = viewModel.isLoadingCategories && viewModel.isRelationCategory
+
+        if isLoadingCat {
+            cell.configure(title: "Loading categories...", icon: "hourglass", isAction: false)
+        } else if categoryMissing {
+            cell.configure(title: "Select a category required", icon: "exclamationmark.triangle", isAction: false)
+        } else if noItems {
+            cell.configure(title: "Nothing to create", icon: "xmark.circle", isAction: false)
+        } else if hasPersonal && hasShared {
             cell.configure(title: "Create 2 Expenses (Personal + Shared)", icon: "checkmark.circle.fill", isAction: true)
         } else if hasPersonal {
             cell.configure(title: "Create 1 Personal Expense", icon: "checkmark.circle.fill", isAction: true)
         } else if hasShared {
             cell.configure(title: "Create 1 Shared Expense", icon: "checkmark.circle.fill", isAction: true)
-        } else {
-            cell.configure(title: "Nothing to create", icon: "xmark.circle", isAction: false)
         }
         return cell
     }
@@ -313,11 +390,39 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
             if indexPath.row == 0 {
                 addItemTapped()
             }
+        case .categoryPicker:
+            presentCategoryPicker()
         case .actions:
+            // Option A: block tap when category is required but missing (no alert shown)
+            guard !viewModel.isCategoryRequiredAndMissing else { return }
+            guard !viewModel.isLoadingCategories else { return }
             createTapped()
         default:
             break
         }
+    }
+
+    private func presentCategoryPicker() {
+        let options = viewModel.categoryOptions
+        guard !options.isEmpty else {
+            let alert = UIAlertController(title: "Categories", message: "Loading category options...", preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
+            return
+        }
+        let alert = UIAlertController(title: "Select Category", message: nil, preferredStyle: .actionSheet)
+        for option in options {
+            alert.addAction(UIAlertAction(title: option.title, style: .default) { [weak self] _ in
+                self?.viewModel.selectCategory(id: option.id, name: option.title)
+                self?.tableView.reloadSections(IndexSet(integer: Section.categoryPicker.rawValue), with: .none)
+            })
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = tableView
+            popover.sourceRect = tableView.bounds
+        }
+        present(alert, animated: true)
     }
 }
 
@@ -325,7 +430,7 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
 
 extension ReceiptReviewViewController: ReceiptReviewViewModelDelegate {
     func didUpdateSummary() {
-        tableView.reloadSections(IndexSet(integer: 2), with: .none)
+        tableView.reloadSections(IndexSet(integer: Section.summary.rawValue), with: .none)
     }
 
     func didStartCreatingTransactions() {
@@ -349,6 +454,10 @@ extension ReceiptReviewViewController: ReceiptReviewViewModelDelegate {
         let alert = UIAlertController(title: "Error", message: error, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+
+    func didLoadCategoryOptions() {
+        tableView.reloadSections(IndexSet(integer: Section.categoryPicker.rawValue), with: .none)
     }
 }
 
@@ -465,9 +574,9 @@ fileprivate class EditableFieldCell: UITableViewCell {
     }
 }
 
-fileprivate class ReceiptItemCell: UITableViewCell {
+fileprivate class ReceiptItemCell: UITableViewCell, UITextViewDelegate {
     private let containerView = UIView()
-    private let nameTextField = UITextField()
+    private let nameTextView = UITextView()
     private let priceTextField = UITextField()
     private let chipStack = UIStackView()
     private let deleteButton = UIButton(type: .system)
@@ -503,25 +612,39 @@ fileprivate class ReceiptItemCell: UITableViewCell {
         mainStack.spacing = 8
         mainStack.translatesAutoresizingMaskIntoConstraints = false
 
-        let topRow = UIStackView()
-        topRow.axis = .horizontal
-        topRow.spacing = 8
-        topRow.alignment = .center
-        topRow.translatesAutoresizingMaskIntoConstraints = false
+        // --- Chips at top ---
+        chipStack.axis = .horizontal
+        chipStack.spacing = 8
+        chipStack.distribution = .fillEqually
 
-        nameTextField.font = AppTheme.Fonts.body
-        nameTextField.textColor = AppTheme.Colors.textPrimary
-        nameTextField.placeholder = "Item name"
-        nameTextField.backgroundColor = AppTheme.Colors.cardBackgroundAlt
-        nameTextField.layer.cornerRadius = AppTheme.CornerRadius.small
-        nameTextField.layer.borderWidth = 1
-        nameTextField.layer.borderColor = AppTheme.Colors.border.cgColor
-        nameTextField.leftView = UIView(frame: CGRect(x: 0, y: 0, width: 8, height: 0))
-        nameTextField.leftViewMode = .always
-        nameTextField.addTarget(self, action: #selector(nameChanged), for: .editingChanged)
-        nameTextField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        nameTextField.translatesAutoresizingMaskIntoConstraints = false
-        nameTextField.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        mineButton = makeChipButton(title: "Mine", color: AppTheme.Colors.income, action: #selector(mineTapped))
+        sharedButton = makeChipButton(title: "Shared", color: AppTheme.Colors.accent, action: #selector(sharedTapped))
+        ignoreButton = makeChipButton(title: "Ignore", color: AppTheme.Colors.textMuted, action: #selector(ignoreTapped))
+
+        chipStack.addArrangedSubview(mineButton)
+        chipStack.addArrangedSubview(sharedButton)
+        chipStack.addArrangedSubview(ignoreButton)
+
+        // --- Name (multiline UITextView, auto-expanding) ---
+        nameTextView.font = AppTheme.Fonts.body
+        nameTextView.textColor = AppTheme.Colors.textPrimary
+        nameTextView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+        nameTextView.layer.cornerRadius = AppTheme.CornerRadius.small
+        nameTextView.layer.borderWidth = 1
+        nameTextView.layer.borderColor = AppTheme.Colors.border.cgColor
+        nameTextView.textContainerInset = UIEdgeInsets(top: 8, left: 6, bottom: 8, right: 6)
+        nameTextView.isScrollEnabled = false  // auto-expands vertically
+        nameTextView.textContainer.lineBreakMode = .byWordWrapping
+        nameTextView.delegate = self
+        nameTextView.translatesAutoresizingMaskIntoConstraints = false
+        nameTextView.heightAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
+
+        // --- Bottom row: price + delete ---
+        let bottomRow = UIStackView()
+        bottomRow.axis = .horizontal
+        bottomRow.spacing = 8
+        bottomRow.alignment = .center
+        bottomRow.translatesAutoresizingMaskIntoConstraints = false
 
         priceTextField.font = AppTheme.Fonts.bodyMedium
         priceTextField.textColor = AppTheme.Colors.textPrimary
@@ -536,7 +659,7 @@ fileprivate class ReceiptItemCell: UITableViewCell {
         priceTextField.leftViewMode = .always
         priceTextField.addTarget(self, action: #selector(priceChanged), for: .editingChanged)
         priceTextField.translatesAutoresizingMaskIntoConstraints = false
-        priceTextField.widthAnchor.constraint(equalToConstant: 90).isActive = true
+        priceTextField.widthAnchor.constraint(equalToConstant: 100).isActive = true
         priceTextField.heightAnchor.constraint(equalToConstant: 36).isActive = true
 
         deleteButton.setImage(UIImage(systemName: "trash"), for: .normal)
@@ -545,24 +668,20 @@ fileprivate class ReceiptItemCell: UITableViewCell {
         deleteButton.translatesAutoresizingMaskIntoConstraints = false
         deleteButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
 
-        topRow.addArrangedSubview(nameTextField)
-        topRow.addArrangedSubview(priceTextField)
-        topRow.addArrangedSubview(deleteButton)
+        let priceLabel = UILabel()
+        priceLabel.text = "$"
+        priceLabel.font = AppTheme.Fonts.bodyMedium
+        priceLabel.textColor = AppTheme.Colors.textSecondary
+        priceLabel.setContentHuggingPriority(.required, for: .horizontal)
 
-        chipStack.axis = .horizontal
-        chipStack.spacing = 8
-        chipStack.distribution = .fillEqually
+        bottomRow.addArrangedSubview(priceLabel)
+        bottomRow.addArrangedSubview(priceTextField)
+        bottomRow.addArrangedSubview(deleteButton)
 
-        mineButton = makeChipButton(title: "Mine", color: AppTheme.Colors.income, action: #selector(mineTapped))
-        sharedButton = makeChipButton(title: "Shared", color: AppTheme.Colors.accent, action: #selector(sharedTapped))
-        ignoreButton = makeChipButton(title: "Ignore", color: AppTheme.Colors.textMuted, action: #selector(ignoreTapped))
-
-        chipStack.addArrangedSubview(mineButton)
-        chipStack.addArrangedSubview(sharedButton)
-        chipStack.addArrangedSubview(ignoreButton)
-
-        mainStack.addArrangedSubview(topRow)
+        // --- Assemble main stack ---
         mainStack.addArrangedSubview(chipStack)
+        mainStack.addArrangedSubview(nameTextView)
+        mainStack.addArrangedSubview(bottomRow)
 
         containerView.addSubview(mainStack)
         contentView.addSubview(containerView)
@@ -582,9 +701,16 @@ fileprivate class ReceiptItemCell: UITableViewCell {
 
     func configure(with item: ReceiptItem) {
         itemId = item.id
-        nameTextField.text = item.name
+        nameTextView.text = item.name
         priceTextField.text = String(format: "%.2f", item.price)
         updateChipSelection(classification: item.classification)
+    }
+
+    func configureGemini(id: String, name: String, price: Double, classification: ReceiptItemClassification) {
+        itemId = id
+        nameTextView.text = name
+        priceTextField.text = String(format: "%.2f", price)
+        updateChipSelection(classification: classification)
     }
 
     private func makeChipButton(title: String, color: UIColor, action: Selector) -> UIButton {
@@ -600,7 +726,7 @@ fileprivate class ReceiptItemCell: UITableViewCell {
         return b
     }
 
-    private func updateChipSelection(classification: ReceiptItemClassification) {
+    func updateChipSelection(classification: ReceiptItemClassification) {
         let chips = [mineButton!, sharedButton!, ignoreButton!]
         let classifications: [ReceiptItemClassification] = [.mine, .shared, .ignore]
 
@@ -631,10 +757,6 @@ fileprivate class ReceiptItemCell: UITableViewCell {
     @objc private func sharedTapped() { onClassificationChange?(.shared) }
     @objc private func ignoreTapped() { onClassificationChange?(.ignore) }
 
-    @objc private func nameChanged() {
-        onNameEdit?(nameTextField.text ?? "")
-    }
-
     @objc private func priceChanged() {
         let text = priceTextField.text?.replacingOccurrences(of: ",", with: "") ?? ""
         let price = Double(text) ?? 0
@@ -643,6 +765,120 @@ fileprivate class ReceiptItemCell: UITableViewCell {
 
     @objc private func deleteTapped() {
         onDelete?()
+    }
+
+    // MARK: - UITextViewDelegate
+
+    func textViewDidChange(_ textView: UITextView) {
+        onNameEdit?(textView.text ?? "")
+    }
+}
+
+// MARK: - Receipt Summary Card (shows receipt breakdown: subtotal / tax / delivery / tip / total)
+
+fileprivate class ReceiptSummaryCardCell: UITableViewCell {
+    private let containerView = UIView()
+    private let titleLabel = UILabel()
+    private let rowStack = UIStackView()
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        setup()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    private func setup() {
+        selectionStyle = .none
+        backgroundColor = .clear
+        contentView.backgroundColor = .clear
+
+        containerView.backgroundColor = AppTheme.Colors.cardBackground
+        containerView.layer.cornerRadius = AppTheme.CornerRadius.card
+        AppTheme.Shadow.applyCard(to: containerView)
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+
+        let outerStack = UIStackView()
+        outerStack.axis = .vertical
+        outerStack.spacing = 12
+        outerStack.translatesAutoresizingMaskIntoConstraints = false
+
+        titleLabel.text = "Receipt Summary"
+        titleLabel.font = AppTheme.Fonts.captionMedium
+        titleLabel.textColor = AppTheme.Colors.textSecondary
+
+        rowStack.axis = .vertical
+        rowStack.spacing = 8
+
+        outerStack.addArrangedSubview(titleLabel)
+        outerStack.addArrangedSubview(rowStack)
+
+        containerView.addSubview(outerStack)
+        contentView.addSubview(containerView)
+
+        NSLayoutConstraint.activate([
+            containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
+
+            outerStack.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 16),
+            outerStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
+            outerStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
+            outerStack.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -16)
+        ])
+    }
+
+    func configure(subtotal: Double?, tax: Double?, delivery: Double?, deliveryFee: Double?, tip: Double?, total: Double?) {
+        rowStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        func fmt(_ v: Double) -> String { f.string(from: NSNumber(value: v)) ?? "$0.00" }
+
+        if let s = subtotal { addRow(label: "Subtotal", value: fmt(s), isBold: false) }
+        if let t = tax { addRow(label: "Tax", value: fmt(t), isBold: false) }
+
+        if let fee = deliveryFee, fee > 0, let charged = delivery, charged == 0 {
+            addRow(label: "Delivery", value: "\(fmt(charged)) (was \(fmt(fee)))", isBold: false)
+        } else if let charged = delivery {
+            addRow(label: "Delivery", value: fmt(charged), isBold: false)
+        } else if let fee = deliveryFee {
+            addRow(label: "Delivery", value: fmt(fee), isBold: false)
+        }
+
+        if let t = tip { addRow(label: "Tip", value: fmt(t), isBold: false) }
+
+        if let tot = total {
+            let divider = UIView()
+            divider.backgroundColor = AppTheme.Colors.border
+            divider.translatesAutoresizingMaskIntoConstraints = false
+            divider.heightAnchor.constraint(equalToConstant: 1).isActive = true
+            rowStack.addArrangedSubview(divider)
+            addRow(label: "Total", value: fmt(tot), isBold: true)
+        }
+    }
+
+    private func addRow(label: String, value: String, isBold: Bool) {
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.distribution = .equalSpacing
+
+        let labelView = UILabel()
+        labelView.text = label
+        labelView.font = isBold ? AppTheme.Fonts.bodyBold : AppTheme.Fonts.body
+        labelView.textColor = AppTheme.Colors.textPrimary
+
+        let valueView = UILabel()
+        valueView.text = value
+        valueView.font = isBold ? AppTheme.Fonts.bodyBold : AppTheme.Fonts.body
+        valueView.textColor = isBold ? AppTheme.Colors.textPrimary : AppTheme.Colors.textSecondary
+        valueView.textAlignment = .right
+
+        row.addArrangedSubview(labelView)
+        row.addArrangedSubview(valueView)
+        rowStack.addArrangedSubview(row)
     }
 }
 
