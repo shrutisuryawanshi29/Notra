@@ -99,17 +99,19 @@ final class ReceiptReviewViewModel {
         }
 
         categoryColumnType = expenseMapping.categoryType ?? "select"
-        isRelationCategoryField = columnMapping.categoryRelationDataSourceId != nil || categoryColumnType == "relation"
+        isRelationCategoryField = columnMapping.categoryRelationDataSourceId != nil
 
         // First, suggest a category from merchant name using engine
         if let merchant = receiptResult.merchant {
             let engine = ExpenseCategorySuggestionEngine()
             let suggestions = engine.suggestions(for: merchant)
             suggestedCategoryName = suggestions.first?.displayName
-            selectedCategoryName = suggestedCategoryName
+            if !isRelationCategoryField {
+                selectCategory(id: suggestedCategoryName ?? "", name: suggestedCategoryName ?? "")
+            }
         }
 
-        if categoryColumnType == "relation", let dsId = columnMapping.categoryRelationDataSourceId {
+        if let dsId = columnMapping.categoryRelationDataSourceId {
             // Relation field: load actual options from the target database (Notion pages)
             isLoadingCategories = true
             transactionInsertService.loadRelationOptions(databaseId: dsId, token: token) { [weak self] result in
@@ -119,14 +121,15 @@ final class ReceiptReviewViewModel {
                 switch result {
                 case .success(let options):
                     self.categoryOptions = options
-                    self.preselectFromLoadedOptions()
+                    if self.selectedCategoryId == nil {
+                        self.preselectFromLoadedOptions()
+                    }
                 case .failure:
                     break
                 }
                 self.delegate?.didLoadCategoryOptions()
             }
         } else {
-            // Select/status field: suggestion name is used directly as selectValue
             delegate?.didLoadCategoryOptions()
         }
     }
@@ -240,13 +243,53 @@ final class ReceiptReviewViewModel {
     var hasPersonalItems: Bool { receiptResult.items.contains { $0.classification == .mine } }
     var hasSharedItems: Bool { receiptResult.items.contains { $0.classification == .shared } }
 
+    var mineCount: Int {
+        receiptResult.items.filter { $0.classification == .mine }.count
+    }
+
+    var sharedCount: Int {
+        receiptResult.items.filter { $0.classification == .shared }.count
+    }
+
+    /// Relation categories require an explicit page ID selection.
+    /// Non-relation (select/status) categories are optional — the suggested name is used if available.
+    var isCategoryRequired: Bool {
+        isRelationCategory
+    }
+
+    var isCategorySelected: Bool {
+        if isRelationCategory {
+            return selectedCategoryId != nil
+        }
+        return true
+    }
+
+    var canCreateExpenses: Bool {
+        (mineCount + sharedCount > 0) && (!isCategoryRequired || selectedCategoryId != nil)
+    }
+
+    var createButtonTitle: String {
+        let expenseCount = (hasPersonalItems ? 1 : 0) + (hasSharedItems ? 1 : 0)
+        if expenseCount == 0 { return "Create Expenses" }
+        return expenseCount == 1 ? "Create 1 Expense" : "Create 2 Expenses"
+    }
+
+    var helperText: String {
+        if isCategoryRequired && selectedCategoryId == nil {
+            return "Select a category to continue"
+        }
+        if mineCount + sharedCount == 0 {
+            return "Mark items as Mine or Shared to create expenses"
+        }
+        return ""
+    }
+
     // MARK: - Category Validation
 
     /// Whether the category column is backed by a Notion relation field that requires a page ID.
     /// Cached during loadCategoryOptions() — does NOT reload mappings on every access.
     var isRelationCategory: Bool { isRelationCategoryField }
 
-    /// Whether creating transactions is currently blocked because a category relation is required but missing.
     var isCategoryRequiredAndMissing: Bool {
         isRelationCategory && selectedCategoryId == nil
     }
@@ -326,15 +369,27 @@ final class ReceiptReviewViewModel {
         let title = "\(merchant) - Personal"
 
         var values = buildCoreValues(title: title, amount: amount, date: date, columnMapping: columnMapping, expenseMapping: expenseMapping)
-
-        // Append category using the correct property type
         appendCategoryValue(&values, columnMapping: columnMapping, expenseMapping: expenseMapping)
 
         TransactionInsertService.shared.insertTransaction(databaseId: databaseId, values: values, token: token) { [weak self] result in
             switch result {
             case .success(let page):
-                let txs = TransactionNormalizer.shared.normalize(rows: [page], mapping: expenseMapping, role: .expense)
-                if let tx = txs.first { SessionCacheManager.shared.addExpense(tx) }
+                guard let self = self else { return }
+                print("[ReceiptReview] Selected category before save: id=\(self.selectedCategoryId ?? "nil"), name=\(self.selectedCategoryName ?? "nil")")
+                let tx = NormalizedTransaction(
+                    id: page.id,
+                    title: title,
+                    amount: abs(amount),
+                    paidAmount: nil,
+                    category: self.selectedCategoryName,
+                    date: date,
+                    databaseId: databaseId,
+                    databaseRole: .expense,
+                    rawProperties: page.properties,
+                    splitMetadata: nil
+                )
+                print("[SessionCache] Added transaction category: \(self.selectedCategoryName ?? "nil")")
+                SessionCacheManager.shared.addExpense(tx)
                 completion(.success(()))
             case .failure(let e):
                 completion(.failure(.insertFailed(e.localizedDescription)))
@@ -372,14 +427,37 @@ final class ReceiptReviewViewModel {
             values.append(metaValue)
         }
 
-        // Append category using the correct property type
         appendCategoryValue(&values, columnMapping: columnMapping, expenseMapping: expenseMapping)
 
         TransactionInsertService.shared.insertTransaction(databaseId: databaseId, values: values, token: token) { [weak self] result in
             switch result {
             case .success(let page):
-                let txs = TransactionNormalizer.shared.normalize(rows: [page], mapping: expenseMapping, role: .expense)
-                if let tx = txs.first { SessionCacheManager.shared.addExpense(tx) }
+                guard let self = self else { return }
+                print("[ReceiptReview] Selected category before save: id=\(self.selectedCategoryId ?? "nil"), name=\(self.selectedCategoryName ?? "nil")")
+                let splitMeta = SplitMetadata(
+                    enabled: true,
+                    paidAmount: sharedAmt,
+                    myShare: myShareAmt,
+                    theyOwe: theyOweAmt,
+                    type: self.splitMethod.rawValue,
+                    status: "pending",
+                    splitWith: nil,
+                    inputs: nil
+                )
+                let tx = NormalizedTransaction(
+                    id: page.id,
+                    title: title,
+                    amount: abs(myShareAmt),
+                    paidAmount: sharedAmt,
+                    category: self.selectedCategoryName,
+                    date: date,
+                    databaseId: databaseId,
+                    databaseRole: .expense,
+                    rawProperties: page.properties,
+                    splitMetadata: splitMeta
+                )
+                print("[SessionCache] Added transaction category: \(self.selectedCategoryName ?? "nil")")
+                SessionCacheManager.shared.addExpense(tx)
                 completion(.success(()))
             case .failure(let e):
                 completion(.failure(.insertFailed(e.localizedDescription)))
@@ -414,9 +492,7 @@ final class ReceiptReviewViewModel {
     private func appendCategoryValue(_ values: inout [DynamicFormValue], columnMapping: ColumnMapping, expenseMapping: DatabaseMappingData) {
         guard let catCol = columnMapping.categoryColumn else { return }
 
-        // If a categoryRelationDataSourceId is configured, this IS a relation field
-        let isRelation = columnMapping.categoryRelationDataSourceId != nil
-            || categoryColumnType == "relation"
+        let isRelation = isRelationCategoryField
 
         if isRelation {
             // Relation type: use the page ID — if no ID selected, skip entirely

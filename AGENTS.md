@@ -9,7 +9,7 @@ xcodebuild -project Notra.xcodeproj -scheme Notra -configuration Debug \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 
-No tests, no package managers, no CI. Deployment target Debug=26.0, Release=26.4. Swift 5.0. Dev team `85R4T7NRSX`. Bundle `com.loml.Notra`.
+No tests, no package managers, no CI. Deployment target 26.0. Swift 5.0. Dev team `85R4T7NRSX`. Bundle `com.loml.Notra`.
 
 ## Entry & Navigation
 
@@ -31,7 +31,7 @@ Canonical list of patterns an agent would likely miss or reintroduce:
 - **PATCH returns updated page**: `updateTransaction` must return `NotionPage` from PATCH response so re-edits show fresh values. Parse in `buildUpdatedTransaction(from:updatedPage:)`.
 - **Cache on create**: New transactions must be manually added to `SessionCacheManager` (`addExpense`/`addIncome`) in `showSuccess()` via `lastCreatedPage`.
 - **iOS 26 `performBatchUpdates` crash**: `tableView.reloadRows()` wraps in `performBatchUpdates` on iOS 26, conflicting with `UIDatePicker.compact`. Avoid row count changes in `performBatchUpdates` blocks. Use `performBatchUpdates(nil)` only for height recalculation.
-- **Budget over-budget check**: `GroupedTransactionSection.swift:87` — use `pct > 1.0` (not `>= 1.0`) to trigger over-budget state.
+- **Budget over-budget check**: `GroupedTransactionSection.swift:354` — use `pct > 1.0` (not `>= 1.0`) to trigger over-budget state.
 - **Sub-1% formatting**: Use explicit `"<1%"` string. `maximumFractionDigits=0` rounds <0.5% to `"0%"`.
 - **Mapping cell info icon recycling**: `MappingCell.configure()` must `infoButton.isHidden = true` at start. Otherwise recycled `.appMetadata` cells keep the icon visible on standard rows.
 - **Split metadata column type**: Column picker filter for `.appMetadata` must accept both `"rich_text"` and `"text"` since Notion API may return either.
@@ -49,6 +49,12 @@ Triggered from `TransactionDetailViewController`. Edit: `AddTransactionViewContr
 ## Expense Category Suggestions
 
 Up to 3 suggestion chips inline in the title `FormFieldCell`. 400ms debounce + immediate on `editingDidEnd`. Min 3 normalized chars. Hidden when: income tab, no title, no category field, unsupported category type, category already set, edit mode without title edit.
+
+## Receipt Scanning
+
+`ReceiptScanCoordinator` orchestrates the flow: file picker → OCR (Vision `VNRecognizeTextRequest` or PDFKit) → Gemini AI parsing. API key stored in Keychain via `GeminiKeychainService` (label `com.notra.gemini`). Default model `gemini-3.5-flash`, configurable in Settings. Pre-Gemini fallback parser `ReceiptParserService` handles local text-only extraction (summary line detection, Walmart format, date parsing). `ReceiptReviewViewController` shows parsed results before saving.
+
+Gemini key entry: if missing, prompts in-app alert → key stored to Keychain → then proceeds to file picker.
 
 ## Split Details
 
@@ -75,13 +81,14 @@ All sections use selected-month data only — no API calls. Section hierarchy: H
 
 ## Theme
 
-`UIUserInterfaceStyle: Light` in Info.plist. `window.overrideUserInterfaceStyle = (AppTheme.currentMode == .dark ? .dark : .light)`. Default mode: `.dark` (AppConstants.swift:105). Warm cream/brown palette. Never hardcode `UIColor.white` for segment text — use `AppTheme.Colors.buttonContent`.
+`UIUserInterfaceStyle: Light` in Info.plist. `window.overrideUserInterfaceStyle = (AppTheme.currentMode == .dark ? .dark : .light)`. Default mode: `.dark` (AppConstants.swift:106). Warm cream/brown palette. Never hardcode `UIColor.white` for segment text — use `AppTheme.Colors.buttonContent`.
 
 ## Persistence
 
-- **UserDefaults** via `UserDefaultsManager`: token, page ID/title.
+- **UserDefaults** via `UserDefaultsManager`: token, page ID/title, Gemini model name.
 - **`ColumnMappingService`** persists roles & mappings under `databaseMappings`/`columnMappings` keys (JSON).
 - **ColumnMapping**: custom `CodingKeys` — decodes old `expenseSplitDetailsProperty` into `expenseAppMetadataProperty`; encodes only the new key.
+- **Keychain**: `GeminiKeychainService` stores Gemini API key.
 
 ## Architecture Notes
 
@@ -102,7 +109,7 @@ print(ColumnMappingService.shared.getSessionSummary())
 print(SessionCacheManager.shared.getTransactionSummary())
 ```
 
-Log prefixes: `[SetupState]`, `[SessionCache]`, `[DataFetcher]`, `[NotionService]`, `[DashboardViewModel]`, `[Analytics]`, `[AddTransactionVM]`, `[AddTransactionVC]`, `[TransactionInsert]`, `[DeepLink]`, `[ExpenseListViewModel]`, `[IncomeListViewModel]`, `[ExpenseFilter]`, `[IncomeFilter]`
+Log prefixes: `[SetupState]`, `[SessionCache]`, `[DataFetcher]`, `[NotionService]`, `[DashboardViewModel]`, `[Analytics]`, `[AddTransactionVM]`, `[AddTransactionVC]`, `[TransactionInsert]`, `[DeepLink]`, `[ExpenseListViewModel]`, `[IncomeListViewModel]`, `[ExpenseFilter]`, `[IncomeFilter]`, `[ReceiptScan]`, `[ReceiptImport]`, `[ReceiptExtraction]`, `[GeminiReceiptParser]`, `[ReceiptReview]`, `[ReceiptValidation]`
 
 ## Dead Code
 

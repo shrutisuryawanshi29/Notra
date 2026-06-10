@@ -401,12 +401,20 @@ final class TransactionNormalizer {
             let relationIds = relation.compactMap { $0.id }
             print("[DEBUG] Found relation with IDs: \(relationIds)")
             if !relationIds.isEmpty {
-                fetchRelationTitles(ids: relationIds) { [weak self] titles in
-                    if !titles.isEmpty {
-                        let category = titles.joined(separator: ", ")
-                        print("[DEBUG] Category from relation: \(category)")
+                let relationDbId = mapping.columnMapping?.categoryRelationDataSourceId ?? ""
+                if let dbLookup = relationLookupMap[relationDbId], !dbLookup.isEmpty {
+                    var names: [String] = []
+                    for relationId in relationIds {
+                        if let name = dbLookup[relationId] {
+                            print("[DEBUG] Resolved category relation ID \(relationId) -> \(name)")
+                            names.append(name)
+                        }
+                    }
+                    if !names.isEmpty {
+                        return names.joined(separator: ", ")
                     }
                 }
+                print("[DEBUG] Relation lookup not available for DB: \(relationDbId)")
             }
         }
 
@@ -414,64 +422,7 @@ final class TransactionNormalizer {
         return nil
     }
 
-    private func fetchRelationTitles(ids: [String], completion: @escaping ([String]) -> Void) {
-        guard !token.isEmpty else {
-            completion([])
-            return
-        }
-
-        var titles: [String] = []
-        let group = DispatchGroup()
-
-        for id in ids {
-            group.enter()
-
-            let baseURL = AppConstants.API.notionBaseURL
-            guard let url = URL(string: "\(baseURL)/pages/\(id)") else {
-                group.leave()
-                continue
-            }
-
-            var request = URLRequest(url: url)
-            request.httpMethod = "GET"
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            request.setValue(AppConstants.API.notionVersion, forHTTPHeaderField: "Notion-Version")
-
-            URLSession.shared.dataTask(with: request) { data, _, error in
-                defer { group.leave() }
-
-                guard error == nil, let data = data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    return
-                }
-
-                if let props = json["properties"] as? [String: Any],
-                   let titleProp = props["Name"] as? [String: Any],
-                   let titleArray = titleProp["title"] as? [[String: Any]] {
-                    for item in titleArray {
-                        if let plainText = item["plain_text"] as? String, !plainText.isEmpty {
-                            titles.append(plainText)
-                            break
-                        }
-                    }
-                } else if let titleProp = json["title"] as? [String: Any],
-                          let titleArray = titleProp["title"] as? [[String: Any]] {
-                    for item in titleArray {
-                        if let plainText = item["plain_text"] as? String, !plainText.isEmpty {
-                            titles.append(plainText)
-                            break
-                        }
-                    }
-                }
-            }.resume()
-        }
-
-        group.notify(queue: .main) {
-            completion(titles)
-        }
-    }
-
-private func extractDate(from row: NotionPage, column: String?) -> Date? {
+    private func extractDate(from row: NotionPage, column: String?) -> Date? {
         guard let column = column, let props = row.properties else { return nil }
 
         if let prop = props[column], let dateObj = prop.date, let start = dateObj.start {

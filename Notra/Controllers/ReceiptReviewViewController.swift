@@ -14,15 +14,76 @@ final class ReceiptReviewViewController: UIViewController {
         b.titleLabel?.font = AppTheme.Fonts.buttonLarge
         b.layer.cornerRadius = AppTheme.CornerRadius.button
         b.translatesAutoresizingMaskIntoConstraints = false
+        b.heightAnchor.constraint(equalToConstant: 50).isActive = true
         return b
     }()
-    private let cancelButton: UIButton = {
+
+    private let categoryTitleLabel: UILabel = {
+        let l = UILabel()
+        l.text = "Category *"
+        l.font = AppTheme.Fonts.captionMedium
+        l.textColor = AppTheme.Colors.textSecondary
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
+    private let categorySelectorButton: UIButton = {
         let b = UIButton(type: .system)
-        b.setTitle("Cancel", for: .normal)
-        b.setTitleColor(AppTheme.Colors.secondaryBrown, for: .normal)
-        b.titleLabel?.font = AppTheme.Fonts.buttonMedium
+        b.backgroundColor = AppTheme.Colors.cardBackground
+        b.layer.cornerRadius = AppTheme.CornerRadius.medium
+        b.layer.borderWidth = 1
+        b.layer.borderColor = AppTheme.Colors.border.cgColor
+        b.contentHorizontalAlignment = .fill
         b.translatesAutoresizingMaskIntoConstraints = false
+        b.heightAnchor.constraint(equalToConstant: 48).isActive = true
+
+        let label = UILabel()
+        label.tag = 1001
+        label.font = AppTheme.Fonts.body
+        label.textColor = AppTheme.Colors.textSecondary
+        label.text = "Select Category"
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+        chevron.tag = 1002
+        chevron.tintColor = AppTheme.Colors.textMuted
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+
+        b.addSubview(label)
+        b.addSubview(chevron)
+
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: b.leadingAnchor, constant: 16),
+            label.centerYAnchor.constraint(equalTo: b.centerYAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: chevron.leadingAnchor, constant: -8),
+
+            chevron.trailingAnchor.constraint(equalTo: b.trailingAnchor, constant: -16),
+            chevron.centerYAnchor.constraint(equalTo: b.centerYAnchor),
+            chevron.widthAnchor.constraint(equalToConstant: 12),
+            chevron.heightAnchor.constraint(equalToConstant: 16)
+        ])
+
         return b
+    }()
+
+    private let helperLabel: UILabel = {
+        let l = UILabel()
+        l.font = AppTheme.Fonts.caption
+        l.textColor = AppTheme.Colors.warning
+        l.numberOfLines = 0
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
+    private let bottomStack: UIStackView = {
+        let s = UIStackView()
+        s.axis = .vertical
+        s.spacing = 8
+        s.translatesAutoresizingMaskIntoConstraints = false
+        s.layoutMargins = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        s.isLayoutMarginsRelativeArrangement = true
+        s.backgroundColor = AppTheme.Colors.background
+        return s
     }()
     private let loadingOverlay: UIView = {
         let v = UIView()
@@ -92,15 +153,32 @@ final class ReceiptReviewViewController: UIViewController {
         tableView.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(tableView)
+        view.addSubview(bottomStack)
         view.addSubview(loadingOverlay)
         loadingOverlay.addSubview(loadingIndicator)
         loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+
+        // Configure bottom stack content
+        categorySelectorButton.addTarget(self, action: #selector(categorySelectorTapped), for: .touchUpInside)
+        createButton.addTarget(self, action: #selector(createTapped), for: .touchUpInside)
+
+        bottomStack.addArrangedSubview(categoryTitleLabel)
+        bottomStack.addArrangedSubview(categorySelectorButton)
+        bottomStack.addArrangedSubview(helperLabel)
+        bottomStack.addArrangedSubview(createButton)
+
+        helperLabel.isHidden = true
+        updateCreateButtonState()
 
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            tableView.bottomAnchor.constraint(equalTo: bottomStack.topAnchor),
+
+            bottomStack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bottomStack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottomStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
 
             loadingOverlay.topAnchor.constraint(equalTo: view.topAnchor),
             loadingOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -118,6 +196,31 @@ final class ReceiptReviewViewController: UIViewController {
 
     @objc private func createTapped() {
         view.endEditing(true)
+
+        if viewModel.isCategoryRequired {
+            guard viewModel.isCategorySelected else {
+                let alert = UIAlertController(
+                    title: "Category Required",
+                    message: "Please select a category before creating expenses.",
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                present(alert, animated: true)
+                return
+            }
+        }
+
+        guard viewModel.mineCount + viewModel.sharedCount > 0 else {
+            let alert = UIAlertController(
+                title: "No Items Selected",
+                message: "Please mark items as Mine or Shared before creating expenses.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
+            return
+        }
+
         loadingOverlay.isHidden = false
         loadingIndicator.startAnimating()
         viewModel.createTransactions { [weak self] result in
@@ -153,6 +256,67 @@ final class ReceiptReviewViewController: UIViewController {
         tableView.reloadSections(IndexSet(integer: Section.summary.rawValue), with: .none)
     }
 
+    @objc private func categorySelectorTapped() {
+        presentCategoryPicker()
+    }
+
+    private func updateCreateButtonState() {
+        let label = categorySelectorButton.viewWithTag(1001) as? UILabel
+        let hasOptions = viewModel.hasCategoryOptions
+        let requiresCategory = viewModel.isCategoryRequired
+
+        if viewModel.isLoadingCategories {
+            label?.text = "Loading categories..."
+            label?.textColor = AppTheme.Colors.textMuted
+            createButton.isEnabled = false
+            createButton.backgroundColor = AppTheme.Colors.expense.withAlphaComponent(0.4)
+            helperLabel.isHidden = true
+        } else if !hasOptions && requiresCategory {
+            label?.text = "No categories found"
+            label?.textColor = AppTheme.Colors.warning
+            createButton.isEnabled = false
+            createButton.backgroundColor = AppTheme.Colors.expense.withAlphaComponent(0.4)
+            helperLabel.isHidden = false
+            helperLabel.text = "Please set up categories first"
+        } else if let name = viewModel.selectedCategoryName, viewModel.isCategorySelected {
+            label?.text = name
+            label?.textColor = AppTheme.Colors.textPrimary
+
+            let enabled = viewModel.canCreateExpenses
+            createButton.isEnabled = enabled
+            createButton.backgroundColor = enabled ? AppTheme.Colors.expense : AppTheme.Colors.expense.withAlphaComponent(0.4)
+            createButton.setTitle(viewModel.createButtonTitle, for: .normal)
+
+            if enabled {
+                helperLabel.isHidden = true
+            } else {
+                helperLabel.isHidden = false
+                helperLabel.text = viewModel.helperText
+            }
+        } else if !requiresCategory {
+            // Non-relation category: show suggestion or placeholder, button enabled based on items
+            let suggested = viewModel.selectedCategoryName
+            label?.text = suggested ?? "Category (optional)"
+            label?.textColor = suggested != nil ? AppTheme.Colors.textPrimary : AppTheme.Colors.textSecondary
+
+            let enabled = viewModel.canCreateExpenses
+            createButton.isEnabled = enabled
+            createButton.backgroundColor = enabled ? AppTheme.Colors.expense : AppTheme.Colors.expense.withAlphaComponent(0.4)
+            createButton.setTitle(viewModel.createButtonTitle, for: .normal)
+            helperLabel.isHidden = true
+        } else {
+            label?.text = "Select Category"
+            label?.textColor = AppTheme.Colors.textSecondary
+
+            createButton.isEnabled = false
+            createButton.backgroundColor = AppTheme.Colors.expense.withAlphaComponent(0.4)
+            createButton.setTitle(viewModel.createButtonTitle, for: .normal)
+
+            helperLabel.isHidden = false
+            helperLabel.text = viewModel.helperText
+        }
+    }
+
     @objc private func addItemTapped() {
         let alert = UIAlertController(title: "Add Item", message: nil, preferredStyle: .alert)
         alert.addTextField { tf in tf.placeholder = "Item name" }
@@ -164,6 +328,7 @@ final class ReceiptReviewViewController: UIViewController {
             guard !name.isEmpty else { return }
             self?.viewModel.addItem(name: name, price: price)
             self?.tableView.reloadData()
+            self?.updateCreateButtonState()
         })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
@@ -178,11 +343,11 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         case header
         case items
         case receiptSummary  // receipt breakdown: subtotal / tax / delivery / tip / total
-        case categoryPicker // category/budget selection for created expenses
+        case categoryPicker  // hidden — handled by bottom bar
         case adjustments     // refunds, weight adjustments, substitutions
         case summary         // split calculation: personal / shared / my share
-        case categories
-        case actions
+        case categories      // tax toggle + split method info
+        case actions         // hidden — handled by bottom bar
     }
 
     func numberOfSections(in tableView: UITableView) -> Int {
@@ -194,11 +359,11 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         case .header: return 1
         case .items: return viewModel.items.isEmpty ? 2 : viewModel.items.count + 1
         case .receiptSummary: return viewModel.hasReceiptSummaryData ? 1 : 0
-        case .categoryPicker: return viewModel.hasCategoryOptions ? 1 : 0
+        case .categoryPicker: return 0
         case .adjustments: return viewModel.hasAdjustments ? viewModel.adjustments.count : 0
         case .summary: return 1
         case .categories: return viewModel.hasTax ? 2 : 1
-        case .actions: return 1
+        case .actions: return 0
         case .none: return 0
         }
     }
@@ -214,8 +379,8 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
             return configureItemCell(tableView, at: indexPath)
         case .receiptSummary:
             return configureReceiptSummaryCell(tableView, at: indexPath)
-        case .categoryPicker:
-            return configureCategoryCell(tableView, at: indexPath)
+        case .categoryPicker, .actions:
+            return UITableViewCell()
         case .adjustments:
             return configureAdjustmentCell(tableView, at: indexPath)
         case .summary:
@@ -225,8 +390,6 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
                 return configureTaxToggleCell(tableView, at: indexPath)
             }
             return configureActionsCell(tableView, at: indexPath)
-        case .actions:
-            return configureCreateCell(tableView, at: indexPath)
         case .none:
             return UITableViewCell()
         }
@@ -288,6 +451,7 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
                 let itemRow = IndexPath(row: indexPath.row, section: Section.items.rawValue)
                 self.tableView.reconfigureRows(at: [itemRow])
                 self.tableView.reloadSections(IndexSet(integer: Section.summary.rawValue), with: .none)
+                self.updateCreateButtonState()
             }
         }
         cell.onNameEdit = { [weak self] name in
@@ -299,6 +463,7 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         cell.onDelete = { [weak self] in
             self?.viewModel.deleteItem(itemId: item.id)
             tableView.reloadData()
+            self?.updateCreateButtonState()
         }
         return cell
     }
@@ -334,18 +499,6 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         return cell
     }
 
-    private func configureCategoryCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "ActionCell", for: indexPath) as! ActionCell
-        if let name = viewModel.selectedCategoryName {
-            cell.configure(title: "Category: \(name)", icon: "tag.fill")
-        } else if viewModel.isLoadingCategories {
-            cell.configure(title: "Loading categories...", icon: "hourglass")
-        } else {
-            cell.configure(title: "Select Category (required)", icon: "tag")
-        }
-        return cell
-    }
-
     private func configureActionsCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "ActionCell", for: indexPath) as! ActionCell
         if viewModel.hasTax && !viewModel.includeTaxProportionally {
@@ -358,69 +511,40 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         return cell
     }
 
-    private func configureCreateCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "ActionCell", for: indexPath) as! ActionCell
-        let hasPersonal = viewModel.hasPersonalItems
-        let hasShared = viewModel.hasSharedItems
-        let noItems = !hasPersonal && !hasShared
-
-        // Check if category is required but missing — block creation
-        let categoryMissing = viewModel.isRelationCategory && viewModel.selectedCategoryId == nil
-        let isLoadingCat = viewModel.isLoadingCategories && viewModel.isRelationCategory
-
-        if isLoadingCat {
-            cell.configure(title: "Loading categories...", icon: "hourglass", isAction: false)
-        } else if categoryMissing {
-            cell.configure(title: "Select a category required", icon: "exclamationmark.triangle", isAction: false)
-        } else if noItems {
-            cell.configure(title: "Nothing to create", icon: "xmark.circle", isAction: false)
-        } else if hasPersonal && hasShared {
-            cell.configure(title: "Create 2 Expenses (Personal + Shared)", icon: "checkmark.circle.fill", isAction: true)
-        } else if hasPersonal {
-            cell.configure(title: "Create 1 Personal Expense", icon: "checkmark.circle.fill", isAction: true)
-        } else if hasShared {
-            cell.configure(title: "Create 1 Shared Expense", icon: "checkmark.circle.fill", isAction: true)
-        }
-        return cell
-    }
-
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        switch Section(rawValue: indexPath.section) {
-        case .items:
-            if indexPath.row == 0 {
-                addItemTapped()
-            }
-        case .categoryPicker:
-            presentCategoryPicker()
-        case .actions:
-            // Option A: block tap when category is required but missing (no alert shown)
-            guard !viewModel.isCategoryRequiredAndMissing else { return }
-            guard !viewModel.isLoadingCategories else { return }
-            createTapped()
-        default:
-            break
+        if indexPath.section == Section.items.rawValue && indexPath.row == 0 {
+            addItemTapped()
         }
     }
 
     private func presentCategoryPicker() {
         let options = viewModel.categoryOptions
-        guard !options.isEmpty else {
+
+        if viewModel.isLoadingCategories {
             let alert = UIAlertController(title: "Categories", message: "Loading category options...", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .default))
             present(alert, animated: true)
             return
         }
+
+        guard !options.isEmpty else {
+            let alert = UIAlertController(title: "No Categories", message: "Could not load categories. Please try again.", preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
+            return
+        }
+
         let alert = UIAlertController(title: "Select Category", message: nil, preferredStyle: .actionSheet)
         for option in options {
             alert.addAction(UIAlertAction(title: option.title, style: .default) { [weak self] _ in
                 self?.viewModel.selectCategory(id: option.id, name: option.title)
-                self?.tableView.reloadSections(IndexSet(integer: Section.categoryPicker.rawValue), with: .none)
+                self?.updateCreateButtonState()
             })
         }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         if let popover = alert.popoverPresentationController {
-            popover.sourceView = tableView
-            popover.sourceRect = tableView.bounds
+            popover.sourceView = categorySelectorButton
+            popover.sourceRect = categorySelectorButton.bounds
         }
         present(alert, animated: true)
     }
@@ -431,6 +555,7 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
 extension ReceiptReviewViewController: ReceiptReviewViewModelDelegate {
     func didUpdateSummary() {
         tableView.reloadSections(IndexSet(integer: Section.summary.rawValue), with: .none)
+        updateCreateButtonState()
     }
 
     func didStartCreatingTransactions() {
@@ -457,7 +582,7 @@ extension ReceiptReviewViewController: ReceiptReviewViewModelDelegate {
     }
 
     func didLoadCategoryOptions() {
-        tableView.reloadSections(IndexSet(integer: Section.categoryPicker.rawValue), with: .none)
+        updateCreateButtonState()
     }
 }
 
