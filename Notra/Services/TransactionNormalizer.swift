@@ -249,6 +249,7 @@ final class TransactionNormalizer {
                 continue
             }
 
+            let version = json["version"] as? Int
             let paid = split["paidAmount"] as? Double ?? 0
             let myShare = split["myShare"] as? Double ?? 0
             let theyOwe = split["theyOwe"] as? Double ?? max(paid - myShare, 0)
@@ -268,6 +269,44 @@ final class TransactionNormalizer {
                 inputs = nil
             }
 
+            // Parse version 2 participant & item metadata
+            var participants: [SplitParticipant]?
+            if let rawParticipants = split["participants"] as? [[String: Any]] {
+                participants = rawParticipants.compactMap { p in
+                    guard let pid = p["id"] as? String,
+                          let name = p["name"] as? String else { return nil }
+                    return SplitParticipant(
+                        id: pid,
+                        name: name,
+                        owes: p["owes"] as? Double ?? 0,
+                        status: p["status"] as? String,
+                        settledAt: p["settledAt"] as? String
+                    )
+                }
+            }
+
+            var splitItems: [SplitItem]?
+            if let rawItems = split["items"] as? [[String: Any]] {
+                splitItems = rawItems.compactMap { i in
+                    guard let name = i["name"] as? String else { return nil }
+                    let price = i["price"] as? Double ?? 0
+                    let assignment = i["assignment"] as? String ?? "mine"
+                    let sw = i["sharedWith"] as? [String] ?? []
+                    return SplitItem(name: name, price: price, assignment: assignment, sharedWith: sw)
+                }
+            }
+
+            var receiptMeta: ReceiptScanMetadata?
+            if let receipt = json["receipt"] as? [String: Any],
+               let source = receipt["source"] as? String {
+                receiptMeta = ReceiptScanMetadata(
+                    source: source,
+                    merchant: receipt["merchant"] as? String,
+                    itemCount: receipt["itemCount"] as? Int ?? 0,
+                    originalTotal: receipt["originalTotal"] as? Double
+                )
+            }
+
             guard paid > 0 else {
                 #if DEBUG
                 print("[SplitDetailsParser] paidAmount <= 0, skipping")
@@ -276,7 +315,7 @@ final class TransactionNormalizer {
             }
 
             #if DEBUG
-            print("[SplitDetailsParser] Parsed isSplit: true, paidAmount: \(paid), myShare: \(myShare), theyOwe: \(theyOwe), type: \(type ?? "nil"), status: \(status ?? "nil"), splitWith: \(splitWith ?? "nil"), inputs: \(rawInputs ?? [:])")
+            print("[SplitDetailsParser] Parsed isSplit: true, version: \(version ?? 1), paidAmount: \(paid), myShare: \(myShare), theyOwe: \(theyOwe), type: \(type ?? "nil"), status: \(status ?? "nil"), splitWith: \(splitWith ?? "nil"), participants: \(participants?.count ?? 0), items: \(splitItems?.count ?? 0)")
             #endif
 
             return SplitMetadata(
@@ -287,7 +326,11 @@ final class TransactionNormalizer {
                 type: type,
                 status: status,
                 splitWith: splitWith,
-                inputs: inputs
+                inputs: inputs,
+                version: version,
+                participants: participants,
+                items: splitItems,
+                receiptMetadata: receiptMeta
             )
         }
 

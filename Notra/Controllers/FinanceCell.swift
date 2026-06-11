@@ -168,13 +168,23 @@ class FinanceCell: UITableViewCell {
             if !contentStack.arrangedSubviews.contains(paidAmountLabel) {
                 contentStack.addArrangedSubview(paidAmountLabel)
             }
-            let paidStr = Self.currencyFormatter.string(from: NSNumber(value: expense.paidAmount ?? expense.effectiveAmount)) ?? "$0"
-            let owedStr = Self.currencyFormatter.string(from: NSNumber(value: expense.reimbursementAmount)) ?? "$0"
-            let typeName = expense.splitMetadata?.displayTypeName ?? ""
-            if !typeName.isEmpty {
-                paidAmountLabel.text = "Split · \(typeName)\nPaid \(paidStr) · Owed \(owedStr)"
+            if let split = expense.splitMetadata, split.isMultiPersonReceipt {
+                if let subtitle = split.multiPersonSubtitle {
+                    paidAmountLabel.text = "Split · \(subtitle)"
+                } else {
+                    let paidStr = Self.currencyFormatter.string(from: NSNumber(value: expense.paidAmount ?? expense.effectiveAmount)) ?? "$0"
+                    let owedStr = Self.currencyFormatter.string(from: NSNumber(value: expense.reimbursementAmount)) ?? "$0"
+                    paidAmountLabel.text = "Split\nPaid \(paidStr) · Owed \(owedStr)"
+                }
             } else {
-                paidAmountLabel.text = "Split\nPaid \(paidStr) · Owed \(owedStr)"
+                let paidStr = Self.currencyFormatter.string(from: NSNumber(value: expense.paidAmount ?? expense.effectiveAmount)) ?? "$0"
+                let owedStr = Self.currencyFormatter.string(from: NSNumber(value: expense.reimbursementAmount)) ?? "$0"
+                let typeName = expense.splitMetadata?.displayTypeName ?? ""
+                if !typeName.isEmpty {
+                    paidAmountLabel.text = "Split · \(typeName)\nPaid \(paidStr) · Owed \(owedStr)"
+                } else {
+                    paidAmountLabel.text = "Split\nPaid \(paidStr) · Owed \(owedStr)"
+                }
             }
             paidAmountLabel.isHidden = false
             contentStack.setCustomSpacing(6, after: titleLabel)

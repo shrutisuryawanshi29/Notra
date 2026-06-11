@@ -428,8 +428,10 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
     private func configurePeopleCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "PeopleCell", for: indexPath) as! PeopleCell
         let people = viewModel.splitPeople
+        let maxWidth = tableView.bounds.width - 48
         cell.configure(
             people: people,
+            maxWidth: maxWidth,
             onAdd: { [weak self] name in
                 self?.viewModel.addPerson(name: name)
                 tableView.reloadSections(IndexSet(integer: Section.people.rawValue), with: .none)
@@ -768,6 +770,15 @@ fileprivate class ReceiptItemCell: UITableViewCell, UITextViewDelegate {
     private let peopleLabel = UILabel()
     private let peopleChipStack = UIStackView()
     private let peopleContainer = UIStackView()
+    private let inlineWarningLabel: UILabel = {
+        let l = UILabel()
+        l.text = "Select at least one person"
+        l.font = AppTheme.Fonts.small
+        l.textColor = AppTheme.Colors.warning
+        l.isHidden = true
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
 
     private var itemId: String?
     private var availablePeople: [SplitPerson] = []
@@ -887,6 +898,7 @@ fileprivate class ReceiptItemCell: UITableViewCell, UITextViewDelegate {
         mainStack.addArrangedSubview(nameTextView)
         mainStack.addArrangedSubview(bottomRow)
         mainStack.addArrangedSubview(chipStack)
+        mainStack.addArrangedSubview(inlineWarningLabel)
         mainStack.addArrangedSubview(peopleContainer)
 
         containerView.addSubview(mainStack)
@@ -923,6 +935,13 @@ fileprivate class ReceiptItemCell: UITableViewCell, UITextViewDelegate {
         availablePeople = available
         selectedPersonIds = selectedIds
         peopleContainer.isHidden = !isVisible
+
+        // Show inline warning for shared items with no selected people
+        if isVisible && selectedIds.isEmpty && !available.isEmpty {
+            inlineWarningLabel.isHidden = false
+        } else {
+            inlineWarningLabel.isHidden = true
+        }
 
         peopleChipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard isVisible else { return }
@@ -1336,9 +1355,9 @@ fileprivate class PeopleCell: UITableViewCell {
         titleLabel.font = AppTheme.Fonts.captionMedium
         titleLabel.textColor = AppTheme.Colors.textSecondary
 
-        chipsStack.axis = .horizontal
+        chipsStack.axis = .vertical
         chipsStack.spacing = 8
-        chipsStack.alignment = .center
+        chipsStack.alignment = .leading
 
         addButton.setTitle("+ Add Person", for: .normal)
         addButton.titleLabel?.font = AppTheme.Fonts.bodyMedium
@@ -1365,11 +1384,23 @@ fileprivate class PeopleCell: UITableViewCell {
         ])
     }
 
-    func configure(people: [SplitPerson], onAdd: @escaping (String) -> Void, onDelete: @escaping (String) -> Void) {
+    func configure(people: [SplitPerson], maxWidth: CGFloat = 300, onAdd: @escaping (String) -> Void, onDelete: @escaping (String) -> Void) {
         self.onAdd = onAdd
         self.onDelete = onDelete
 
         chipsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        if people.isEmpty {
+            chipsStack.isHidden = true
+            return
+        }
+
+        // Lay out chips with wrapping
+        var currentRow = UIStackView()
+        currentRow.axis = .horizontal
+        currentRow.spacing = 8
+        currentRow.alignment = .center
+        var rowWidth: CGFloat = 0
 
         for person in people {
             let chip = UIButton(type: .system)
@@ -1392,10 +1423,24 @@ fileprivate class PeopleCell: UITableViewCell {
             chip.menu = menu
             chip.showsMenuAsPrimaryAction = true
 
-            chipsStack.addArrangedSubview(chip)
+            let chipWidth = person.name.size(withAttributes: [.font: AppTheme.Fonts.buttonSmall]).width + 20 + 20
+            if rowWidth + chipWidth + 8 > maxWidth && rowWidth > 0 {
+                chipsStack.addArrangedSubview(currentRow)
+                currentRow = UIStackView()
+                currentRow.axis = .horizontal
+                currentRow.spacing = 8
+                currentRow.alignment = .center
+                rowWidth = 0
+            }
+            currentRow.addArrangedSubview(chip)
+            rowWidth += chipWidth + 8
         }
 
-        chipsStack.isHidden = people.isEmpty
+        if currentRow.arrangedSubviews.count > 0 {
+            chipsStack.addArrangedSubview(currentRow)
+        }
+
+        chipsStack.isHidden = false
     }
 
     @objc private func addTapped() {

@@ -23,24 +23,22 @@ Only `DashboardViewModel` calls the Notion API directly; setup screens read from
 
 ## Gotchas
 
-Canonical list of patterns an agent would likely miss or reintroduce:
-
-- **No `convertFromSnakeCase`**: Every `JSONDecoder()` uses default config. All `CodingKeys` must manually map snake_case keys (e.g. `"rich_text"` → `richText`). Missing this caused `NotionPropertyValue.richText` to always be `nil`.
-- **Date-only strings shift tz**: Parsing "2024-01-15" with `ISO8601DateFormatter` yields midnight UTC → previous day in local tz. Use `DateComponents` with `hour=12` local (`TransactionNormalizer.extractDate()`).
+- **No `convertFromSnakeCase`**: Every `JSONDecoder()` uses default config. All `CodingKeys` must manually map snake_case keys (e.g. `"rich_text"` → `richText`).
+- **Date-only strings**: Parse with `DateComponents` + `hour=12` local (`TransactionNormalizer.extractDate()`). `ISO8601DateFormatter` shifts to previous day in local tz.
 - **Number parsing**: Strip commas via `replacingOccurrences(of: ",", with: "")` — do NOT replace commas with dots.
-- **PATCH returns updated page**: `updateTransaction` must return `NotionPage` from PATCH response so re-edits show fresh values. Parse in `buildUpdatedTransaction(from:updatedPage:)`.
-- **Cache on create**: New transactions must be manually added to `SessionCacheManager` (`addExpense`/`addIncome`) in `showSuccess()` via `lastCreatedPage`.
-- **iOS 26 `performBatchUpdates` crash**: `tableView.reloadRows()` wraps in `performBatchUpdates` on iOS 26, conflicting with `UIDatePicker.compact`. Avoid row count changes in `performBatchUpdates` blocks. Use `performBatchUpdates(nil)` only for height recalculation.
-- **Budget over-budget check**: `GroupedTransactionSection.swift:354` — use `pct > 1.0` (not `>= 1.0`) to trigger over-budget state.
+- **PATCH returns updated page**: `updateTransaction` must return `NotionPage` from PATCH response. Parse in `buildUpdatedTransaction(from:updatedPage:)`.
+- **Cache on create**: New transactions must be manually added to `SessionCacheManager` (`addExpense`/`addIncome`) via `lastCreatedPage`.
+- **iOS 26 `performBatchUpdates` crash**: Avoid row count changes in `performBatchUpdates` blocks. Use only for height recalculation.
+- **Budget over-budget check**: `GroupedTransactionSection.swift:354` — use `pct > 1.0` (not `>= 1.0`).
 - **Sub-1% formatting**: Use explicit `"<1%"` string. `maximumFractionDigits=0` rounds <0.5% to `"0%"`.
-- **Mapping cell info icon recycling**: `MappingCell.configure()` must `infoButton.isHidden = true` at start. Otherwise recycled `.appMetadata` cells keep the icon visible on standard rows.
-- **Split metadata column type**: Column picker filter for `.appMetadata` must accept both `"rich_text"` and `"text"` since Notion API may return either.
-- **Suggestions embedded in title cell**: Suggestion chips live inside `FormFieldCell`, not a separate table row. No `tableView.reloadData()`/`reloadRows()` for suggestion lifecycle — only `cell.updateSuggestions()`.
-- **`tableView.reloadData()` not synchronous**: Month classification auto-select must fire in `cellForRowAt` (check `viewModel.fieldValues[field.propertyName]`), not `viewDidLoad`.
+- **Mapping cell info icon recycling**: `MappingCell.configure()` must `infoButton.isHidden = true` at start.
+- **Split metadata column type**: Filter `.appMetadata` for both `"rich_text"` and `"text"`.
+- **Suggestions inline in title cell**: No `reloadData()`/`reloadRows()` for suggestion lifecycle — only `cell.updateSuggestions()`.
+- **`tableView.reloadData()` not synchronous**: Month classification auto-select must fire in `cellForRowAt`, not `viewDidLoad`.
 
 ## Edit & Delete
 
-Triggered from `TransactionDetailViewController`. Edit: `AddTransactionViewController` init with `editingTransaction`; ViewModel `applyEditPrefill(columnMapping:)`. Save via `TransactionInsertService.updateTransaction(pageId:)` (PATCH returns updated `NotionPage`), then cache `replaceExpense`/`replaceIncome`. Delete: confirmation → `NotionService.trashPage(pageId:)` (PATCH `in_trash: true`), then cache remove helpers.
+Triggered from `TransactionDetailViewController`. Edit: `AddTransactionViewController` init with `editingTransaction`; VM `applyEditPrefill(columnMapping:)`. Save via `TransactionInsertService.updateTransaction(pageId:)` (PATCH), then cache `replaceExpense`/`replaceIncome`. Delete: confirmation → `NotionService.trashPage(pageId:)` (PATCH `in_trash: true`), then cache remove helpers.
 
 ## Cache
 
@@ -52,89 +50,45 @@ Up to 3 suggestion chips inline in the title `FormFieldCell`. 400ms debounce + i
 
 ## Receipt Scanning
 
-`ReceiptScanCoordinator` orchestrates the flow: file picker → OCR (Vision `VNRecognizeTextRequest` or PDFKit) → Gemini AI parsing. API key stored in Keychain via `GeminiKeychainService` (label `com.notra.gemini`). Default model `gemini-3.5-flash`, configurable in Settings. Pre-Gemini fallback parser `ReceiptParserService` handles local text-only extraction (summary line detection, Walmart format, date parsing). `ReceiptReviewViewController` shows parsed results before saving.
+`ReceiptScanCoordinator`: file picker → OCR (Vision `VNRecognizeTextRequest` or PDFKit) → Gemini AI parsing. API key in Keychain via `GeminiKeychainService` (label `com.notra.gemini`). Default model `gemini-3.5-flash`. Available: `gemini-2.0-flash`, `gemini-3.5-flash` (Settings picker). Fallback `ReceiptParserService` for local text-only extraction. `ReceiptReviewViewController` shows results before saving. If key missing, in-app alert → Keychain → file picker.
 
-Gemini key entry: if missing, prompts in-app alert → key stored to Keychain → then proceeds to file picker.
+## Multi-Person Receipt Split
 
-## Multi-Person Receipt Split (Phase 1)
+`SplitPeopleStore` singleton (UserDefaults key `notraSplitPeople`) manages `SplitPerson(id, name)`.
 
-`SplitPeopleStore` (singleton, UserDefaults persistence via `notraSplitPeople` key) manages `SplitPerson` models (`id: String`, `name: String`). Methods: `getPeople()`, `addPerson(name:)`, `deletePerson(id:)`, `updatePersonName(id:name:)`.
+`GeminiReceiptItem.sharedWith: [String]` holds person IDs. Items classified: `mine`, `shared`, `ignore`.
 
-`GeminiReceiptItem.sharedWith: [String]` holds person IDs for shared items. Default empty.
-
-### Receipt Review — Multi-Person Flow
-
-- If any Shared items exist: creates ONE combined `"<Merchant> Receipt"` expense with version 2 split metadata.
-- If only Mine items: creates one normal expense (no split metadata).
-- Shared items must have at least one selected person; validation blocks save otherwise.
-- Personal-only and multi-person receipt both use the title `"<Merchant> Receipt"` (not `"<Merchant> - Personal"`).
-
-### Settlement Calculation
-
-`multiPersonSettlement` computed property in `ReceiptReviewViewModel`:
-- Mine items: full price allocated to `myShare`.
-- Shared items: split equally among `1 + sharedWith.count` participants.
-- Tax allocated proportionally when `includeTaxProportionally` is ON.
-- Returns `(myShare, theyOwe, personOwes: [personId: amount])`.
-
-Properties: `myShare`, `theyOwe`, `personOwes` (array of `(name, amount)` tuples), `includedTotal`, `totalCounted` (= `myShare` for multi-person).
-
-### UI Layout (ReceiptItemCell)
-
-Inside each item card, top-to-bottom:
-1. Item name (UITextView)
-2. Price + delete button row
-3. Mine / Shared / Ignore chips
-4. "Shared with:" + person chips (only visible when Shared is selected)
-
-Person chips are tappable toggle buttons, sized intrinsically via `contentEdgeInsets`.
-
-### Split Metadata Version 2
-
-`buildMultiPersonSplitMetadataJSON()` in `ReceiptReviewViewModel`:
-
-```json
-{
-  "version": 2,
-  "split": {
-    "enabled": true, "status": "pending", "type": "receiptMultiPerson",
-    "paidAmount": 72.08, "myShare": 45.00, "theyOwe": 27.08,
-    "participants": [{ "id": "uuid", "name": "Person A", "owes": 12.50 }],
-    "items": [{ "name": "Milk", "price": 4.00, "assignment": "mine", "sharedWith": [] }],
-    "inputs": {}
-  },
-  "receipt": { "source": "geminiReceiptScan", "merchant": "Walmart", "itemCount": 5 }
-}
-```
-
-Version 1 (`buildSplitMetadataJSON`, used historically for single-person Shared) still exists but is no longer called for new receipts.
+- Shared items → ONE combined `"<Merchant> Receipt"` expense with version 2 split metadata.
+- All mine → one normal expense (no split metadata).
+- Shared items must have ≥1 selected person; validation blocks save.
+- `multiPersonSettlement` computed prop: mine full price → `myShare`; shared split equally among `1 + sharedWith.count` participants; tax proportional if `includeTaxProportionally`. Returns `(myShare, theyOwe, personOwes: [personId: amount])`.
+- Split metadata version 2 (`buildMultiPersonSplitMetadataJSON`): contains `version: 2`, `split { enabled, status: "pending", type: "receiptMultiPerson", paidAmount, myShare, theyOwe, participants, items, inputs }`, `receipt { source, merchant, itemCount }`. Version 1 (`buildSplitMetadataJSON`) still exists but unused for new receipts.
 
 ### Key Gotchas
 
-- **`table.contentInset.bottom`**: Must match bottom bar height (50 + 48 + 8 + 8 + 16) so items scroll above category/create footer.
-- **Empty section gaps**: `heightForHeaderInSection`/`heightForFooterInSection` return 0 for sections with 0 rows to avoid blank gaps in `.insetGrouped` table.
+- **Bottom inset**: `table.contentInset.bottom` must equal bottom bar height (`50 + 48 + 8 + 8 + 16`).
+- **Empty sections**: `heightForHeaderInSection`/`heightForFooterInSection` return 0 when 0 rows to avoid gaps in `.insetGrouped`.
 - **`displayMerchant`**: Guards `merchant != platform` to avoid "Walmart via Walmart".
-- **Warning dedup**: Subtotal mismatch warning checks `warnings.contains` before appending.
-- **Create button**: `hasSharedItems` → "Create Split Expense"; personal-only → "Create 1 Expense".
+- **Warning dedup**: Subtotal mismatch checks `warnings.contains` before appending.
+- **Create button label**: `hasSharedItems` → "Create Split Expense"; personal-only → "Create 1 Expense".
 
 ## Split Details
 
-Optional `expenseAppMetadataProperty` (Text column in Expense DB) stores JSON `SplitMetadata`. Notion API type is `rich_text`; filter both `"rich_text"` and `"text"`. Decodes old `expenseSplitDetailsProperty` key. Skipped from Add Transaction form. Split works unmapped with warning toast.
+Optional `expenseAppMetadataProperty` (Text/rich_text column) stores `SplitMetadata` JSON. Decodes old `expenseSplitDetailsProperty` key. Skipped from Add Transaction form. Works unmapped with warning toast.
 
-`SplitMetadata` holds `enabled`, `paidAmount`, `myShare`, `theyOwe`, `type`, `status`, `splitWith`, `inputs`. `SplitMethodType`: `splitEqually`, `exactAmounts`, `percent`, `shares`, `adjustment`. Legacy `"50/50"` → `splitEqually`, `"Custom Amount"` → `exactAmounts` via `fromLegacy()`.
+SplitMethodType: `splitEqually`, `exactAmounts`, `percent`, `shares`, `adjustment`. Legacy `"50/50"` → `splitEqually`, `"Custom Amount"` → `exactAmounts` via `fromLegacy()`.
 
-- **UI**: 2x2 method chip grid in `SplitDetailCell`. Equal → summary tiles. Exact → dual side-by-side fields (recursion via `activeFieldTag` + `isUpdatingProgrammatically`). Percent → side-by-side + inline result. Adjust → toggle + amount + inline result. All in `bottomStack` (UIStackView, auto-collapses hidden subviews).
-- **Detail screen**: Two-column stat tile grid in `TransactionDetailViewController`. Rows: Counted/Paid, Owed/Status. Bottom: Method, Split with.
-- **List display**: Two-line `"Split · {Method}\nPaid $X.XX · Owed $X.XX"` in `FinanceCell.paidAmountLabel`. `paidAmountLabel` physically removed from `contentStack.arrangedSubviews` for non-split (no residual gap), re-added only for split.
-- **Info sheet**: `SplitHelpViewController` presented as `.overFullScreen` with cross-dissolve.
+- **UI**: 2x2 method chip grid in `SplitDetailCell`. Bottom stack auto-collapses hidden subviews.
+- **List display**: `paidAmountLabel` physically removed from `contentStack.arrangedSubviews` for non-split, re-added for split only.
+- **Info sheet**: `SplitHelpViewController` presented `.overFullScreen` with cross-dissolve.
 
 ## Dashboard
 
-All sections use selected-month data only — no API calls. Section hierarchy: Hero → Overview → Monthly Status → Monthly Budget (tappable, push ExpenseList) → Recent Activity → Quick Checks → Explore. `sectionSpacing = 28`. FAB: full-screen. Budget auto-detects number properties in category DB by keyword scoring; groups expenses by category relation ID.
+All sections use selected-month data only — no API calls. Hierarchy: Hero → Overview → Monthly Status → Monthly Budget (tappable, push ExpenseList) → Recent Activity → Quick Checks → Explore. `sectionSpacing = 28`. Budget auto-detects number properties in category DB by keyword scoring; groups expenses by category relation ID.
 
 ## Filter System
 
-`FilterPanelViewController` (modal) → `FilterPanelViewModel` → `FilterEngine` (AND-logic on `rawProperties`). Post-filter search via `LocalSearchService`. `.between` excluded from date properties; date pickers handled by separate From/To inline date pickers.
+`FilterPanelViewController` (modal) → `FilterPanelViewModel` → `FilterEngine` (AND-logic on `rawProperties`). Post-filter search via `LocalSearchService`. `.between` excluded from date properties; From/To inline date pickers instead.
 
 ## Deep Links
 
@@ -142,26 +96,26 @@ All sections use selected-month data only — no API calls. Section hierarchy: H
 
 ## Theme
 
-`UIUserInterfaceStyle: Light` in Info.plist. `window.overrideUserInterfaceStyle = (AppTheme.currentMode == .dark ? .dark : .light)`. Default mode: `.dark` (AppConstants.swift:106). Warm cream/brown palette. Never hardcode `UIColor.white` for segment text — use `AppTheme.Colors.buttonContent`.
+`UIUserInterfaceStyle: Light` in Info.plist. `window.overrideUserInterfaceStyle = (AppTheme.currentMode == .dark ? .dark : .light)`. Default mode: `.dark` (`AppConstants.swift:106`). Warm cream/brown palette. Never hardcode `UIColor.white` for segment text — use `AppTheme.Colors.buttonContent`.
 
 ## Persistence
 
 - **UserDefaults** via `UserDefaultsManager`: token, page ID/title, Gemini model name.
-- **`ColumnMappingService`** persists roles & mappings under `databaseMappings`/`columnMappings` keys (JSON).
-- **ColumnMapping**: custom `CodingKeys` — decodes old `expenseSplitDetailsProperty` into `expenseAppMetadataProperty`; encodes only the new key.
+- **`ColumnMappingService`**: JSON under `databaseMappings`/`columnMappings` keys.
+- **ColumnMapping**: custom `CodingKeys` — decodes old `expenseSplitDetailsProperty` into `expenseAppMetadataProperty`; encodes only new key.
 - **Keychain**: `GeminiKeychainService` stores Gemini API key.
 
 ## Architecture Notes
 
-- **AnalyticsViewController**: ~3000 lines — all chart views inline. USD hardcoded. Top 6 + "Other" in donut. Zero API calls.
-- **NotionService**: Two API versions — standard uses `2022-06-28` (`AppConstants.API.notionVersion`), data source APIs hardcode `2025-09-03`.
-- **NotionDataFetcher**: Three-tier fallback: (1) data source API → (2) search → (3) direct DB query. Pagination (`page_size=100`).
+- **AnalyticsViewController**: ~3000 lines, all chart views inline. USD hardcoded. Top 6 + "Other" in donut. Zero API calls.
+- **NotionService**: Two API versions — standard `2022-06-28`, data source APIs hardcode `2025-09-03`.
+- **NotionDataFetcher**: Three-tier fallback: data source API → search → direct DB query. `page_size=100`.
 - **CategoryParserService**: First 100 rows only (no pagination).
-- **TransactionNormalizer**: Amounts are `abs()`'d. Deduplicates by page id. Relation category resolution uses `relationLookupMap`.
-- **DatabaseDiscoveryService**: Searches ALL accessible databases via `POST /search`. Manually adds `"title"` property if missing.
+- **TransactionNormalizer**: Amounts `abs()`'d. Deduplicates by page id. Relation resolution via `relationLookupMap`.
+- **DatabaseDiscoveryService**: Searches ALL accessible databases via `POST /search`. Adds `"title"` property if missing.
 - **NotionService.fetchTopLevelPages**: Only workspace-level pages (`parent.type == "workspace"`).
 - **DynamicFormValue.isEmpty**: For `.checkbox`, always `false`.
-- **Table views**: `.plain` except `AddTransaction`, `Settings`, and `FilterPanel` which use `.insetGrouped`.
+- **Table views**: `.plain` except `AddTransaction`, `Settings`, `FilterPanel` (`.insetGrouped`).
 
 ## Debug
 

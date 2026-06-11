@@ -483,6 +483,28 @@ final class ReceiptReviewViewModel {
                 let splitWithStr = settlement.personOwes.keys.compactMap { pid in
                     people.first(where: { $0.id == pid })?.name
                 }.joined(separator: ", ")
+
+                let participants: [SplitParticipant] = settlement.personOwes.compactMap { pid, owes in
+                    guard let person = people.first(where: { $0.id == pid }) else { return nil }
+                    return SplitParticipant(id: pid, name: person.name, owes: owes, status: "pending", settledAt: nil)
+                }
+
+                let items: [SplitItem] = receiptResult.items.map { item in
+                    SplitItem(
+                        name: item.name,
+                        price: item.finalPrice,
+                        assignment: item.classification.rawValue,
+                        sharedWith: item.sharedWith
+                    )
+                }
+
+                let receiptMeta = ReceiptScanMetadata(
+                    source: "geminiReceiptScan",
+                    merchant: merchant,
+                    itemCount: items.count,
+                    originalTotal: receiptResult.summary.totalCharged ?? receiptResult.summary.total
+                )
+
                 let splitMeta = SplitMetadata(
                     enabled: true,
                     paidAmount: paidAmount,
@@ -491,7 +513,11 @@ final class ReceiptReviewViewModel {
                     type: "receiptMultiPerson",
                     status: "pending",
                     splitWith: splitWithStr.isEmpty ? nil : splitWithStr,
-                    inputs: nil
+                    inputs: nil,
+                    version: 2,
+                    participants: participants.isEmpty ? nil : participants,
+                    items: items.isEmpty ? nil : items,
+                    receiptMetadata: receiptMeta
                 )
                 let tx = NormalizedTransaction(
                     id: page.id,

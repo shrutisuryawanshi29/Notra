@@ -245,7 +245,7 @@ class TransactionDetailViewController: UIViewController {
 
         let overallStack = UIStackView()
         overallStack.axis = .vertical
-        overallStack.spacing = 10
+        overallStack.spacing = 12
         overallStack.translatesAutoresizingMaskIntoConstraints = false
         splitContainer.addSubview(overallStack)
 
@@ -294,6 +294,80 @@ class TransactionDetailViewController: UIViewController {
             overallStack.addArrangedSubview(splitWithRow)
         }
 
+        // Phase 2: Multi-person receipt split breakdown
+        if let split = transaction.splitMetadata, split.isMultiPersonReceipt {
+            overallStack.addArrangedSubview(makeSectionSeparator())
+
+            // Participants
+            if let participants = split.participants, !participants.isEmpty {
+                let peopleHeader = UILabel()
+                peopleHeader.text = "People"
+                peopleHeader.font = AppTheme.Fonts.captionBold
+                peopleHeader.textColor = AppTheme.Colors.textPrimary
+                overallStack.addArrangedSubview(peopleHeader)
+
+                for p in participants {
+                    let name = p.name
+                    let owes = Self.currencyFormatter.string(from: NSNumber(value: p.owes)) ?? "$0.00"
+                    let row = makeDetailRow(label: name, value: "Owes: \(owes)")
+                    overallStack.addArrangedSubview(row)
+                }
+            }
+
+            // Items
+            if let items = split.items, !items.isEmpty {
+                overallStack.addArrangedSubview(makeSectionSeparator())
+
+                let itemsHeader = UILabel()
+                itemsHeader.text = "Items"
+                itemsHeader.font = AppTheme.Fonts.captionBold
+                itemsHeader.textColor = AppTheme.Colors.textPrimary
+                overallStack.addArrangedSubview(itemsHeader)
+
+                let participants = split.participants ?? []
+
+                for item in items {
+                    let priceStr = Self.currencyFormatter.string(from: NSNumber(value: item.price)) ?? "$0.00"
+                    let assignmentStr: String
+                    switch item.assignment {
+                    case "mine":
+                        assignmentStr = "Mine"
+                    case "shared":
+                        let names = item.sharedWith.compactMap { pid in
+                            participants.first(where: { $0.id == pid })?.name ?? "Unknown person"
+                        }
+                        if names.isEmpty {
+                            assignmentStr = "Shared"
+                        } else {
+                            assignmentStr = "Shared with \(names.joined(separator: ", "))"
+                        }
+                    case "ignore":
+                        assignmentStr = "Ignored"
+                    default:
+                        assignmentStr = item.assignment.capitalized
+                    }
+                    let row = makeDetailRow(label: item.name, value: "\(priceStr) — \(assignmentStr)")
+                    overallStack.addArrangedSubview(row)
+                }
+            }
+
+            // Receipt metadata
+            if let meta = split.receiptMetadata {
+                overallStack.addArrangedSubview(makeSectionSeparator())
+
+                let receiptHeader = UILabel()
+                receiptHeader.text = "Receipt"
+                receiptHeader.font = AppTheme.Fonts.captionBold
+                receiptHeader.textColor = AppTheme.Colors.textPrimary
+                overallStack.addArrangedSubview(receiptHeader)
+
+                if let merchant = meta.merchant, !merchant.isEmpty {
+                    overallStack.addArrangedSubview(makeDetailRow(label: "Merchant", value: merchant))
+                }
+                overallStack.addArrangedSubview(makeDetailRow(label: "Items", value: "\(meta.itemCount)"))
+            }
+        }
+
         NSLayoutConstraint.activate([
             splitContainer.topAnchor.constraint(equalTo: detailsStack.bottomAnchor, constant: 16),
             splitContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
@@ -308,6 +382,52 @@ class TransactionDetailViewController: UIViewController {
             overallStack.trailingAnchor.constraint(equalTo: splitContainer.trailingAnchor, constant: -16),
             overallStack.bottomAnchor.constraint(equalTo: splitContainer.bottomAnchor, constant: -16)
         ])
+    }
+
+    private func makeSectionSeparator() -> UIView {
+        let sep = UIView()
+        sep.backgroundColor = AppTheme.Colors.border.withAlphaComponent(0.3)
+        sep.translatesAutoresizingMaskIntoConstraints = false
+        sep.heightAnchor.constraint(equalToConstant: 1).isActive = true
+        return sep
+    }
+
+    private func makeDetailRow(label: String, value: String) -> UIView {
+        let row = UIView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        let labelLabel = UILabel()
+        labelLabel.text = label
+        labelLabel.font = AppTheme.Fonts.body
+        labelLabel.textColor = AppTheme.Colors.textPrimary
+        labelLabel.numberOfLines = 0
+        labelLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let valueLabel = UILabel()
+        valueLabel.text = value
+        valueLabel.font = AppTheme.Fonts.body
+        valueLabel.textColor = AppTheme.Colors.textSecondary
+        valueLabel.textAlignment = .right
+        valueLabel.numberOfLines = 0
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        valueLabel.setContentHuggingPriority(.required, for: .horizontal)
+        valueLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        row.addSubview(labelLabel)
+        row.addSubview(valueLabel)
+
+        NSLayoutConstraint.activate([
+            labelLabel.topAnchor.constraint(equalTo: row.topAnchor, constant: 4),
+            labelLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            labelLabel.trailingAnchor.constraint(lessThanOrEqualTo: valueLabel.leadingAnchor, constant: -8),
+            labelLabel.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -4),
+
+            valueLabel.topAnchor.constraint(equalTo: row.topAnchor, constant: 4),
+            valueLabel.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+            valueLabel.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -4)
+        ])
+
+        return row
     }
 
     private func makeStatTile(label: String, value: String) -> UIView {

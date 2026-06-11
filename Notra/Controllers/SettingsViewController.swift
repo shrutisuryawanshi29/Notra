@@ -28,6 +28,7 @@ class SettingsViewController: UIViewController {
         case setupChecklist
         case databaseMapping
         case aiReceiptParser
+        case splitPeople
         case data
         case debug
         case dangerZone
@@ -147,6 +148,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case .setupChecklist: return checklist.allChecks.count
         case .databaseMapping: return 3
         case .aiReceiptParser: return GeminiKeychainService.shared.hasAPIKey() ? 5 : 1
+        case .splitPeople: return SplitPeopleStore.shared.getPeople().isEmpty ? 1 : SplitPeopleStore.shared.getPeople().count + 1
         case .data: return 2
         case .debug: return 2
         case .dangerZone: return 1
@@ -173,6 +175,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case .setupChecklist: return "Setup Checklist"
         case .databaseMapping: return "Database Mapping"
         case .aiReceiptParser: return "AI Receipt Parser"
+        case .splitPeople: return "Split People"
         case .data: return "Data"
         case .debug: return "Debug"
         case .dangerZone: return "Danger Zone"
@@ -263,6 +266,20 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
             } else if hasKey && indexPath.row == 4 {
                 content.text = "Delete Key"
                 content.textProperties.color = .systemRed
+                cell.selectionStyle = .default
+            }
+
+        case .splitPeople:
+            let people = SplitPeopleStore.shared.getPeople()
+            if indexPath.row == 0 {
+                content.text = "Add Person"
+                content.textProperties.color = AppTheme.Colors.accent
+                cell.selectionStyle = .default
+            } else {
+                let person = people[indexPath.row - 1]
+                content.text = person.name
+                content.textProperties.color = AppTheme.Colors.textPrimary
+                cell.accessoryType = .disclosureIndicator
                 cell.selectionStyle = .default
             }
 
@@ -430,6 +447,15 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
                 confirmDeleteGeminiKey()
             }
 
+        case .splitPeople:
+            let people = SplitPeopleStore.shared.getPeople()
+            if indexPath.row == 0 {
+                presentAddSplitPerson()
+            } else {
+                let person = people[indexPath.row - 1]
+                presentEditSplitPerson(person)
+            }
+
         case .data:
             if indexPath.row == 1 {
                 refreshData()
@@ -526,6 +552,55 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
                 }
             }
         }
+    }
+
+    // MARK: - Split People Management
+
+    private func presentAddSplitPerson() {
+        let alert = UIAlertController(title: "Add Person", message: "Enter the person's name", preferredStyle: .alert)
+        alert.addTextField { tf in
+            tf.placeholder = "Name"
+            tf.autocapitalizationType = .words
+        }
+        alert.addAction(UIAlertAction(title: "Add", style: .default) { [weak self] _ in
+            guard let name = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { return }
+            SplitPeopleStore.shared.addPerson(name: name)
+            self?.tableView.reloadSections(IndexSet(integer: Section.splitPeople.rawValue), with: .automatic)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func presentEditSplitPerson(_ person: SplitPerson) {
+        let alert = UIAlertController(title: person.name, message: nil, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self] _ in
+            self?.presentRenameSplitPerson(person)
+        })
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            SplitPeopleStore.shared.deletePerson(id: person.id)
+            self?.tableView.reloadSections(IndexSet(integer: Section.splitPeople.rawValue), with: .automatic)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = tableView
+            popover.sourceRect = CGRect(x: tableView.bounds.midX, y: tableView.bounds.midY, width: 0, height: 0)
+        }
+        present(alert, animated: true)
+    }
+
+    private func presentRenameSplitPerson(_ person: SplitPerson) {
+        let alert = UIAlertController(title: "Rename Person", message: nil, preferredStyle: .alert)
+        alert.addTextField { tf in
+            tf.text = person.name
+            tf.autocapitalizationType = .words
+        }
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak self] _ in
+            guard let name = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { return }
+            SplitPeopleStore.shared.updatePersonName(id: person.id, name: name)
+            self?.tableView.reloadSections(IndexSet(integer: Section.splitPeople.rawValue), with: .automatic)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
     }
 
     private func confirmDeleteGeminiKey() {

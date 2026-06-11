@@ -515,7 +515,11 @@ extension AddTransactionViewController {
                 type: viewModel.splitMethodType.rawValue,
                 status: viewModel.splitStatus,
                 splitWith: nil,
-                inputs: inputs
+                inputs: inputs,
+                version: nil,
+                participants: nil,
+                items: nil,
+                receiptMetadata: nil
             )
         } else {
             split = nil
@@ -570,7 +574,11 @@ extension AddTransactionViewController {
                 type: viewModel.splitMethodType.rawValue,
                 status: viewModel.splitStatus,
                 splitWith: nil,
-                inputs: inputs
+                inputs: inputs,
+                version: nil,
+                participants: nil,
+                items: nil,
+                receiptMetadata: nil
             )
         } else {
             split = nil

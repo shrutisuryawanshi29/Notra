@@ -209,6 +209,37 @@ struct SplitCalculator {
     }
 }
 
+// MARK: - Split Participant & Item (Phase 2)
+
+enum SettlementStatus: String, Codable {
+    case pending
+    case settled
+}
+
+struct SplitParticipant: Codable {
+    let id: String
+    let name: String
+    let owes: Double
+    var status: String?
+    var settledAt: String?
+
+    var settlementStatus: SettlementStatus {
+        get { SettlementStatus(rawValue: status ?? "pending") ?? .pending }
+        set { status = newValue.rawValue }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, owes, status, settledAt
+    }
+}
+
+struct SplitItem: Codable {
+    let name: String
+    let price: Double
+    let assignment: String
+    let sharedWith: [String]
+}
+
 // MARK: - Split Metadata
 
 struct SplitMetadata: Codable {
@@ -220,9 +251,14 @@ struct SplitMetadata: Codable {
     let status: String?
     let splitWith: String?
     let inputs: SplitInputs?
+    let version: Int?
+    var participants: [SplitParticipant]?
+    let items: [SplitItem]?
+    let receiptMetadata: ReceiptScanMetadata?
 
     enum CodingKeys: String, CodingKey {
         case enabled, paidAmount, myShare, theyOwe, type, status, splitWith, inputs
+        case version, participants, items, receiptMetadata
     }
 
     var resolvedType: SplitMethodType? {
@@ -231,7 +267,80 @@ struct SplitMetadata: Codable {
     }
 
     var displayTypeName: String {
-        resolvedType?.displayName ?? type?.capitalized ?? "Split"
+        if isMultiPersonReceipt { return "Multi-Person Split" }
+        return resolvedType?.displayName ?? type?.capitalized ?? "Split"
+    }
+
+    var isMultiPersonReceipt: Bool {
+        version == 2 && type == "receiptMultiPerson"
+    }
+
+    var multiPersonSubtitle: String? {
+        guard isMultiPersonReceipt, let participants = participants, !participants.isEmpty else {
+            return nil
+        }
+        if participants.count <= 2 {
+            let parts = participants.map { "\($0.name) owes \(currencyStr($0.owes))" }
+            return parts.joined(separator: " · ")
+        }
+        return "\(participants.count) people owe \(currencyStr(theyOwe))"
+    }
+
+    /// Build updated JSON string with modified participants (for settlement updates).
+    /// Preserves all existing fields, only changes the participant status/settledAt.
+    func buildUpdatedJSON(updatedParticipants: [SplitParticipant]) -> String? {
+        var data: [String: Any] = [:]
+        data["version"] = version ?? 2
+        data["receipt"] = receiptMetadata.map { meta in
+            [
+                "source": meta.source,
+                "merchant": meta.merchant as Any,
+                "itemCount": meta.itemCount,
+                "originalTotal": meta.originalTotal as Any
+            ]
+        }
+
+        let splitData: [String: Any] = [
+            "enabled": enabled,
+            "paidAmount": paidAmount,
+            "myShare": myShare,
+            "theyOwe": theyOwe,
+            "type": type as Any,
+            "status": status as Any,
+            "splitWith": splitWith as Any,
+            "inputs": inputs as Any,
+            "participants": updatedParticipants.map { p in
+                [
+                    "id": p.id,
+                    "name": p.name,
+                    "owes": p.owes,
+                    "status": p.status as Any,
+                    "settledAt": p.settledAt as Any
+                ]
+            },
+            "items": items.map { items in
+                items.map { i in
+                    [
+                        "name": i.name,
+                        "price": i.price,
+                        "assignment": i.assignment,
+                        "sharedWith": i.sharedWith
+                    ]
+                }
+            } as Any
+        ]
+        data["split"] = splitData
+
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: data, options: []),
+              let jsonString = String(data: jsonData, encoding: .utf8) else { return nil }
+        return jsonString
+    }
+
+    private func currencyStr(_ val: Double) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        return f.string(from: NSNumber(value: val)) ?? "$0.00"
     }
 }
 
