@@ -151,6 +151,7 @@ final class ReceiptReviewViewController: UIViewController {
         tableView.register(EditableFieldCell.self, forCellReuseIdentifier: "EditableFieldCell")
         tableView.register(ToggleCell.self, forCellReuseIdentifier: "ToggleCell")
         tableView.register(PeopleCell.self, forCellReuseIdentifier: "PeopleCell")
+        tableView.register(BulkActionsCell.self, forCellReuseIdentifier: "BulkActionsCell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(tableView)
@@ -352,6 +353,7 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
     enum Section: Int, CaseIterable {
         case header
         case people
+        case bulkActions
         case items
         case receiptSummary
         case categoryPicker
@@ -369,6 +371,7 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         switch Section(rawValue: section) {
         case .header: return 1
         case .people: return 1
+        case .bulkActions: return viewModel.items.isEmpty ? 0 : 1
         case .items: return viewModel.items.isEmpty ? 2 : viewModel.items.count + 1
         case .receiptSummary: return viewModel.hasReceiptSummaryData ? 1 : 0
         case .categoryPicker: return 0
@@ -386,6 +389,8 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
             return configureHeaderCell(tableView, at: indexPath)
         case .people:
             return configurePeopleCell(tableView, at: indexPath)
+        case .bulkActions:
+            return configureBulkActionsCell(tableView, at: indexPath)
         case .items:
             if indexPath.row == 0 {
                 return configureItemsHeaderCell(tableView, at: indexPath)
@@ -446,6 +451,44 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
         return cell
     }
 
+    private func configureBulkActionsCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "BulkActionsCell", for: indexPath) as! BulkActionsCell
+        let people = viewModel.splitPeople
+        cell.configure(
+            people: people,
+            bulkMode: viewModel.bulkMode,
+            selectedSharedPersonIds: viewModel.selectedBulkSharedPersonIds,
+            onAllMine: { [weak self] in
+                self?.viewModel.applyAllMine()
+                tableView.reloadData()
+                self?.updateCreateButtonState()
+            },
+            onAllShared: { [weak self] in
+                self?.viewModel.enterAllSharedMode()
+                tableView.reloadData()
+                self?.updateCreateButtonState()
+            },
+            onClear: { [weak self] in
+                self?.viewModel.clearBulkAction()
+                tableView.reloadData()
+                self?.updateCreateButtonState()
+            },
+            onPersonTapped: { [weak self] personId in
+                guard let self else { return }
+                var ids = self.viewModel.selectedBulkSharedPersonIds
+                if ids.contains(personId) {
+                    ids.remove(personId)
+                } else {
+                    ids.insert(personId)
+                }
+                self.viewModel.updateBulkSharedPeople(ids)
+                tableView.reloadData()
+                self.updateCreateButtonState()
+            }
+        )
+        return cell
+    }
+
     private func configureAdjustmentCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "ActionCell", for: indexPath) as! ActionCell
         let adj = viewModel.adjustments[indexPath.row]
@@ -468,6 +511,7 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
             delivery: viewModel.receiptDeliveryCharged,
             deliveryFee: viewModel.receiptDeliveryFee,
             tip: viewModel.receiptTip,
+            serviceFee: viewModel.receiptServiceFee,
             total: viewModel.receiptTotal
         )
         return cell
@@ -529,6 +573,7 @@ extension ReceiptReviewViewController: UITableViewDataSource, UITableViewDelegat
             hasTax: viewModel.hasTax,
             taxAmount: viewModel.taxAmount,
             includeTax: viewModel.includeTaxProportionally,
+            hasFees: viewModel.hasFees,
             personOwes: viewModel.personOwes
         )
         return cell
@@ -1106,7 +1151,7 @@ fileprivate class ReceiptSummaryCardCell: UITableViewCell {
         ])
     }
 
-    func configure(subtotal: Double?, tax: Double?, delivery: Double?, deliveryFee: Double?, tip: Double?, total: Double?) {
+    func configure(subtotal: Double?, tax: Double?, delivery: Double?, deliveryFee: Double?, tip: Double?, serviceFee: Double?, total: Double?) {
         rowStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
         let f = NumberFormatter()
@@ -1116,6 +1161,10 @@ fileprivate class ReceiptSummaryCardCell: UITableViewCell {
 
         if let s = subtotal { addRow(label: "Subtotal", value: fmt(s), isBold: false) }
         if let t = tax { addRow(label: "Tax", value: fmt(t), isBold: false) }
+
+        if let fee = serviceFee, fee > 0 {
+            addRow(label: "Service Fee", value: fmt(fee), isBold: false)
+        }
 
         if let fee = deliveryFee, fee > 0, let charged = delivery, charged == 0 {
             addRow(label: "Delivery", value: "\(fmt(charged)) (was \(fmt(fee)))", isBold: false)
@@ -1240,16 +1289,17 @@ fileprivate class SummaryCell: UITableViewCell {
         ])
     }
 
-    func configure(personalTotal: Double, sharedTotal: Double, myShare: Double, theyOwe: Double, totalCounted: Double, formatter: NumberFormatter, hasTax: Bool, taxAmount: Double, includeTax: Bool, personOwes: [(name: String, amount: Double)] = []) {
+    func configure(personalTotal: Double, sharedTotal: Double, myShare: Double, theyOwe: Double, totalCounted: Double, formatter: NumberFormatter, hasTax: Bool, taxAmount: Double, includeTax: Bool, hasFees: Bool = false, personOwes: [(name: String, amount: Double)] = []) {
         personalLabel.text = "Personal items: \(formatter.string(from: NSNumber(value: personalTotal)) ?? "$0.00")"
         sharedLabel.text = "Shared items: \(formatter.string(from: NSNumber(value: sharedTotal)) ?? "$0.00")"
         myShareLabel.text = "My share: \(formatter.string(from: NSNumber(value: myShare)) ?? "$0.00")"
         theyOweLabel.text = "They owe: \(formatter.string(from: NSNumber(value: theyOwe)) ?? "$0.00")"
         totalLabel.text = "Total counted: \(formatter.string(from: NSNumber(value: totalCounted)) ?? "$0.00")"
 
-        if hasTax && includeTax {
-            personalLabel.text? += " (incl. tax)"
-            sharedLabel.text? += " (incl. tax)"
+        if hasTax || hasFees {
+            let suffix = hasFees ? " (incl. tax/fees)" : " (incl. tax)"
+            personalLabel.text? += suffix
+            sharedLabel.text? += suffix
         }
 
         personalLabel.isHidden = personalTotal == 0
@@ -1466,6 +1516,224 @@ fileprivate class PeopleCell: UITableViewCell {
         return nil
     }
 }
+
+// MARK: - Bulk Actions Cell
+
+fileprivate class BulkActionsCell: UITableViewCell {
+    private let containerView = UIView()
+    private let titleLabel = UILabel()
+    private let chipsStack = UIStackView()
+    private let helperLabel = UILabel()
+    private let allMineButton = UIButton(type: .custom)
+    private let allSharedButton = UIButton(type: .custom)
+    private let clearButton = UIButton(type: .custom)
+    private let buttonRow = UIStackView()
+
+    private var people: [SplitPerson] = []
+    private var onAllMine: (() -> Void)?
+    private var onAllShared: (() -> Void)?
+    private var onClear: (() -> Void)?
+    private var onPersonTapped: ((String) -> Void)?
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        setup()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    private func setup() {
+        selectionStyle = .none
+        backgroundColor = .clear
+        contentView.backgroundColor = .clear
+
+        containerView.backgroundColor = AppTheme.Colors.cardBackground
+        containerView.layer.cornerRadius = AppTheme.CornerRadius.card
+        AppTheme.Shadow.applyCard(to: containerView)
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        titleLabel.text = "Apply to all items"
+        titleLabel.font = AppTheme.Fonts.captionMedium
+        titleLabel.textColor = AppTheme.Colors.textSecondary
+
+        buttonRow.axis = .horizontal
+        buttonRow.spacing = 8
+        buttonRow.distribution = .fillEqually
+
+        for btn in [allMineButton, allSharedButton, clearButton] {
+            btn.titleLabel?.font = AppTheme.Fonts.buttonSmall
+            btn.layer.cornerRadius = AppTheme.CornerRadius.medium
+            btn.layer.borderWidth = 1
+            btn.translatesAutoresizingMaskIntoConstraints = false
+            btn.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        }
+
+        allMineButton.setTitle("All Mine", for: .normal)
+        allMineButton.addTarget(self, action: #selector(mineTapped), for: .touchUpInside)
+
+        allSharedButton.setTitle("All Shared", for: .normal)
+        allSharedButton.addTarget(self, action: #selector(sharedTapped), for: .touchUpInside)
+
+        clearButton.setTitle("Clear", for: .normal)
+        clearButton.addTarget(self, action: #selector(clearTapped), for: .touchUpInside)
+
+        buttonRow.addArrangedSubview(allMineButton)
+        buttonRow.addArrangedSubview(allSharedButton)
+        buttonRow.addArrangedSubview(clearButton)
+
+        chipsStack.axis = .vertical
+        chipsStack.spacing = 8
+        chipsStack.alignment = .leading
+        chipsStack.isHidden = true
+
+        helperLabel.text = "Select people to share all items with."
+        helperLabel.font = AppTheme.Fonts.small
+        helperLabel.textColor = AppTheme.Colors.textMuted
+        helperLabel.isHidden = true
+
+        stack.addArrangedSubview(titleLabel)
+        stack.addArrangedSubview(buttonRow)
+        stack.addArrangedSubview(chipsStack)
+        stack.addArrangedSubview(helperLabel)
+
+        containerView.addSubview(stack)
+        contentView.addSubview(containerView)
+
+        NSLayoutConstraint.activate([
+            containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
+
+            stack.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 16),
+            stack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
+            stack.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -16)
+        ])
+    }
+
+    func configure(
+        people: [SplitPerson],
+        bulkMode: BulkAssignmentMode,
+        selectedSharedPersonIds: Set<String>,
+        onAllMine: @escaping () -> Void,
+        onAllShared: @escaping () -> Void,
+        onClear: @escaping () -> Void,
+        onPersonTapped: @escaping (String) -> Void
+    ) {
+        self.people = people
+        self.onAllMine = onAllMine
+        self.onAllShared = onAllShared
+        self.onClear = onClear
+        self.onPersonTapped = onPersonTapped
+
+        updateButtonAppearance(allMineButton, isSelected: bulkMode == .allMine, title: "All Mine")
+        updateButtonAppearance(allSharedButton, isSelected: bulkMode == .allShared, title: "All Shared")
+        updateButtonAppearance(clearButton, isSelected: false, title: "Clear")
+
+        chipsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        if bulkMode == .allShared && !people.isEmpty {
+            chipsStack.isHidden = false
+            helperLabel.isHidden = !selectedSharedPersonIds.isEmpty
+            buildChips(selectedSharedPersonIds: selectedSharedPersonIds)
+        } else {
+            chipsStack.isHidden = true
+            helperLabel.isHidden = true
+        }
+    }
+
+    private func buildChips(selectedSharedPersonIds: Set<String>) {
+        guard !people.isEmpty else { return }
+        var currentRow = UIStackView()
+        currentRow.axis = .horizontal
+        currentRow.spacing = 8
+        currentRow.alignment = .center
+        var rowWidth: CGFloat = 0
+        let maxWidth = UIScreen.main.bounds.width - 72
+
+        for person in people {
+            let isSelected = selectedSharedPersonIds.contains(person.id)
+            let chip = UIButton(type: .custom)
+            let title = isSelected ? "✓ \(person.name)" : person.name
+            chip.setTitle(title, for: .normal)
+            chip.titleLabel?.font = AppTheme.Fonts.buttonSmall
+            chip.layer.cornerRadius = 12
+            chip.layer.borderWidth = 1
+            chip.contentEdgeInsets = UIEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
+            chip.accessibilityIdentifier = person.id
+            chip.translatesAutoresizingMaskIntoConstraints = false
+            chip.heightAnchor.constraint(equalToConstant: 28).isActive = true
+            chip.addTarget(self, action: #selector(personChipTapped(_:)), for: .touchUpInside)
+
+            if isSelected {
+                chip.backgroundColor = AppTheme.Colors.accent
+                chip.setTitleColor(AppTheme.Colors.buttonContent, for: .normal)
+                chip.layer.borderColor = AppTheme.Colors.accent.cgColor
+            } else {
+                chip.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+                chip.setTitleColor(AppTheme.Colors.textSecondary, for: .normal)
+                chip.layer.borderColor = AppTheme.Colors.border.cgColor
+            }
+
+            let chipWidth = title.size(withAttributes: [.font: AppTheme.Fonts.buttonSmall]).width + 20 + 20
+            if rowWidth + chipWidth + 8 > maxWidth && rowWidth > 0 {
+                currentRow.addArrangedSubview(chip)
+                chipsStack.addArrangedSubview(currentRow)
+                currentRow = UIStackView()
+                currentRow.axis = .horizontal
+                currentRow.spacing = 8
+                currentRow.alignment = .center
+                rowWidth = 0
+            }
+            currentRow.addArrangedSubview(chip)
+            rowWidth += chipWidth + 8
+        }
+
+        if currentRow.arrangedSubviews.count > 0 {
+            chipsStack.addArrangedSubview(currentRow)
+        }
+    }
+
+    private func updateButtonAppearance(_ button: UIButton, isSelected: Bool, title: String) {
+        let displayTitle = isSelected ? "✓ \(title)" : title
+        button.setTitle(displayTitle, for: .normal)
+
+        if isSelected {
+            button.backgroundColor = AppTheme.Colors.accent
+            button.setTitleColor(AppTheme.Colors.buttonContent, for: .normal)
+            button.layer.borderColor = AppTheme.Colors.accent.cgColor
+        } else {
+            button.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+            button.setTitleColor(AppTheme.Colors.textMuted, for: .normal)
+            button.layer.borderColor = AppTheme.Colors.border.cgColor
+        }
+    }
+
+    @objc private func personChipTapped(_ sender: UIButton) {
+        guard let pid = sender.accessibilityIdentifier else { return }
+        onPersonTapped?(pid)
+    }
+
+    @objc private func mineTapped() {
+        onAllMine?()
+    }
+
+    @objc private func sharedTapped() {
+        onAllShared?()
+    }
+
+    @objc private func clearTapped() {
+        onClear?()
+    }
+}
+
+// MARK: - Action Cell
 
 fileprivate class ActionCell: UITableViewCell {
     private let iconView = UIImageView()

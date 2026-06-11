@@ -485,54 +485,11 @@ class DashboardViewController: UIViewController {
         navigationController?.popToRootViewController(animated: true)
     }
 
-    private var scanCoordinator: ReceiptScanCoordinator?
-
     @objc private func addTransactionTapped() {
-        let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
-
-        alert.addAction(UIAlertAction(title: "Add Expense", style: .default) { [weak self] _ in
-            let vc = AddTransactionViewController(initialRole: .expense)
-            let nav = UINavigationController(rootViewController: vc)
-            nav.modalPresentationStyle = .fullScreen
-            self?.present(nav, animated: true)
-        })
-
-        alert.addAction(UIAlertAction(title: "Add Income", style: .default) { [weak self] _ in
-            let vc = AddTransactionViewController(initialRole: .income)
-            let nav = UINavigationController(rootViewController: vc)
-            nav.modalPresentationStyle = .fullScreen
-            self?.present(nav, animated: true)
-        })
-
-        alert.addAction(UIAlertAction(title: "Scan Receipt", style: .default) { [weak self] _ in
-            self?.startReceiptScan()
-        })
-
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = fabButton
-            popover.sourceRect = fabButton.bounds
-        }
-
-        present(alert, animated: true)
-    }
-
-    private func startReceiptScan() {
-        guard let token = UserDefaultsManager.shared.notionToken else { return }
-        let coordinator = ReceiptScanCoordinator()
-        self.scanCoordinator = coordinator
-        coordinator.start(from: self, token: token) { [weak self] geminiResult in
-            guard let self = self, let result = geminiResult else {
-                self?.scanCoordinator = nil
-                return
-            }
-            let vc = ReceiptReviewViewController(geminiResult: result, token: token)
-            let nav = UINavigationController(rootViewController: vc)
-            nav.modalPresentationStyle = .fullScreen
-            self.present(nav, animated: true)
-            self.scanCoordinator = nil
-        }
+        let vc = AddTransactionViewController(initialRole: .expense)
+        let nav = UINavigationController(rootViewController: vc)
+        nav.modalPresentationStyle = .fullScreen
+        present(nav, animated: true)
     }
 
     private func selectedMonthDateRange() -> DateRangeFilter {

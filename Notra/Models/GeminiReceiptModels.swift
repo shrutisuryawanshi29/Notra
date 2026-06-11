@@ -156,7 +156,7 @@ struct GeminiReceiptValidator {
         let date = parseDate(response.date)
 
         var seen = Set<String>()
-        let items = response.items
+        var items = response.items
             .filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty && $0.finalPrice >= 0 }
             .compactMap { item -> GeminiReceiptItem? in
                 let name = item.name.trimmingCharacters(in: .whitespaces)
@@ -175,6 +175,29 @@ struct GeminiReceiptValidator {
                     isEditable: true
                 )
             }
+
+        // Convert charged weight adjustments into items so they count toward the total.
+        for adj in response.adjustments ?? [] {
+            guard adj.type == "weightAdjustment", let amount = adj.amount, amount > 0 else { continue }
+            let name = adj.name.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty else { continue }
+            let key = "\(name)|\(String(format: "%.2f", amount))"
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            let item = GeminiReceiptItem(
+                id: UUID().uuidString,
+                name: name,
+                quantity: nil,
+                unitPrice: nil,
+                finalPrice: amount,
+                categoryHint: nil,
+                rawText: adj.description,
+                classification: .mine,
+                isEditable: true
+            )
+            items.append(item)
+            print("[ReceiptValidation] Converted weight adjustment to item: \(name) $\(String(format: "%.2f", amount))")
+        }
 
         let itemSum = items.reduce(0.0) { $0 + $1.finalPrice }
         if let sub = response.summary?.itemsSubtotal, abs(itemSum - sub) > 0.10 {
@@ -206,8 +229,11 @@ struct GeminiReceiptValidator {
         }
 
         print("[ReceiptValidation] Item count: \(items.count)")
-        print("[ReceiptValidation] Item subtotal: \(String(format: "%.2f", itemSum))")
-        print("[ReceiptValidation] Summary subtotal: \(s?.itemsSubtotal.map { String(format: "%.2f", $0) } ?? "nil")")
+        print("[ReceiptValidation] itemsSum=\(String(format: "%.2f", itemSum))")
+        print("[ReceiptValidation] summarySubtotal=\(s?.itemsSubtotal.map { String(format: "%.2f", $0) } ?? "nil")")
+        for item in items {
+            print("[ReceiptValidation] Item: \(item.name), price=\(String(format: "%.2f", item.finalPrice))")
+        }
         print("[ReceiptValidation] Warnings: \(warnings)")
 
         return GeminiReceiptResult(

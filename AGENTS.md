@@ -25,11 +25,11 @@ Only `DashboardViewModel` calls the Notion API directly; setup screens read from
 
 - **No `convertFromSnakeCase`**: Every `JSONDecoder()` uses default config. All `CodingKeys` must manually map snake_case keys (e.g. `"rich_text"` → `richText`).
 - **Date-only strings**: Parse with `DateComponents` + `hour=12` local (`TransactionNormalizer.extractDate()`). `ISO8601DateFormatter` shifts to previous day in local tz.
-- **Number parsing**: Strip commas via `replacingOccurrences(of: ",", with: "")` — do NOT replace commas with dots.
+- **Number parsing**: Strip commas via `replacingOccurrences(of: ",", with: "")` — do NOT replace commas with dots. Exception: `AddTransactionViewModel:127` replaces comma with dot for deep link amount parsing (handles European decimal).
 - **PATCH returns updated page**: `updateTransaction` must return `NotionPage` from PATCH response. Parse in `buildUpdatedTransaction(from:updatedPage:)`.
 - **Cache on create**: New transactions must be manually added to `SessionCacheManager` (`addExpense`/`addIncome`) via `lastCreatedPage`.
 - **iOS 26 `performBatchUpdates` crash**: Avoid row count changes in `performBatchUpdates` blocks. Use only for height recalculation.
-- **Budget over-budget check**: `GroupedTransactionSection.swift:354` — use `pct > 1.0` (not `>= 1.0`).
+- **Budget over-budget check**: `Models/GroupedTransactionSection.swift:463` — use `pct > 1.0` (not `>= 1.0`).
 - **Sub-1% formatting**: Use explicit `"<1%"` string. `maximumFractionDigits=0` rounds <0.5% to `"0%"`.
 - **Mapping cell info icon recycling**: `MappingCell.configure()` must `infoButton.isHidden = true` at start.
 - **Split metadata column type**: Filter `.appMetadata` for both `"rich_text"` and `"text"`.
@@ -50,7 +50,11 @@ Up to 3 suggestion chips inline in the title `FormFieldCell`. 400ms debounce + i
 
 ## Receipt Scanning
 
-`ReceiptScanCoordinator`: file picker → OCR (Vision `VNRecognizeTextRequest` or PDFKit) → Gemini AI parsing. API key in Keychain via `GeminiKeychainService` (label `com.notra.gemini`). Default model `gemini-3.5-flash`. Available: `gemini-2.0-flash`, `gemini-3.5-flash` (Settings picker). Fallback `ReceiptParserService` for local text-only extraction. `ReceiptReviewViewController` shows results before saving. If key missing, in-app alert → Keychain → file picker.
+`ReceiptScanCoordinator`: file picker → OCR (Vision `VNRecognizeTextRequest` or PDFKit) → Gemini AI parsing. API key in Keychain via `GeminiKeychainService` (label `com.notra.gemini`). Default model `gemini-3.1-flash-lite`. Available: `gemini-2.0-flash`, `gemini-3.5-flash`, `gemini-3.1-flash-lite` (Settings picker). Fallback `ReceiptParserService` for local text-only extraction. `ReceiptReviewViewController` shows results before saving. If key missing, in-app alert → Keychain → file picker.
+
+### Dashboard Plus Button (No Receipt Scan)
+
+Dashboard FAB directly presents `AddTransactionViewController(initialRole: .expense)` — no action sheet, no receipt scan trigger from Dashboard. Scanning only via Settings → Scan Receipt.
 
 ## Multi-Person Receipt Split
 
@@ -63,6 +67,17 @@ Up to 3 suggestion chips inline in the title `FormFieldCell`. 400ms debounce + i
 - Shared items must have ≥1 selected person; validation blocks save.
 - `multiPersonSettlement` computed prop: mine full price → `myShare`; shared split equally among `1 + sharedWith.count` participants; tax proportional if `includeTaxProportionally`. Returns `(myShare, theyOwe, personOwes: [personId: amount])`.
 - Split metadata version 2 (`buildMultiPersonSplitMetadataJSON`): contains `version: 2`, `split { enabled, status: "pending", type: "receiptMultiPerson", paidAmount, myShare, theyOwe, participants, items, inputs }`, `receipt { source, merchant, itemCount }`. Version 1 (`buildSplitMetadataJSON`) still exists but unused for new receipts.
+
+### Bulk Actions (Receipt Review)
+
+`BulkAssignmentMode` enum (`.none`, `.allMine`, `.allShared`) + `selectedBulkSharedPersonIds` owned by `ReceiptReviewViewModel`. `BulkActionsCell` renders 3 fill-equally buttons: [All Mine] [All Shared] [Clear].
+
+- **Default**: no mode selected, chips hidden.
+- **All Mine**: button gets accent highlight + checkmark. Sets all non-ignore items to `.mine`, clears `sharedWith`. Chips stay hidden.
+- **All Shared**: button gets accent highlight + checkmark. Does NOT apply until person selected. Chips appear below buttons. Helper text "Select people to share all items with." while no one selected. Tapping a chip toggles it (checkmark + accent fill). Applying: all non-ignore items → `.shared` with selected person IDs.
+- **Clear**: resets mode to `.none`, hides chips, resets non-ignore items to `.mine`.
+- **Person chips**: hidden by default, visible only when `bulkMode == .allShared`. Selected chip: accent fill + "✓ Name". Unselected: `cardBackgroundAlt` fill + `textSecondary` + `border` border.
+- **Button styling** (all 3 buttons): unselected = `cardBackgroundAlt`/`border`/`textMuted`; selected = `accent` fill+border/`buttonContent`/checkmark prefix. Clear is always unselected.
 
 ### Key Gotchas
 
@@ -96,7 +111,7 @@ All sections use selected-month data only — no API calls. Hierarchy: Hero → 
 
 ## Theme
 
-`UIUserInterfaceStyle: Light` in Info.plist. `window.overrideUserInterfaceStyle = (AppTheme.currentMode == .dark ? .dark : .light)`. Default mode: `.dark` (`AppConstants.swift:106`). Warm cream/brown palette. Never hardcode `UIColor.white` for segment text — use `AppTheme.Colors.buttonContent`.
+`UIUserInterfaceStyle: Light` in Info.plist. `window.overrideUserInterfaceStyle = (AppTheme.currentMode == .dark ? .dark : .light)`. Default mode: `.dark` (`Helpers/AppConstants.swift:106`). Warm cream/brown palette. Never hardcode `UIColor.white` for segment text — use `AppTheme.Colors.buttonContent`.
 
 ## Persistence
 
@@ -115,7 +130,7 @@ All sections use selected-month data only — no API calls. Hierarchy: Hero → 
 - **DatabaseDiscoveryService**: Searches ALL accessible databases via `POST /search`. Adds `"title"` property if missing.
 - **NotionService.fetchTopLevelPages**: Only workspace-level pages (`parent.type == "workspace"`).
 - **DynamicFormValue.isEmpty**: For `.checkbox`, always `false`.
-- **Table views**: `.plain` except `AddTransaction`, `Settings`, `FilterPanel` (`.insetGrouped`).
+- **Table views**: `.plain` except `AddTransaction`, `Settings`, `FilterPanel`, `ReceiptReview`, `SplitTracker` (`.insetGrouped`).
 
 ## Debug
 

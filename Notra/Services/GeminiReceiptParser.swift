@@ -240,6 +240,13 @@ final class GeminiReceiptParser {
             return
         }
 
+#if DEBUG
+        if let jsonData = try? JSONSerialization.data(withJSONObject: responseJSON, options: [.prettyPrinted, .withoutEscapingSlashes]),
+           let pretty = String(data: jsonData, encoding: .utf8) {
+            print("[GeminiReceiptParser] Raw JSON response:\n\(pretty)")
+        }
+#endif
+
         var cleaned = jsonText.trimmingCharacters(in: .whitespacesAndNewlines)
         // Strip any markdown code fences Gemini might add despite our instructions
         if cleaned.hasPrefix("```json") {
@@ -262,6 +269,19 @@ final class GeminiReceiptParser {
         do {
             let decoded = try JSONDecoder().decode(GeminiReceiptResponse.self, from: jsonData)
             print("[GeminiReceiptParser] JSON decode success")
+
+            print("[GeminiReceiptParser] Parsed items:")
+            for item in decoded.items {
+                print("[GeminiReceiptParser] - \(item.name), finalPrice=\(item.finalPrice), quantity=\(item.quantity.map { "\($0)" } ?? "nil"), rawText=\(item.rawText ?? "nil")")
+            }
+            print("[GeminiReceiptParser] Parsed adjustments:")
+            for adj in decoded.adjustments ?? [] {
+                print("[GeminiReceiptParser] - \(adj.name), type=\(adj.type ?? "nil"), amount=\(adj.amount.map { "\($0)" } ?? "nil"), description=\(adj.description ?? "nil")")
+            }
+            if let s = decoded.summary {
+                print("[GeminiReceiptParser] Summary: itemsSubtotal=\(s.itemsSubtotal.map { "\($0)" } ?? "nil"), tax=\(s.tax.map { "\($0)" } ?? "nil"), serviceFee=\(s.serviceFee.map { "\($0)" } ?? "nil"), deliveryFee=\(s.deliveryFee.map { "\($0)" } ?? "nil"), tip=\(s.tip.map { "\($0)" } ?? "nil"), discount=\(s.discount.map { "\($0)" } ?? "nil"), total=\(s.total.map { "\($0)" } ?? "nil"), totalCharged=\(s.totalCharged.map { "\($0)" } ?? "nil")")
+            }
+
             let result = GeminiReceiptValidator.validate(decoded, rawText: rawText)
             completion(.success(result))
         } catch {
@@ -295,10 +315,17 @@ RULES:
 - items must contain ONLY real purchased products
 - do NOT include subtotal, tax, total, payment, delivery fee, tip, service fee, authorization, or order number as items
 - put ALL fees, taxes, tips, delivery, and discounts in summary
-- put refunds, weight adjustments, and substitutions in adjustments
-- for Instacart: ITEMS FOUND -> items, ADJUSTMENTS -> adjustments, ORDER TOTALS/CHARGES -> summary
+- put refunds, NOT CHARGED, and zero-amount adjustments in adjustments
+- CHARGED weight adjustments are real purchase items — include them in items with their final charged price
+- for Instacart, parse by sections:
+  • ITEMS FOUND section → items
+  • ADJUSTMENTS / WEIGHT ADJUSTMENTS section → include CHARGED adjusted items (positive amount) in items, NOT in adjustments
+  • NOT CHARGED / refunded items → adjustments only, do NOT include as items
+  • ORDER TOTALS / CHARGES section → summary only
 - for Walmart: product lines with Qty and price -> items; Free delivery/Tax/Tip/Subtotal/Total -> summary
-- use final item price after any per-item discounts
+- use final charged prices, not original unit prices or delta amounts
+- the sum of items[].finalPrice should match summary.itemsSubtotal when possible
+- for Instacart loyalty savings, use the final price shown after savings
 - when uncertain, add a warning instead of inventing data
 
 Receipt text:
@@ -333,10 +360,17 @@ RULES:
 - items must contain ONLY real purchased products
 - do NOT include subtotal, tax, total, payment, delivery fee, tip, service fee, authorization as items
 - put ALL fees, taxes, tips, delivery, and discounts in summary
-- put refunds, weight adjustments, and substitutions in adjustments
-- for Instacart: ITEMS FOUND -> items, ADJUSTMENTS -> adjustments, ORDER TOTALS/CHARGES -> summary
+- put refunds, NOT CHARGED, and zero-amount adjustments in adjustments
+- CHARGED weight adjustments are real purchase items — include them in items with their final charged price
+- for Instacart, parse by sections:
+  • ITEMS FOUND section → items
+  • ADJUSTMENTS / WEIGHT ADJUSTMENTS section → include CHARGED adjusted items (positive amount) in items, NOT in adjustments
+  • NOT CHARGED / refunded items → adjustments only, do NOT include as items
+  • ORDER TOTALS / CHARGES section → summary only
 - for Walmart: product lines with Qty and price -> items; Free delivery/Tax/Tip/Subtotal/Total -> summary
-- use final item price after any per-item discounts
+- use final charged prices, not original unit prices or delta amounts
+- the sum of items[].finalPrice should match summary.itemsSubtotal when possible
+- for Instacart loyalty savings, use the final price shown after savings
 - when uncertain, add a warning instead of inventing data
 """
         return [

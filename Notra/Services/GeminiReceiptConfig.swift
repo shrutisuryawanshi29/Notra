@@ -2,7 +2,7 @@ import Foundation
 
 struct GeminiReceiptConfig {
     /// Default model used when none has been selected in Settings.
-    static let defaultModelName = "gemini-3.5-flash"
+    static let defaultModelName = "gemini-3.1-flash-lite"
 
     /// User-selected model name, persisted in UserDefaults.
     static var modelName: String {
@@ -24,6 +24,7 @@ struct GeminiReceiptConfig {
     /// Supported models for the Settings picker.
     static let availableModels: [(displayName: String, modelID: String)] = [
         ("Gemini 2.0 Flash", "gemini-2.0-flash"),
+        ("Gemini 3.1 Flash Lite", "gemini-3.1-flash-lite"),
         ("Gemini 3.5 Flash", "gemini-3.5-flash")
     ]
 

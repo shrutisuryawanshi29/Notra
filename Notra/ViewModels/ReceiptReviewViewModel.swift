@@ -26,6 +26,12 @@ protocol ReceiptReviewViewModelDelegate: AnyObject {
     func didLoadCategoryOptions()
 }
 
+enum BulkAssignmentMode: String {
+    case none
+    case allMine
+    case allShared
+}
+
 final class ReceiptReviewViewModel {
 
     weak var delegate: ReceiptReviewViewModelDelegate?
@@ -55,15 +61,22 @@ final class ReceiptReviewViewModel {
 
     var receiptSubtotal: Double? { receiptResult.summary.itemsSubtotal }
     var receiptTax: Double? { receiptResult.summary.tax }
+    var receiptServiceFee: Double? { receiptResult.summary.serviceFee }
     var receiptDeliveryFee: Double? { receiptResult.summary.deliveryFee }
     var receiptDeliveryCharged: Double? { nil }
     var receiptTip: Double? { receiptResult.summary.tip }
+    var receiptDiscount: Double? { receiptResult.summary.discount }
     var receiptTotal: Double? { receiptResult.summary.totalCharged ?? receiptResult.summary.total }
 
     var hasReceiptSummaryData: Bool { !receiptResult.summary.isEmpty }
 
     var includeTaxProportionally: Bool = true
     var splitMethod: SplitMethodType = .splitEqually
+
+    // MARK: - Bulk Assignment State
+
+    var bulkMode: BulkAssignmentMode = .none
+    var selectedBulkSharedPersonIds: Set<String> = []
 
     // MARK: - Category Support
 
@@ -222,46 +235,131 @@ final class ReceiptReviewViewModel {
         receiptResult.items.contains { $0.classification == .shared && $0.sharedWith.isEmpty }
     }
 
+    // MARK: - Bulk Actions
+
+    var includedProductItems: [GeminiReceiptItem] {
+        receiptResult.items.filter { $0.classification != .ignore }
+    }
+
+    func applyAllMine() {
+        bulkMode = .allMine
+        selectedBulkSharedPersonIds = []
+        for i in receiptResult.items.indices where receiptResult.items[i].classification != .ignore {
+            receiptResult.items[i].classification = .mine
+            receiptResult.items[i].sharedWith = []
+        }
+        delegate?.didUpdateSummary()
+    }
+
+    func applyAllShared(with personIds: [String]) {
+        guard !personIds.isEmpty else {
+            delegate?.didFailWithError("Select at least one person to share with.")
+            return
+        }
+        bulkMode = .allShared
+        selectedBulkSharedPersonIds = Set(personIds)
+        for i in receiptResult.items.indices where receiptResult.items[i].classification != .ignore {
+            receiptResult.items[i].classification = .shared
+            receiptResult.items[i].sharedWith = personIds
+        }
+        delegate?.didUpdateSummary()
+    }
+
+    func enterAllSharedMode() {
+        bulkMode = .allShared
+        delegate?.didUpdateSummary()
+    }
+
+    func clearBulkAction() {
+        bulkMode = .none
+        selectedBulkSharedPersonIds = []
+        for i in receiptResult.items.indices where receiptResult.items[i].classification != .ignore {
+            receiptResult.items[i].classification = .mine
+            receiptResult.items[i].sharedWith = []
+        }
+        delegate?.didUpdateSummary()
+    }
+
+    func updateBulkSharedPeople(_ ids: Set<String>) {
+        selectedBulkSharedPersonIds = ids
+        guard !ids.isEmpty else {
+            delegate?.didUpdateSummary()
+            return
+        }
+        for i in receiptResult.items.indices where receiptResult.items[i].classification != .ignore {
+            receiptResult.items[i].classification = .shared
+            receiptResult.items[i].sharedWith = Array(ids)
+        }
+        delegate?.didUpdateSummary()
+    }
+
     // MARK: - Split Calculations
 
     var hasTax: Bool { (receiptResult.summary.tax ?? 0) > 0 }
     var taxAmount: Double { receiptResult.summary.tax ?? 0 }
 
-    var personalTotal: Double {
-        let mineItems = receiptResult.items
-            .filter { $0.classification == .mine }
+    var hasFees: Bool {
+        (receiptResult.summary.serviceFee ?? 0) > 0
+        || (receiptResult.summary.deliveryFee ?? 0) > 0
+        || (receiptResult.summary.tip ?? 0) > 0
+    }
+
+    private var extrasToAllocateValue: Double {
+        let tax = receiptResult.summary.tax ?? 0
+        let serviceFee = receiptResult.summary.serviceFee ?? 0
+        let deliveryFee = receiptResult.summary.deliveryFee ?? 0
+        let tip = receiptResult.summary.tip ?? 0
+        let discount = receiptResult.summary.discount ?? 0
+        return tax + serviceFee + deliveryFee + tip - discount
+    }
+
+    private var includedItemSubtotal: Double {
+        receiptResult.items
+            .filter { $0.classification != .ignore }
             .reduce(0.0) { $0 + $1.finalPrice }
-        if includeTaxProportionally, let tax = receiptResult.summary.tax, tax > 0 {
-            let allTotal = receiptResult.items
-                .filter { $0.classification != .ignore }
-                .reduce(0.0) { $0 + $1.finalPrice }
-            if allTotal > 0 {
-                return mineItems + (mineItems / allTotal) * tax
-            }
+    }
+
+    var personalTotal: Double {
+        let includedItems = receiptResult.items.filter { $0.classification != .ignore }
+        let sub = includedItemSubtotal
+        guard sub > 0 else { return 0 }
+        let extras = extrasToAllocateValue
+        let mineItems = includedItems.filter { $0.classification == .mine }
+        return mineItems.reduce(0.0) { total, item in
+            let itemAllocatedExtra = extras * (item.finalPrice / sub)
+            return total + item.finalPrice + itemAllocatedExtra
         }
-        return mineItems
     }
 
     var sharedTotal: Double {
-        let sharedItems = receiptResult.items
-            .filter { $0.classification == .shared }
-            .reduce(0.0) { $0 + $1.finalPrice }
-        if includeTaxProportionally, let tax = receiptResult.summary.tax, tax > 0 {
-            let allTotal = receiptResult.items
-                .filter { $0.classification != .ignore }
-                .reduce(0.0) { $0 + $1.finalPrice }
-            if allTotal > 0 {
-                return sharedItems + (sharedItems / allTotal) * tax
-            }
+        let includedItems = receiptResult.items.filter { $0.classification != .ignore }
+        let sub = includedItemSubtotal
+        guard sub > 0 else { return 0 }
+        let extras = extrasToAllocateValue
+        let sharedItems = includedItems.filter { $0.classification == .shared }
+        return sharedItems.reduce(0.0) { total, item in
+            let itemAllocatedExtra = extras * (item.finalPrice / sub)
+            return total + item.finalPrice + itemAllocatedExtra
         }
-        return sharedItems
     }
 
     var myShare: Double {
+        let result: Double
         if hasSharedItems {
-            return multiPersonSettlement.myShare
+            result = multiPersonSettlement.myShare
+        } else {
+            result = personalTotal
         }
-        return personalTotal
+        print("[ReceiptCalc] itemSubtotal=\(receiptResult.summary.itemsSubtotal.map { String(format: "%.2f", $0) } ?? "nil")")
+        print("[ReceiptCalc] includedItemSubtotal=\(String(format: "%.2f", includedItemSubtotal))")
+        print("[ReceiptCalc] tax=\(receiptResult.summary.tax.map { String(format: "%.2f", $0) } ?? "nil")")
+        print("[ReceiptCalc] serviceFee=\(receiptResult.summary.serviceFee.map { String(format: "%.2f", $0) } ?? "nil")")
+        print("[ReceiptCalc] deliveryFee=\(receiptResult.summary.deliveryFee.map { String(format: "%.2f", $0) } ?? "nil")")
+        print("[ReceiptCalc] tip=\(receiptResult.summary.tip.map { String(format: "%.2f", $0) } ?? "nil")")
+        print("[ReceiptCalc] extrasToAllocate=\(String(format: "%.2f", extrasToAllocateValue))")
+        print("[ReceiptCalc] myShare=\(String(format: "%.2f", result))")
+        print("[ReceiptCalc] receiptTotal=\(receiptResult.summary.totalCharged.map { String(format: "%.2f", $0) } ?? receiptResult.summary.total.map { String(format: "%.2f", $0) } ?? "nil")")
+        return result
     }
 
     var theyOwe: Double {
@@ -287,13 +385,8 @@ final class ReceiptReviewViewModel {
     }
 
     var includedTotal: Double {
-        let sub = receiptResult.items
-            .filter { $0.classification != .ignore }
-            .reduce(0.0) { $0 + $1.finalPrice }
-        if includeTaxProportionally, let tax = receiptResult.summary.tax, tax > 0 {
-            return sub + tax
-        }
-        return sub
+        let sub = includedItemSubtotal
+        return sub + extrasToAllocateValue
     }
 
     var personOwes: [(name: String, amount: Double)] {
@@ -308,51 +401,40 @@ final class ReceiptReviewViewModel {
 
     /// Multi-person settlement: compute myShare, theyOwe, and per-person owes.
     /// Each shared item is split equally among Me + selected people.
-    /// Tax is allocated proportionally when includeTaxProportionally is ON.
+    /// Extras (tax + fees) are allocated proportionally by item price.
     private var multiPersonSettlement: (myShare: Double, theyOwe: Double, personOwes: [String: Double]) {
-        var myShare = 0.0
+        var myShareVal = 0.0
         var personOwes: [String: Double] = [:]
-        var allPreTaxTotal = 0.0
 
         let includedItems = receiptResult.items.filter { $0.classification != .ignore }
+        let sub = includedItemSubtotal
+        guard sub > 0 else { return (0, 0, [:]) }
 
-        struct ItemAlloc {
-            var myPreTax: Double
-            var personPreTax: [String: Double]
-        }
-        var allocs: [ItemAlloc] = []
+        let extras = extrasToAllocateValue
 
         for item in includedItems {
+            let itemAllocatedExtra = extras * (item.finalPrice / sub)
+            let itemEffectiveTotal = item.finalPrice + itemAllocatedExtra
+
             if item.classification == .mine {
-                allPreTaxTotal += item.finalPrice
-                allocs.append(ItemAlloc(myPreTax: item.finalPrice, personPreTax: [:]))
+                myShareVal += itemEffectiveTotal
             } else if item.classification == .shared {
                 let sharedWith = item.sharedWith
-                guard !sharedWith.isEmpty else { continue }
-                let count = 1 + sharedWith.count
-                let share = item.finalPrice / Double(count)
-                allPreTaxTotal += item.finalPrice
-                var pMap: [String: Double] = [:]
-                for pid in sharedWith {
-                    pMap[pid] = share
+                guard !sharedWith.isEmpty else {
+                    myShareVal += itemEffectiveTotal
+                    continue
                 }
-                allocs.append(ItemAlloc(myPreTax: share, personPreTax: pMap))
-            }
-        }
-
-        let tax = includeTaxProportionally ? (receiptResult.summary.tax ?? 0) : 0
-
-        for alloc in allocs {
-            let myTax = allPreTaxTotal > 0 ? (alloc.myPreTax / allPreTaxTotal) * tax : 0
-            myShare += alloc.myPreTax + myTax
-            for (pid, preTax) in alloc.personPreTax {
-                let personTax = allPreTaxTotal > 0 ? (preTax / allPreTaxTotal) * tax : 0
-                personOwes[pid, default: 0] += preTax + personTax
+                let count = 1 + sharedWith.count
+                let share = itemEffectiveTotal / Double(count)
+                myShareVal += share
+                for pid in sharedWith {
+                    personOwes[pid, default: 0] += share
+                }
             }
         }
 
         let theyOwe = personOwes.values.reduce(0, +)
-        return (myShare, theyOwe, personOwes)
+        return (myShareVal, theyOwe, personOwes)
     }
 
     var isRelationCategory: Bool { isRelationCategoryField }
