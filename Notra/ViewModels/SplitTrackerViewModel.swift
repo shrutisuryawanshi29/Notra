@@ -26,10 +26,16 @@ final class SplitTrackerViewModel {
     private(set) var isEmpty = true
 
     var activeFilter: SplitTrackerFilter = .default {
-        didSet { applyFilter() }
+        didSet {
+            print("[SplitTracker] main filter changed to=\(activeFilter.rawValue)")
+            applyFilter()
+            DispatchQueue.main.async { [weak self] in
+                self?.delegate?.didUpdateData()
+            }
+        }
     }
 
-    private var allGroups: [SplitTrackerPersonGroup] = []
+    private(set) var allGroups: [SplitTrackerPersonGroup] = []
     private var filteredGroups: [SplitTrackerPersonGroup] = []
 
     private let cache = SessionCacheManager.shared
@@ -40,14 +46,18 @@ final class SplitTrackerViewModel {
         delegate?.didStartLoading()
 
         let expenses = cache.allExpenses
-        let splitExpenses = expenses.filter { $0.isSplit && ($0.splitMetadata?.theyOwe ?? 0) > 0 }
+        let splitExpenses = expenses.filter { $0.isSplit }
 
         let groups = buildGroups(from: splitExpenses)
         allGroups = groups
+        let allPending = allGroups.reduce(0) { $0 + $1.pendingTotal }
+        let allSettled = allGroups.reduce(0) { $0 + $1.settledTotal }
+        print("[SplitTracker] rebuild allEntries=\(allGroups.reduce(0) { $0 + $1.entries.count }), pending=\(allPending), settled=\(allSettled)")
         applyFilter()
-        print("[SplitTracker] rebuilt groups count=\(personGroups.count)")
+
+        print("[SplitTracker] rebuilt groups total=\(allGroups.count), pendingTotal=\(allPending), settledTotal=\(allSettled)")
         for g in personGroups {
-            print("[SplitTracker] group personId=\(g.personId), displayName=\(g.personName), pending=\(g.pendingTotal)")
+            print("[SplitTracker] group personId=\(g.personId), displayName=\(g.personName), pendingTotal=\(g.pendingTotal), settledTotal=\(g.settledTotal)")
         }
         isLoading = false
         delegate?.didFinishLoading()
@@ -82,6 +92,7 @@ final class SplitTrackerViewModel {
 
     private func buildGroups(from transactions: [NormalizedTransaction]) -> [SplitTrackerPersonGroup] {
         var personMap: [String: (name: String, entries: [SplitTrackerEntry])] = [:]
+        print("[SplitTracker] building groups from \(transactions.count) split transactions")
 
         for tx in transactions {
             guard let split = tx.splitMetadata else { continue }
@@ -139,6 +150,13 @@ final class SplitTrackerViewModel {
             }
         }
 
+        let allEntries = personMap.values.flatMap { $0.entries }
+        let parsedPending = allEntries.filter { $0.status == .pending }.count
+        let parsedSettled = allEntries.filter { $0.status == .settled }.count
+        print("[SplitTracker] parsed entries total=\(allEntries.count)")
+        print("[SplitTracker] parsed pending=\(parsedPending)")
+        print("[SplitTracker] parsed settled=\(parsedSettled)")
+
         return personMap.values.map { data in
             let pending = data.entries.filter { $0.status == .pending }.reduce(0) { $0 + $1.amountOwed }
             let settled = data.entries.filter { $0.status == .settled }.reduce(0) { $0 + $1.amountOwed }
@@ -153,6 +171,7 @@ final class SplitTrackerViewModel {
     }
 
     private func applyFilter() {
+        print("[SplitTracker] selectedFilter=\(activeFilter.rawValue)")
         switch activeFilter {
         case .pending:
             filteredGroups = allGroups.map { group in
@@ -184,6 +203,11 @@ final class SplitTrackerViewModel {
         totalPendingOwed = filteredGroups.reduce(0) { $0 + $1.pendingTotal }
         totalSettled = filteredGroups.reduce(0) { $0 + $1.settledTotal }
         isEmpty = filteredGroups.isEmpty
+        print("[SplitTracker] summary pendingTotal=\(totalPendingOwed), settledTotal=\(totalSettled), allTotal=\(totalPendingOwed + totalSettled)")
+        print("[SplitTracker] visibleGroups count=\(filteredGroups.count)")
+        for g in filteredGroups {
+            print("[SplitTracker] group person=\(g.personName), pendingTotal=\(g.pendingTotal), settledTotal=\(g.settledTotal), allTotal=\(g.totalOwed)")
+        }
     }
 
     func updateSettlementStatus(entry: SplitTrackerEntry, newStatus: SettlementStatus, completion: @escaping (Result<Void, Error>) -> Void) {

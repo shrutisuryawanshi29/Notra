@@ -3,27 +3,47 @@ import UIKit
 final class SplitTrackerPersonDetailViewController: UIViewController {
 
     private let personName: String
-    private var entries: [SplitTrackerEntry]
+    private let allEntries: [SplitTrackerEntry]
+    private var filteredEntries: [SplitTrackerEntry] = []
+    private let selectedFilter: SplitTrackerFilter
     private let viewModel: SplitTrackerViewModel
     private let loadingIndicator = UIActivityIndicatorView(style: .medium)
 
     private let tableView = UITableView(frame: .zero, style: .insetGrouped)
     private let pendingTotalLabel = UILabel()
     private let settledTotalLabel = UILabel()
-    private let entryCountLabel = UILabel()
+    private let contextSubtitleLabel = UILabel()
     private let headerView = UIView()
     private let emptyStateLabel = UILabel()
 
     private var updatingEntryId: String?
 
-    init(personName: String, entries: [SplitTrackerEntry], viewModel: SplitTrackerViewModel) {
+    init(personName: String, entries: [SplitTrackerEntry], selectedFilter: SplitTrackerFilter, viewModel: SplitTrackerViewModel) {
         self.personName = personName
-        self.entries = entries
+        self.allEntries = entries
+        self.selectedFilter = selectedFilter
         self.viewModel = viewModel
+        self.filteredEntries = Self.filterEntries(entries, by: selectedFilter)
         super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    private static func filterEntries(_ entries: [SplitTrackerEntry], by filter: SplitTrackerFilter) -> [SplitTrackerEntry] {
+        switch filter {
+        case .pending: return entries.filter { $0.status == .pending }
+        case .settled: return entries.filter { $0.status == .settled }
+        case .all: return entries
+        }
+    }
+
+    private func refreshEntries() {
+        let nameLower = personName.lowercased()
+        let refreshed = viewModel.allGroups.first { $0.personName.lowercased() == nameLower }?.entries ?? allEntries
+        filteredEntries = Self.filterEntries(refreshed, by: viewModel.activeFilter)
+        updateHeader()
+        tableView.reloadData()
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -32,6 +52,26 @@ final class SplitTrackerPersonDetailViewController: UIViewController {
         AppTheme.styleNavigationBar(navigationController?.navigationBar ?? UINavigationBar())
 
         setupUI()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        refreshEntries()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard let header = tableView.tableHeaderView, tableView.bounds.width > 0 else { return }
+        let targetWidth = tableView.bounds.width
+        let size = header.systemLayoutSizeFitting(
+            CGSize(width: targetWidth, height: UIView.layoutFittingCompressedSize.height),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        )
+        if abs(header.frame.height - size.height) > 0.5 {
+            header.frame.size.height = size.height
+            tableView.tableHeaderView = header
+        }
     }
 
     private func setupUI() {
@@ -43,44 +83,21 @@ final class SplitTrackerPersonDetailViewController: UIViewController {
         nameLabel.font = AppTheme.Fonts.headingMedium
         nameLabel.textColor = AppTheme.Colors.textPrimary
 
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-
-        let pendingTotal = entries.filter { $0.status == .pending }.reduce(0) { $0 + $1.amountOwed }
-        let settledTotal = entries.filter { $0.status == .settled }.reduce(0) { $0 + $1.amountOwed }
-
         pendingTotalLabel.font = AppTheme.Fonts.body
         pendingTotalLabel.textColor = AppTheme.Colors.accent
-        let pendingStr = f.string(from: NSNumber(value: pendingTotal)) ?? "$0.00"
-        if pendingTotal > 0 {
-            pendingTotalLabel.text = "Pending owed: \(pendingStr)"
-        } else {
-            pendingTotalLabel.text = "All settled"
-            pendingTotalLabel.textColor = AppTheme.Colors.income
-        }
-
         settledTotalLabel.font = AppTheme.Fonts.caption
         settledTotalLabel.textColor = AppTheme.Colors.income
-        if settledTotal > 0 {
-            settledTotalLabel.text = "Settled: \(f.string(from: NSNumber(value: settledTotal)) ?? "$0.00")"
-            settledTotalLabel.isHidden = false
-        } else {
-            settledTotalLabel.isHidden = true
-        }
 
-        entryCountLabel.font = AppTheme.Fonts.caption
-        entryCountLabel.textColor = AppTheme.Colors.textMuted
-        let total = entries.count
-        entryCountLabel.text = "\(total) entr\(total == 1 ? "y" : "ies")"
+        contextSubtitleLabel.font = AppTheme.Fonts.caption
+        contextSubtitleLabel.textColor = AppTheme.Colors.textMuted
 
-        let infoStack = UIStackView(arrangedSubviews: [pendingTotalLabel, settledTotalLabel, entryCountLabel])
-        infoStack.axis = .vertical
-        infoStack.spacing = 2
+        let totalsStack = UIStackView(arrangedSubviews: [pendingTotalLabel, settledTotalLabel])
+        totalsStack.axis = .vertical
+        totalsStack.spacing = 2
 
-        let headerContent = UIStackView(arrangedSubviews: [nameLabel, infoStack])
+        let headerContent = UIStackView(arrangedSubviews: [nameLabel, totalsStack, contextSubtitleLabel])
         headerContent.axis = .vertical
-        headerContent.spacing = 6
+        headerContent.spacing = 8
         headerContent.translatesAutoresizingMaskIntoConstraints = false
 
         headerView.addSubview(headerContent)
@@ -89,7 +106,7 @@ final class SplitTrackerPersonDetailViewController: UIViewController {
             headerContent.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 20),
             headerContent.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 20),
             headerContent.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -20),
-            headerContent.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 12)
+            headerContent.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -16)
         ])
 
         loadingIndicator.hidesWhenStopped = true
@@ -108,12 +125,11 @@ final class SplitTrackerPersonDetailViewController: UIViewController {
         tableView.tableHeaderView = headerView
         tableView.translatesAutoresizingMaskIntoConstraints = false
 
-        emptyStateLabel.text = "No pending splits for this person."
         emptyStateLabel.font = AppTheme.Fonts.body
         emptyStateLabel.textColor = AppTheme.Colors.textMuted
         emptyStateLabel.textAlignment = .center
         emptyStateLabel.translatesAutoresizingMaskIntoConstraints = false
-        emptyStateLabel.isHidden = entries.contains(where: { $0.status == .pending })
+        emptyStateLabel.isHidden = true
 
         view.addSubview(tableView)
         view.addSubview(emptyStateLabel)
@@ -130,12 +146,10 @@ final class SplitTrackerPersonDetailViewController: UIViewController {
             emptyStateLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
 
-        let headerHeight = headerView.systemLayoutSizeFitting(
-            CGSize(width: view.bounds.width, height: UIView.layoutFittingCompressedSize.height),
-            withHorizontalFittingPriority: .required,
-            verticalFittingPriority: .fittingSizeLevel
-        ).height
-        headerView.frame.size.height = headerHeight
+        updateHeader()
+
+        let fitting = headerView.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
+        headerView.frame.size = fitting
         tableView.tableHeaderView = headerView
     }
 
@@ -155,11 +169,7 @@ final class SplitTrackerPersonDetailViewController: UIViewController {
                 guard let self = self else { return }
                 print("[SplitTrackerDetail] edit completed, refreshing tracker")
                 SessionCacheManager.shared.replaceExpense(updatedTx)
-                let nameLower = self.personName.lowercased()
-                self.entries = self.viewModel.personGroups.first { $0.personName.lowercased() == nameLower }?.entries ?? []
-                self.updateHeader()
-                self.emptyStateLabel.isHidden = self.entries.contains(where: { $0.status == .pending })
-                self.tableView.reloadData()
+                self.refreshEntries()
             }
             let editNav = UINavigationController(rootViewController: editVC)
             editNav.modalPresentationStyle = .fullScreen
@@ -182,11 +192,7 @@ final class SplitTrackerPersonDetailViewController: UIViewController {
                 self.loadingIndicator.stopAnimating()
                 switch result {
                 case .success:
-                    let nameLower = self.personName.lowercased()
-                    self.entries = self.viewModel.personGroups.first { $0.personName.lowercased() == nameLower }?.entries ?? []
-                    self.updateHeader()
-                    self.emptyStateLabel.isHidden = self.entries.contains(where: { $0.status == .pending })
-                    self.tableView.reloadData()
+                    self.refreshEntries()
                 case .failure(let error):
                     let alert = UIAlertController(
                         title: "Error",
@@ -204,37 +210,67 @@ final class SplitTrackerPersonDetailViewController: UIViewController {
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.currencyCode = "USD"
-        let pendingTotal = entries.filter { $0.status == .pending }.reduce(0) { $0 + $1.amountOwed }
-        let settledTotal = entries.filter { $0.status == .settled }.reduce(0) { $0 + $1.amountOwed }
 
-        if pendingTotal > 0 {
-            pendingTotalLabel.text = "Pending owed: \(f.string(from: NSNumber(value: pendingTotal)) ?? "$0.00")"
-            pendingTotalLabel.textColor = AppTheme.Colors.accent
-        } else {
-            pendingTotalLabel.text = "All settled"
-            pendingTotalLabel.textColor = AppTheme.Colors.income
-        }
+        let pendingTotal = filteredEntries.filter { $0.status == .pending }.reduce(0) { $0 + $1.amountOwed }
+        let settledTotal = filteredEntries.filter { $0.status == .settled }.reduce(0) { $0 + $1.amountOwed }
 
-        if settledTotal > 0 {
-            settledTotalLabel.text = "Settled: \(f.string(from: NSNumber(value: settledTotal)) ?? "$0.00")"
-            settledTotalLabel.isHidden = false
-        } else {
+        switch selectedFilter {
+        case .pending:
+            if pendingTotal > 0 {
+                pendingTotalLabel.text = "Pending: \(f.string(from: NSNumber(value: pendingTotal)) ?? "$0.00")"
+                pendingTotalLabel.textColor = AppTheme.Colors.accent
+            } else {
+                pendingTotalLabel.text = "No pending"
+                pendingTotalLabel.textColor = AppTheme.Colors.textMuted
+            }
             settledTotalLabel.isHidden = true
+            contextSubtitleLabel.text = "Showing pending splits"
+        case .settled:
+            pendingTotalLabel.text = "Settled: \(f.string(from: NSNumber(value: settledTotal)) ?? "$0.00")"
+            pendingTotalLabel.textColor = AppTheme.Colors.income
+            settledTotalLabel.isHidden = true
+            contextSubtitleLabel.text = "Showing settled splits"
+        case .all:
+            if pendingTotal > 0 {
+                pendingTotalLabel.text = "Pending: \(f.string(from: NSNumber(value: pendingTotal)) ?? "$0.00")"
+                pendingTotalLabel.textColor = AppTheme.Colors.accent
+            } else {
+                pendingTotalLabel.text = "No pending"
+                pendingTotalLabel.textColor = AppTheme.Colors.textMuted
+            }
+            if settledTotal > 0 {
+                settledTotalLabel.text = "Settled: \(f.string(from: NSNumber(value: settledTotal)) ?? "$0.00")"
+                settledTotalLabel.isHidden = false
+            } else {
+                settledTotalLabel.isHidden = true
+            }
+            contextSubtitleLabel.text = "Showing all splits"
         }
 
-        let total = entries.count
-        entryCountLabel.text = "\(total) entr\(total == 1 ? "y" : "ies")"
+        let emptyMessage: String
+        if filteredEntries.isEmpty {
+            switch selectedFilter {
+            case .pending: emptyMessage = "No pending splits."
+            case .settled: emptyMessage = "No settled splits yet."
+            case .all: emptyMessage = "No split records yet."
+            }
+        } else {
+            emptyMessage = ""
+        }
+        emptyStateLabel.text = emptyMessage
+        emptyStateLabel.isHidden = !filteredEntries.isEmpty
+        tableView.isHidden = filteredEntries.isEmpty
     }
 }
 
 extension SplitTrackerPersonDetailViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        entries.count
+        filteredEntries.count
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "SplitEntryCell", for: indexPath) as! SplitEntryCell
-        let entry = entries[indexPath.row]
+        let entry = filteredEntries[indexPath.row]
         let isUpdating = updatingEntryId == entry.transactionId
         cell.configure(with: entry, isUpdating: isUpdating)
         cell.onSettleTap = { [weak self] in
@@ -246,7 +282,7 @@ extension SplitTrackerPersonDetailViewController: UITableViewDataSource, UITable
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        openTransactionDetail(entries[indexPath.row])
+        openTransactionDetail(filteredEntries[indexPath.row])
     }
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
@@ -392,7 +428,6 @@ fileprivate class SplitEntryCell: UITableViewCell {
         f.currencyCode = "USD"
         amountLabel.text = f.string(from: NSNumber(value: entry.amountOwed))
 
-        // Split context
         let split = entry.splitMetadata
         if split.paidAmount > 0 {
             let paidStr = f.string(from: NSNumber(value: split.paidAmount)) ?? "$0.00"
@@ -409,7 +444,6 @@ fileprivate class SplitEntryCell: UITableViewCell {
             splitContextLabel.isHidden = true
         }
 
-        // Chip + Button styling
         if entry.status == .settled {
             statusChip.setTitle("Settled", for: .normal)
             statusChip.backgroundColor = AppTheme.Colors.income
@@ -432,6 +466,8 @@ fileprivate class SplitEntryCell: UITableViewCell {
             actionButton.setTitleColor(.white, for: .normal)
             actionButton.layer.borderWidth = 0
         }
+
+        amountLabel.textColor = entry.status == .settled ? AppTheme.Colors.textMuted : AppTheme.Colors.accent
 
         if isUpdating {
             loadingSpinner.startAnimating()

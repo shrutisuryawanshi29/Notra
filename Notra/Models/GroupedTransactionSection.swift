@@ -56,6 +56,8 @@ enum SplitMethodType: String, Codable, CaseIterable {
             return .shares
         case "percent", "manualPercent":
             return .percent
+        case "manualHHS":
+            return .adjustment
         default:
             return SplitMethodType(rawValue: legacy) ?? .exactAmounts
         }
@@ -284,6 +286,10 @@ struct SplitMetadata: Codable {
             print("[SplitDetailsParser] displayMethod=Equal")
             return "Equal"
         }
+        if type == "manualHHS" {
+            print("[SplitDetailsParser] displayMethod=HHS")
+            return "HHS"
+        }
         let display = resolvedType?.displayName ?? type?.capitalized ?? "Split"
         print("[SplitDetailsParser] displayMethod=\(display)")
         return display
@@ -294,18 +300,41 @@ struct SplitMetadata: Codable {
     }
 
     var isManualMultiPerson: Bool {
-        version == 2 && (type == "manualEqual" || type == "manualPercent" || type == "manualCustom")
+        version == 2 && (type == "manualEqual" || type == "manualPercent" || type == "manualCustom" || type == "manualHHS")
     }
 
     var multiPersonSubtitle: String? {
         guard (isMultiPersonReceipt || isManualMultiPerson), let participants = participants, !participants.isEmpty else {
             return nil
         }
-        if participants.count <= 2 {
-            let parts = participants.map { "\($0.name) owes \(currencyStr($0.owes))" }
-            return parts.joined(separator: " · ")
+        let pendingParticipants = participants.filter { ($0.status ?? "pending") == "pending" }
+        let settledParticipants = participants.filter { $0.status == "settled" }
+        let pendingSum = pendingParticipants.reduce(0) { $0 + $1.owes }
+        let settledSum = settledParticipants.reduce(0) { $0 + $1.owes }
+        let allSettled = settledParticipants.count == participants.count
+        let allPending = pendingParticipants.count == participants.count
+        if allPending {
+            if participants.count <= 2 {
+                let parts = participants.map { "\($0.name) owes \(currencyStr($0.owes))" }
+                return parts.joined(separator: " · ")
+            }
+            return "\(participants.count) people owe \(currencyStr(pendingSum))"
+        } else if allSettled {
+            if participants.count <= 2 {
+                let parts = participants.map { "\($0.name) settled \(currencyStr($0.owes))" }
+                return parts.joined(separator: " · ")
+            }
+            return "\(participants.count) people settled \(currencyStr(settledSum))"
+        } else {
+            var parts: [String] = []
+            if pendingSum > 0 {
+                parts.append("Pending \(currencyStr(pendingSum))")
+            }
+            if settledSum > 0 {
+                parts.append("Settled \(currencyStr(settledSum))")
+            }
+            return parts.joined(separator: " • ")
         }
-        return "\(participants.count) people owe \(currencyStr(theyOwe))"
     }
 
     /// Build updated JSON string with modified participants (for settlement updates).

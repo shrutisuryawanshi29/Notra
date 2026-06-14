@@ -518,6 +518,8 @@ extension AddTransactionViewController {
                     myShare: result.inputsDict["customAmount"] as? Double,
                     myPercent: result.inputsDict["myPercent"] as? Double,
                     theirPercent: result.inputsDict["theirPercent"] as? Double,
+                    adjustmentAmount: result.inputsDict["extraAmount"] as? Double,
+                    adjustmentMode: result.inputsDict["entryMode"] as? String,
                     entryMode: result.inputsDict["entryMode"] as? String ?? viewModel.splitEntryMode
                 )
             } else {
@@ -603,6 +605,8 @@ extension AddTransactionViewController {
                     myShare: result.inputsDict["customAmount"] as? Double,
                     myPercent: result.inputsDict["myPercent"] as? Double,
                     theirPercent: result.inputsDict["theirPercent"] as? Double,
+                    adjustmentAmount: result.inputsDict["extraAmount"] as? Double,
+                    adjustmentMode: result.inputsDict["entryMode"] as? String,
                     entryMode: result.inputsDict["entryMode"] as? String ?? viewModel.splitEntryMode
                 )
             } else {

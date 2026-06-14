@@ -60,6 +60,13 @@ class DashboardViewController: UIViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
+    private let actionsContainerStack: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }()
 
     private let loadingContainerView: UIView = {
         let view = UIView()
@@ -134,13 +141,12 @@ class DashboardViewController: UIViewController {
         setupHeader()
         setupMonthSelector()
         setupSummarySection()
+        setupActionsSection()
         setupStatusCard()
         setupBudgetCard()
         setupIncomeSnapshotCard()
         setupActivityCard()
-        setupSplitTrackerCard()
         setupQuickChecksCard()
-        setupActionsSection()
         setupLoadingView()
         setupEmptyState()
         setupFAB()
@@ -251,13 +257,7 @@ class DashboardViewController: UIViewController {
 
     private func setupActionsSection() {
         contentView.addSubview(actionsTitleLabel)
-
-        let actionsStackView = UIStackView()
-        actionsStackView.axis = .horizontal
-        actionsStackView.distribution = .fillEqually
-        actionsStackView.spacing = 12
-        actionsStackView.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(actionsStackView)
+        contentView.addSubview(actionsContainerStack)
 
         expensesActionCard.configure(
             icon: "creditcard.fill",
@@ -277,6 +277,29 @@ class DashboardViewController: UIViewController {
             subtitle: "See insights",
             accentColor: AppTheme.Colors.accent
         )
+        splitTrackerActionCard.configure(
+            icon: "arrow.left.arrow.right",
+            title: "Split Tracker",
+            subtitle: "View settlements",
+            accentColor: AppTheme.Colors.accentSecondary
+        )
+
+        let row1 = UIStackView()
+        row1.axis = .horizontal
+        row1.distribution = .fillEqually
+        row1.spacing = 12
+        row1.addArrangedSubview(expensesActionCard)
+        row1.addArrangedSubview(incomeActionCard)
+
+        let row2 = UIStackView()
+        row2.axis = .horizontal
+        row2.distribution = .fillEqually
+        row2.spacing = 12
+        row2.addArrangedSubview(analyticsActionCard)
+        row2.addArrangedSubview(splitTrackerActionCard)
+
+        actionsContainerStack.addArrangedSubview(row1)
+        actionsContainerStack.addArrangedSubview(row2)
 
         let expenseTap = UITapGestureRecognizer(target: self, action: #selector(viewExpensesTapped))
         expensesActionCard.addGestureRecognizer(expenseTap)
@@ -284,20 +307,19 @@ class DashboardViewController: UIViewController {
         incomeActionCard.addGestureRecognizer(incomeTap)
         let analyticsTap = UITapGestureRecognizer(target: self, action: #selector(analyticsTapped))
         analyticsActionCard.addGestureRecognizer(analyticsTap)
-
-        actionsStackView.addArrangedSubview(expensesActionCard)
-        actionsStackView.addArrangedSubview(incomeActionCard)
-        actionsStackView.addArrangedSubview(analyticsActionCard)
+        let splitTap = UITapGestureRecognizer(target: self, action: #selector(openSplitTracker))
+        splitTrackerActionCard.addGestureRecognizer(splitTap)
 
         NSLayoutConstraint.activate([
-            actionsTitleLabel.topAnchor.constraint(equalTo: quickChecksCardView.bottomAnchor, constant: sectionSpacing),
+            actionsTitleLabel.topAnchor.constraint(equalTo: summaryStackView.bottomAnchor, constant: sectionSpacing),
             actionsTitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
 
-            actionsStackView.topAnchor.constraint(equalTo: actionsTitleLabel.bottomAnchor, constant: 12),
-            actionsStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            actionsStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            actionsStackView.heightAnchor.constraint(equalToConstant: 90),
-            actionsStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -40)
+            actionsContainerStack.topAnchor.constraint(equalTo: actionsTitleLabel.bottomAnchor, constant: 12),
+            actionsContainerStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            actionsContainerStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            row1.heightAnchor.constraint(equalToConstant: 90),
+            row2.heightAnchor.constraint(equalToConstant: 90)
         ])
     }
 
@@ -306,7 +328,7 @@ class DashboardViewController: UIViewController {
         contentView.addSubview(statusCardView)
 
         NSLayoutConstraint.activate([
-            statusCardView.topAnchor.constraint(equalTo: summaryStackView.bottomAnchor, constant: sectionSpacing),
+            statusCardView.topAnchor.constraint(equalTo: actionsContainerStack.bottomAnchor, constant: sectionSpacing),
             statusCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             statusCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
         ])
@@ -351,35 +373,15 @@ class DashboardViewController: UIViewController {
         ])
     }
 
-    private func setupSplitTrackerCard() {
-        splitTrackerActionCard.translatesAutoresizingMaskIntoConstraints = false
-        splitTrackerActionCard.configure(
-            icon: "arrow.left.arrow.right",
-            title: "Split Tracker",
-            subtitle: "View pending settlements",
-            accentColor: AppTheme.Colors.accentSecondary
-        )
-        contentView.addSubview(splitTrackerActionCard)
-
-        let splitTap = UITapGestureRecognizer(target: self, action: #selector(openSplitTracker))
-        splitTrackerActionCard.addGestureRecognizer(splitTap)
-
-        NSLayoutConstraint.activate([
-            splitTrackerActionCard.topAnchor.constraint(equalTo: activityCardView.bottomAnchor, constant: sectionSpacing),
-            splitTrackerActionCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            splitTrackerActionCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            splitTrackerActionCard.heightAnchor.constraint(equalToConstant: 72)
-        ])
-    }
-
     private func setupQuickChecksCard() {
         quickChecksCardView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(quickChecksCardView)
 
         NSLayoutConstraint.activate([
-            quickChecksCardView.topAnchor.constraint(equalTo: splitTrackerActionCard.bottomAnchor, constant: sectionSpacing),
+            quickChecksCardView.topAnchor.constraint(equalTo: activityCardView.bottomAnchor, constant: sectionSpacing),
             quickChecksCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            quickChecksCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20)
+            quickChecksCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            quickChecksCardView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -40)
         ])
     }
 

@@ -11,6 +11,7 @@ enum ManualSplitMethod: String {
     case equal = "manualEqual"
     case percent = "manualPercent"
     case customAmount = "manualCustom"
+    case hhs = "manualHHS"
 }
 
 struct ManualSplitInputs {
@@ -18,6 +19,7 @@ struct ManualSplitInputs {
     var myPercent: Double?
     var theirPercent: Double?
     var customAmount: Double?
+    var extraAmount: Double?
 }
 
 struct ManualSplitResult {
@@ -126,6 +128,42 @@ func calculateManualSplit(
             "entryMode": entryMode,
             "customAmount": amount
         ]
+
+    case .hhs:
+        let entryMode = inputs.entryMode ?? "iPayExtra"
+        let extraAmount = inputs.extraAmount ?? 0
+        let totalParticipants = 1 + selectedCount
+        let baseShare = paidAmount / Double(totalParticipants)
+
+        if entryMode == "extraTheyPay" {
+            theyOwe = baseShare + extraAmount
+            myShare = paidAmount - theyOwe
+        } else {
+            myShare = baseShare + extraAmount
+            theyOwe = paidAmount - myShare
+        }
+
+        if myShare < 0 || theyOwe < 0 {
+            validationError = "Extra amount exceeds paid amount."
+        }
+
+        if selectedCount > 0 {
+            var owes: [String: Double] = [:]
+            let eachOwe = theyOwe / Double(selectedCount)
+            for pid in selectedPersonIds {
+                owes[pid] = eachOwe
+            }
+            participantOwes = owes
+        } else {
+            participantOwes = [:]
+        }
+
+        typeString = "manualHHS"
+        inputsDict = [
+            "entryMode": entryMode,
+            "extraAmount": extraAmount,
+            "baseShare": baseShare
+        ]
     }
 
     var participantsList: [[String: Any]] = []
@@ -166,11 +204,20 @@ func calculateManualSplit(
 
     print("[ManualSplitCalc] method=\(method.rawValue)")
     print("[ManualSplitCalc] paidAmount=\(paidAmount)")
+    print("[ManualSplitCalc] selectedCount=\(selectedCount)")
     print("[ManualSplitCalc] selectedPeople=\(selectedPersonIds.sorted())")
     print("[ManualSplitCalc] inputs=\(inputsDict)")
     print("[ManualSplitCalc] myShare=\(myShare)")
     print("[ManualSplitCalc] theyOwe=\(theyOwe)")
     print("[ManualSplitCalc] participantOwes=\(participantOwes)")
+    if case .hhs = method {
+        let extra = inputs.extraAmount ?? 0
+        let totalParticipants = 1 + selectedCount
+        let baseShare = paidAmount / Double(totalParticipants)
+        print("[ManualSplitCalc] method=HHS")
+        print("[ManualSplitCalc] extraAmount=\(extra)")
+        print("[ManualSplitCalc] baseShare=\(baseShare)")
+    }
 
     return ManualSplitResult(
         paidAmount: paidAmount,
@@ -1003,14 +1050,16 @@ final class AddTransactionViewModel {
             switch splitMethodType {
             case .percent: method = .percent
             case .exactAmounts: method = .customAmount
+            case .adjustment: method = .hhs
             default: method = .equal
             }
             let inputs = ManualSplitInputs(
-                entryMode: splitEntryMode,
+                entryMode: splitMethodType == .adjustment ? splitAdjustmentMode : splitEntryMode,
                 myPercent: splitMyPercent,
                 theirPercent: splitTheirPercent,
                 customAmount: splitMethodType == .exactAmounts
-                    ? (splitEntryMode == "theyOwe" ? splitTheyOweExact : splitMyShareExact) : nil
+                    ? (splitEntryMode == "theyOwe" ? splitTheyOweExact : splitMyShareExact) : nil,
+                extraAmount: splitMethodType == .adjustment ? splitAdjustmentAmount : nil
             )
             let result = calculateManualSplit(
                 paidAmount: paidAmountForSplit,

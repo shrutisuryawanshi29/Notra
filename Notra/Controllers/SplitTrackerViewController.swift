@@ -135,9 +135,16 @@ final class SplitTrackerViewController: UIViewController {
     }
 
     private func openPersonDetail(group: SplitTrackerPersonGroup) {
+        let allEntries = viewModel.allGroups
+            .first { $0.personName.lowercased() == group.personName.lowercased() }?.entries ?? group.entries
+        let inheritedFilter = viewModel.activeFilter
+        print("[SplitTrackerDetail] opened person=\(group.personName), inheritedFilter=\(inheritedFilter.rawValue)")
+        print("[SplitTrackerDetail] visibleEntries count=\(allEntries.count)")
+        print("[SplitTrackerDetail] tabsRemoved=true")
         let detailVC = SplitTrackerPersonDetailViewController(
             personName: group.personName,
-            entries: group.entries,
+            entries: allEntries,
+            selectedFilter: inheritedFilter,
             viewModel: viewModel
         )
         navigationController?.pushViewController(detailVC, animated: true)
@@ -148,20 +155,47 @@ final class SplitTrackerViewController: UIViewController {
         f.numberStyle = .currency
         f.currencyCode = "USD"
 
-        if viewModel.totalPendingOwed > 0 {
-            totalPendingLabel.text = "\(f.string(from: NSNumber(value: viewModel.totalPendingOwed)) ?? "$0.00") pending"
-        } else {
-            totalPendingLabel.text = "All settled"
-            totalPendingLabel.textColor = AppTheme.Colors.income
-        }
-
-        if viewModel.totalSettled > 0 {
-            totalSettledLabel.text = "\(f.string(from: NSNumber(value: viewModel.totalSettled)) ?? "$0.00") settled"
-            totalSettledLabel.isHidden = false
-        } else {
+        switch viewModel.activeFilter {
+        case .pending:
+            if viewModel.totalPendingOwed > 0 {
+                totalPendingLabel.text = "\(f.string(from: NSNumber(value: viewModel.totalPendingOwed)) ?? "$0.00") pending"
+                totalPendingLabel.textColor = AppTheme.Colors.accent
+            } else {
+                totalPendingLabel.text = "No pending"
+                totalPendingLabel.textColor = AppTheme.Colors.textMuted
+            }
             totalSettledLabel.isHidden = true
+        case .settled:
+            totalPendingLabel.text = "Settled: \(f.string(from: NSNumber(value: viewModel.totalSettled)) ?? "$0.00")"
+            totalPendingLabel.textColor = AppTheme.Colors.income
+            totalSettledLabel.isHidden = true
+        case .all:
+            if viewModel.totalPendingOwed > 0 {
+                totalPendingLabel.text = "\(f.string(from: NSNumber(value: viewModel.totalPendingOwed)) ?? "$0.00") pending"
+                totalPendingLabel.textColor = AppTheme.Colors.accent
+            } else {
+                totalPendingLabel.text = "No pending"
+                totalPendingLabel.textColor = AppTheme.Colors.textMuted
+            }
+            if viewModel.totalSettled > 0 {
+                totalSettledLabel.text = "\(f.string(from: NSNumber(value: viewModel.totalSettled)) ?? "$0.00") settled"
+                totalSettledLabel.isHidden = false
+            } else {
+                totalSettledLabel.isHidden = true
+            }
         }
 
+        let emptyMessage: String
+        if viewModel.isEmpty {
+            switch viewModel.activeFilter {
+            case .pending: emptyMessage = "No pending splits."
+            case .settled: emptyMessage = "No settled splits yet."
+            case .all: emptyMessage = "No split records yet."
+            }
+        } else {
+            emptyMessage = ""
+        }
+        emptyStateLabel.text = emptyMessage
         emptyStateLabel.isHidden = !viewModel.isEmpty
         tableView.isHidden = viewModel.isEmpty
     }
@@ -299,17 +333,24 @@ fileprivate class PersonGroupCell: UITableViewCell {
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.currencyCode = "USD"
+        let pendingStr = f.string(from: NSNumber(value: group.pendingTotal)) ?? "$0.00"
+        let settledStr = f.string(from: NSNumber(value: group.settledTotal)) ?? "$0.00"
         if group.pendingTotal > 0 {
-            pendingLabel.text = "Owes \(f.string(from: NSNumber(value: group.pendingTotal)) ?? "$0.00")"
-            if group.pendingCount == 1 {
-                countLabel.text = "\(group.pendingCount) pending split"
-            } else {
-                countLabel.text = "\(group.pendingCount) pending splits"
-            }
+            pendingLabel.text = "Owes \(pendingStr)"
             pendingLabel.textColor = AppTheme.Colors.accent
-        } else {
-            pendingLabel.text = "All settled — \(f.string(from: NSNumber(value: group.settledTotal)) ?? "$0.00")"
+            if group.settledTotal > 0 {
+                countLabel.text = "\(group.pendingCount) pending · Settled \(settledStr)"
+            } else {
+                let splitText = group.pendingCount == 1 ? "split" : "splits"
+                countLabel.text = "\(group.pendingCount) pending \(splitText)"
+            }
+        } else if group.settledTotal > 0 {
+            pendingLabel.text = "All settled — \(settledStr)"
             pendingLabel.textColor = AppTheme.Colors.income
+            countLabel.text = "\(group.entries.count) split\(group.entries.count == 1 ? "" : "s")"
+        } else {
+            pendingLabel.text = "No amounts"
+            pendingLabel.textColor = AppTheme.Colors.textMuted
             countLabel.text = "\(group.entries.count) split\(group.entries.count == 1 ? "" : "s")"
         }
     }

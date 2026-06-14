@@ -25,7 +25,7 @@ Only `DashboardViewModel` calls the Notion API directly; setup screens read from
 
 - **No `convertFromSnakeCase`**: Every `JSONDecoder()` uses default config. All `CodingKeys` must manually map snake_case keys (e.g. `"rich_text"` → `richText`).
 - **Date-only strings**: Parse with `DateComponents` + `hour=12` local (`TransactionNormalizer.extractDate()`). `ISO8601DateFormatter` shifts to previous day in local tz.
-- **Number parsing**: Strip commas via `replacingOccurrences(of: ",", with: "")` — do NOT replace commas with dots. Exception: `AddTransactionViewModel:127` replaces comma with dot for deep link amount parsing (handles European decimal).
+- **Number parsing**: Strip commas via `replacingOccurrences(of: ",", with: "")` — do NOT replace commas with dots. Exception: `AddTransactionViewModel:324` replaces comma with dot for deep link amount parsing (handles European decimal).
 - **Split metadata column type**: Filter `.appMetadata` for both `"rich_text"` and `"text"`.
 
 ## API & Cache Gotchas
@@ -41,7 +41,7 @@ Only `DashboardViewModel` calls the Notion API directly; setup screens read from
 - **Mapping cell info icon recycling**: `MappingCell.configure()` must `infoButton.isHidden = true` at start.
 - **Bottom inset**: `table.contentInset.bottom` must equal bottom bar height (`50 + 48 + 8 + 8 + 16`).
 - **Empty sections**: `heightForHeaderInSection`/`heightForFooterInSection` return 0 when 0 rows to avoid gaps in `.insetGrouped`.
-- **Table views**: `.plain` except `AddTransaction`, `Settings`, `FilterPanel`, `ReceiptReview`, `SplitTracker` (`.insetGrouped`).
+- **Table views**: `.plain` except `AddTransaction`, `Settings`, `FilterPanel`, `ReceiptReview`, `SplitTracker`, `SplitTrackerPersonDetail` (`.insetGrouped`).
 - **Suggestions inline in title cell**: No `reloadData()`/`reloadRows()` for suggestion lifecycle — only `cell.updateSuggestions()`.
 
 ## Budget Gotchas
