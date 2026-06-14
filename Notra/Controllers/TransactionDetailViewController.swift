@@ -294,8 +294,8 @@ class TransactionDetailViewController: UIViewController {
             overallStack.addArrangedSubview(splitWithRow)
         }
 
-        // Phase 2: Multi-person receipt split breakdown
-        if let split = transaction.splitMetadata, split.isMultiPersonReceipt {
+        // Phase 2: Multi-person split breakdown
+        if let split = transaction.splitMetadata, split.isMultiPersonReceipt || split.isManualMultiPerson {
             overallStack.addArrangedSubview(makeSectionSeparator())
 
             // Participants

@@ -186,6 +186,7 @@ final class AddTransactionViewController: UIViewController {
         tableView.register(FormSwitchCell.self, forCellReuseIdentifier: "FormSwitchCell")
         tableView.register(FormTextViewCell.self, forCellReuseIdentifier: "FormTextViewCell")
         tableView.register(SplitToggleCell.self, forCellReuseIdentifier: "SplitToggleCell")
+        tableView.register(SplitPeopleCell.self, forCellReuseIdentifier: "SplitPeopleCell")
         tableView.register(SplitDetailCell.self, forCellReuseIdentifier: "SplitDetailCell")
         tableView.separatorStyle = .none
         tableView.backgroundColor = AppTheme.Colors.background
@@ -499,25 +500,51 @@ extension AddTransactionViewController {
 
         let split: SplitMetadata?
         if viewModel.isSplitExpense, let p = paidAmount, p > 0 {
-            let inputs = SplitInputs(
-                myShare: viewModel.splitMethodType == .exactAmounts ? viewModel.splitMyShareExact : nil,
-                myPercent: viewModel.splitMethodType == .percent ? viewModel.splitMyPercent : nil,
-                theirPercent: viewModel.splitMethodType == .percent ? viewModel.splitTheirPercent : nil,
-                adjustmentAmount: viewModel.splitMethodType == .adjustment ? viewModel.splitAdjustmentAmount : nil,
-                adjustmentMode: viewModel.splitMethodType == .adjustment ? viewModel.splitAdjustmentMode : nil,
-                entryMode: viewModel.splitEntryMode
-            )
+            let participants: [SplitParticipant]?
+            let typeStr: String
+            let inputs: SplitInputs
+            let version: Int?
+
+            if let result = viewModel.lastManualSplitResult {
+                let allPeople = SplitPeopleStore.shared.getPeople()
+                participants = viewModel.selectedSplitPersonIds.compactMap { pid in
+                    guard let person = allPeople.first(where: { $0.id == pid }),
+                          let owes = result.participantOwes[pid] else { return nil }
+                    return SplitParticipant(id: person.id, name: person.name, owes: owes, status: "pending", settledAt: nil)
+                }
+                typeStr = result.typeString
+                version = 2
+                inputs = SplitInputs(
+                    myShare: result.inputsDict["customAmount"] as? Double,
+                    myPercent: result.inputsDict["myPercent"] as? Double,
+                    theirPercent: result.inputsDict["theirPercent"] as? Double,
+                    entryMode: result.inputsDict["entryMode"] as? String ?? viewModel.splitEntryMode
+                )
+            } else {
+                participants = nil
+                typeStr = viewModel.splitMethodType.rawValue
+                version = nil
+                inputs = SplitInputs(
+                    myShare: viewModel.splitMethodType == .exactAmounts ? viewModel.splitMyShareExact : nil,
+                    myPercent: viewModel.splitMethodType == .percent ? viewModel.splitMyPercent : nil,
+                    theirPercent: viewModel.splitMethodType == .percent ? viewModel.splitTheirPercent : nil,
+                    adjustmentAmount: viewModel.splitMethodType == .adjustment ? viewModel.splitAdjustmentAmount : nil,
+                    adjustmentMode: viewModel.splitMethodType == .adjustment ? viewModel.splitAdjustmentMode : nil,
+                    entryMode: viewModel.splitEntryMode
+                )
+            }
+
             split = SplitMetadata(
                 enabled: true,
                 paidAmount: p,
                 myShare: abs(newAmount),
                 theyOwe: viewModel.reimbursementAmountForSplit,
-                type: viewModel.splitMethodType.rawValue,
+                type: typeStr,
                 status: viewModel.splitStatus,
                 splitWith: nil,
                 inputs: inputs,
-                version: nil,
-                participants: nil,
+                version: version,
+                participants: participants,
                 items: nil,
                 receiptMetadata: nil
             )
@@ -558,25 +585,51 @@ extension AddTransactionViewController {
 
         let split: SplitMetadata?
         if viewModel.isSplitExpense, let p = paidAmount, p > 0 {
-            let inputs = SplitInputs(
-                myShare: viewModel.splitMethodType == .exactAmounts ? viewModel.splitMyShareExact : nil,
-                myPercent: viewModel.splitMethodType == .percent ? viewModel.splitMyPercent : nil,
-                theirPercent: viewModel.splitMethodType == .percent ? viewModel.splitTheirPercent : nil,
-                adjustmentAmount: viewModel.splitMethodType == .adjustment ? viewModel.splitAdjustmentAmount : nil,
-                adjustmentMode: viewModel.splitMethodType == .adjustment ? viewModel.splitAdjustmentMode : nil,
-                entryMode: viewModel.splitEntryMode
-            )
+            let participants: [SplitParticipant]?
+            let typeStr: String
+            let inputs: SplitInputs
+            let version: Int?
+
+            if let result = viewModel.lastManualSplitResult {
+                let allPeople = SplitPeopleStore.shared.getPeople()
+                participants = viewModel.selectedSplitPersonIds.compactMap { pid in
+                    guard let person = allPeople.first(where: { $0.id == pid }),
+                          let owes = result.participantOwes[pid] else { return nil }
+                    return SplitParticipant(id: person.id, name: person.name, owes: owes, status: "pending", settledAt: nil)
+                }
+                typeStr = result.typeString
+                version = 2
+                inputs = SplitInputs(
+                    myShare: result.inputsDict["customAmount"] as? Double,
+                    myPercent: result.inputsDict["myPercent"] as? Double,
+                    theirPercent: result.inputsDict["theirPercent"] as? Double,
+                    entryMode: result.inputsDict["entryMode"] as? String ?? viewModel.splitEntryMode
+                )
+            } else {
+                participants = nil
+                typeStr = viewModel.splitMethodType.rawValue
+                version = nil
+                inputs = SplitInputs(
+                    myShare: viewModel.splitMethodType == .exactAmounts ? viewModel.splitMyShareExact : nil,
+                    myPercent: viewModel.splitMethodType == .percent ? viewModel.splitMyPercent : nil,
+                    theirPercent: viewModel.splitMethodType == .percent ? viewModel.splitTheirPercent : nil,
+                    adjustmentAmount: viewModel.splitMethodType == .adjustment ? viewModel.splitAdjustmentAmount : nil,
+                    adjustmentMode: viewModel.splitMethodType == .adjustment ? viewModel.splitAdjustmentMode : nil,
+                    entryMode: viewModel.splitEntryMode
+                )
+            }
+
             split = SplitMetadata(
                 enabled: true,
                 paidAmount: p,
                 myShare: abs(newAmount),
                 theyOwe: viewModel.reimbursementAmountForSplit,
-                type: viewModel.splitMethodType.rawValue,
+                type: typeStr,
                 status: viewModel.splitStatus,
                 splitWith: nil,
                 inputs: inputs,
-                version: nil,
-                participants: nil,
+                version: version,
+                participants: participants,
                 items: nil,
                 receiptMetadata: nil
             )
@@ -649,9 +702,6 @@ extension AddTransactionViewController {
         let rawText = (fieldViews[amountField.propertyName] as? UITextField)?.text ?? ""
         let existingValue = parseInputText(rawText) ?? 0
         viewModel.setPaidAmountForSplit(existingValue)
-        if viewModel.splitMethodType == .splitEqually {
-            viewModel.setMyShareForSplit(existingValue / 2)
-        }
     }
 
     private func showSplitHelpSheet() {
@@ -659,6 +709,26 @@ extension AddTransactionViewController {
         sheetVC.modalPresentationStyle = .overFullScreen
         sheetVC.modalTransitionStyle = .crossDissolve
         present(sheetVC, animated: true)
+    }
+
+    private func promptAddSplitPerson() {
+        let alert = UIAlertController(title: "Add Person", message: "Enter the name of the person to split with.", preferredStyle: .alert)
+        alert.addTextField { tf in
+            tf.placeholder = "Name"
+            tf.autocapitalizationType = .words
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Add", style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            guard let name = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { return }
+            self.viewModel.addSplitPerson(name: name)
+            let fieldCount = self.viewModel.fields.count
+            let peoplePath = IndexPath(row: fieldCount + 1, section: 0)
+            let detailPath = IndexPath(row: fieldCount + 2, section: 0)
+            self.tableView.reloadRows(at: [peoplePath, detailPath], with: .none)
+            self.tableView.performBatchUpdates(nil)
+        })
+        present(alert, animated: true)
     }
 
     private func buildSuggestionEntryForSavedExpense() -> (displayName: String, value: SuggestedCategoryValue)? {
@@ -695,7 +765,7 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         let baseCount = viewModel.fields.count
         if viewModel.selectedRole == .expense {
-            return baseCount + 2
+            return baseCount + 3
         }
         return baseCount
     }
@@ -712,12 +782,36 @@ extension AddTransactionViewController: UITableViewDelegate, UITableViewDataSour
                     if isOn {
                         self?.syncPaidAmountFromAmountField()
                     }
-                    let detailsPath = IndexPath(row: fieldCount + 1, section: 0)
-                    self?.tableView.reloadRows(at: [detailsPath], with: .none)
+                    let peoplePath = IndexPath(row: fieldCount + 1, section: 0)
+                    let detailsPath = IndexPath(row: fieldCount + 2, section: 0)
+                    self?.tableView.reloadRows(at: [peoplePath, detailsPath], with: .none)
                     self?.tableView.performBatchUpdates(nil)
                 }
                 return cell
-                } else if indexPath.row == fieldCount + 1 {
+            } else if indexPath.row == fieldCount + 1 {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SplitPeopleCell", for: indexPath) as! SplitPeopleCell
+                if viewModel.isSplitExpense {
+                    cell.isHidden = false
+                    let people = SplitPeopleStore.shared.getPeople()
+                    let selectedIds = viewModel.selectedSplitPersonIds
+                    let legacyHelper: String? = viewModel.isLegacySplitWithoutParticipants && viewModel.selectedSplitPersonIds.isEmpty
+                        ? "Select a person to replace legacy split person."
+                        : nil
+                    cell.configure(people: people, selectedIds: selectedIds, onToggle: { [weak self] person in
+                        guard let self = self else { return }
+                        self.viewModel.toggleSplitPerson(person)
+                        let peoplePath = IndexPath(row: fieldCount + 1, section: 0)
+                        let detailPath = IndexPath(row: fieldCount + 2, section: 0)
+                        self.tableView.reloadRows(at: [peoplePath, detailPath], with: .none)
+                        self.tableView.performBatchUpdates(nil)
+                    }, onAdd: { [weak self] in
+                        self?.promptAddSplitPerson()
+                    }, legacyHelper: legacyHelper)
+                } else {
+                    cell.isHidden = true
+                }
+                return cell
+            } else if indexPath.row == fieldCount + 2 {
                 let cell = tableView.dequeueReusableCell(withIdentifier: "SplitDetailCell", for: indexPath) as! SplitDetailCell
                 if viewModel.isSplitExpense {
                     cell.configure(
@@ -1761,6 +1855,157 @@ private class SplitToggleCell: UITableViewCell {
 
     func configure(isOn: Bool) {
         toggleSwitch.isOn = isOn
+    }
+}
+
+// MARK: - Split People Cell
+
+private class SplitPeopleCell: UITableViewCell {
+    private let headerLabel = UILabel()
+    private let chipStack = UIStackView()
+    private var chipButtons: [UIButton] = []
+    private let addPersonButton = UIButton(type: .system)
+    private let padding: CGFloat = 20
+
+    var onPersonToggle: ((SplitPerson) -> Void)?
+    var onAddPerson: (() -> Void)?
+
+    private var people: [SplitPerson] = []
+    private var selectedIds: Set<String> = []
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        setup()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func setup() {
+        selectionStyle = .none
+        contentView.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+
+        headerLabel.text = "Split with"
+        headerLabel.font = AppTheme.Fonts.captionBold
+        headerLabel.textColor = AppTheme.Colors.textSecondary
+        headerLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(headerLabel)
+
+        chipStack.axis = .vertical
+        chipStack.spacing = 8
+        chipStack.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(chipStack)
+
+        addPersonButton.setTitle("+ Add person", for: .normal)
+        addPersonButton.titleLabel?.font = AppTheme.Fonts.bodyMedium
+        addPersonButton.tintColor = AppTheme.Colors.expense
+        addPersonButton.contentHorizontalAlignment = .leading
+        addPersonButton.translatesAutoresizingMaskIntoConstraints = false
+        addPersonButton.addTarget(self, action: #selector(addPersonTapped), for: .touchUpInside)
+        contentView.addSubview(addPersonButton)
+
+        NSLayoutConstraint.activate([
+            headerLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
+            headerLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
+
+            chipStack.topAnchor.constraint(equalTo: headerLabel.bottomAnchor, constant: 8),
+            chipStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
+            chipStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -padding),
+
+            addPersonButton.topAnchor.constraint(equalTo: chipStack.bottomAnchor, constant: 4),
+            addPersonButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
+            addPersonButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -padding),
+            addPersonButton.heightAnchor.constraint(equalToConstant: 36),
+            contentView.bottomAnchor.constraint(equalTo: addPersonButton.bottomAnchor, constant: 8)
+        ])
+    }
+
+    func configure(people: [SplitPerson], selectedIds: Set<String>, onToggle: @escaping (SplitPerson) -> Void, onAdd: @escaping () -> Void, legacyHelper: String? = nil) {
+        self.people = people
+        self.selectedIds = selectedIds
+        self.onPersonToggle = onToggle
+        self.onAddPerson = onAdd
+
+        chipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        chipButtons.removeAll()
+
+        if let helper = legacyHelper {
+            let helperLabel = UILabel()
+            helperLabel.text = helper
+            helperLabel.font = AppTheme.Fonts.small
+            helperLabel.textColor = AppTheme.Colors.warning
+            helperLabel.numberOfLines = 0
+            chipStack.addArrangedSubview(helperLabel)
+        }
+
+        guard !people.isEmpty else {
+            let label = UILabel()
+            label.text = "No saved people. Add one below."
+            label.font = AppTheme.Fonts.small
+            label.textColor = AppTheme.Colors.textMuted
+            chipStack.addArrangedSubview(label)
+            return
+        }
+
+        let row1 = UIStackView()
+        row1.axis = .horizontal
+        row1.spacing = 8
+        row1.distribution = .fillProportionally
+        chipStack.addArrangedSubview(row1)
+
+        var currentRow = row1
+        var rowWidth: CGFloat = 0
+
+        for person in people {
+            let chip = makeChip(person: person)
+            let chipWidth = chip.intrinsicContentSize.width + 24
+            if rowWidth + chipWidth > UIScreen.main.bounds.width - 3 * padding {
+                let newRow = UIStackView()
+                newRow.axis = .horizontal
+                newRow.spacing = 8
+                newRow.distribution = .fillProportionally
+                chipStack.addArrangedSubview(newRow)
+                currentRow = newRow
+                rowWidth = 0
+            }
+            currentRow.addArrangedSubview(chip)
+            chipButtons.append(chip)
+            rowWidth += chipWidth + 8
+        }
+    }
+
+    private func makeChip(person: SplitPerson) -> UIButton {
+        let btn = UIButton(type: .system)
+        let isSelected = selectedIds.contains(person.id)
+        let title = isSelected ? "✓ \(person.name)" : person.name
+        btn.setTitle(title, for: .normal)
+        btn.titleLabel?.font = AppTheme.Fonts.captionMedium
+        btn.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        btn.layer.cornerRadius = 14
+        btn.layer.borderWidth = 1
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        btn.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        if isSelected {
+            btn.backgroundColor = AppTheme.Colors.expense
+            btn.setTitleColor(AppTheme.Colors.buttonContent, for: .normal)
+            btn.layer.borderColor = AppTheme.Colors.expense.cgColor
+        } else {
+            btn.backgroundColor = AppTheme.Colors.cardBackgroundAlt
+            btn.setTitleColor(AppTheme.Colors.textSecondary, for: .normal)
+            btn.layer.borderColor = AppTheme.Colors.border.cgColor
+        }
+        btn.addTarget(self, action: #selector(chipTapped(_:)), for: .touchUpInside)
+        return btn
+    }
+
+    @objc private func chipTapped(_ sender: UIButton) {
+        guard let title = sender.title(for: .normal) else { return }
+        let name = title.hasPrefix("✓ ") ? String(title.dropFirst(2)) : title
+        guard let person = people.first(where: { $0.name == name }) else { return }
+        onPersonToggle?(person)
+    }
+
+    @objc private func addPersonTapped() {
+        onAddPerson?()
     }
 }
 

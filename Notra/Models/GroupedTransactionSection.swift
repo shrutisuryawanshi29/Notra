@@ -48,12 +48,14 @@ enum SplitMethodType: String, Codable, CaseIterable {
 
     static func fromLegacy(_ legacy: String) -> SplitMethodType {
         switch legacy {
-        case "50/50", "half", "Split Equally":
+        case "50/50", "half", "Split Equally", "manualEqual":
             return .splitEqually
-        case "Custom Amount", "customAmount", "Exact Amounts":
+        case "Custom Amount", "customAmount", "Exact Amounts", "manualCustom":
             return .exactAmounts
         case "shares", "Shares":
             return .shares
+        case "percent", "manualPercent":
+            return .percent
         default:
             return SplitMethodType(rawValue: legacy) ?? .exactAmounts
         }
@@ -267,16 +269,36 @@ struct SplitMetadata: Codable {
     }
 
     var displayTypeName: String {
+        print("[SplitDetailsParser] rawType=\(type ?? "nil")")
         if isMultiPersonReceipt { return "Multi-Person Split" }
-        return resolvedType?.displayName ?? type?.capitalized ?? "Split"
+        if isManualMultiPerson { return "Multi-Person Split" }
+        if type == "manualPercent" {
+            print("[SplitDetailsParser] displayMethod=Percent")
+            return "Percent"
+        }
+        if type == "manualCustom" {
+            print("[SplitDetailsParser] displayMethod=Exact amount")
+            return "Exact amount"
+        }
+        if type == "manualEqual" {
+            print("[SplitDetailsParser] displayMethod=Equal")
+            return "Equal"
+        }
+        let display = resolvedType?.displayName ?? type?.capitalized ?? "Split"
+        print("[SplitDetailsParser] displayMethod=\(display)")
+        return display
     }
 
     var isMultiPersonReceipt: Bool {
         version == 2 && type == "receiptMultiPerson"
     }
 
+    var isManualMultiPerson: Bool {
+        version == 2 && (type == "manualEqual" || type == "manualPercent" || type == "manualCustom")
+    }
+
     var multiPersonSubtitle: String? {
-        guard isMultiPersonReceipt, let participants = participants, !participants.isEmpty else {
+        guard (isMultiPersonReceipt || isManualMultiPerson), let participants = participants, !participants.isEmpty else {
             return nil
         }
         if participants.count <= 2 {
@@ -291,24 +313,50 @@ struct SplitMetadata: Codable {
     func buildUpdatedJSON(updatedParticipants: [SplitParticipant]) -> String? {
         var data: [String: Any] = [:]
         data["version"] = version ?? 2
-        data["receipt"] = receiptMetadata.map { meta in
-            [
+
+        // Convert receipt metadata to dictionary (Codable struct -> JSON-safe dict)
+        if let meta = receiptMetadata {
+            data["receipt"] = [
                 "source": meta.source,
                 "merchant": meta.merchant as Any,
                 "itemCount": meta.itemCount,
                 "originalTotal": meta.originalTotal as Any
-            ]
+            ] as [String: Any]
         }
 
-        let splitData: [String: Any] = [
+        // Convert inputs to dictionary (Codable struct -> JSON-safe dict)
+        var inputsDict: [String: Any]?
+        if let ins = inputs {
+            var d: [String: Any] = [:]
+            if let v = ins.myShare { d["myShare"] = v }
+            if let v = ins.myPercent { d["myPercent"] = v }
+            if let v = ins.theirPercent { d["theirPercent"] = v }
+            if let v = ins.myShares { d["myShares"] = v }
+            if let v = ins.theirShares { d["theirShares"] = v }
+            if let v = ins.adjustmentAmount { d["adjustmentAmount"] = v }
+            if let v = ins.adjustmentMode { d["adjustmentMode"] = v }
+            if let v = ins.entryMode { d["entryMode"] = v }
+            inputsDict = d.isEmpty ? nil : d
+        }
+
+        // Convert items to dictionary array
+        var itemsArray: [[String: Any]]?
+        if let existingItems = items {
+            itemsArray = existingItems.map { i in
+                [
+                    "name": i.name,
+                    "price": i.price,
+                    "assignment": i.assignment,
+                    "sharedWith": i.sharedWith
+                ]
+            }
+        }
+
+        var splitData: [String: Any] = [
             "enabled": enabled,
             "paidAmount": paidAmount,
             "myShare": myShare,
             "theyOwe": theyOwe,
-            "type": type as Any,
-            "status": status as Any,
-            "splitWith": splitWith as Any,
-            "inputs": inputs as Any,
             "participants": updatedParticipants.map { p in
                 [
                     "id": p.id,
@@ -317,18 +365,15 @@ struct SplitMetadata: Codable {
                     "status": p.status as Any,
                     "settledAt": p.settledAt as Any
                 ]
-            },
-            "items": items.map { items in
-                items.map { i in
-                    [
-                        "name": i.name,
-                        "price": i.price,
-                        "assignment": i.assignment,
-                        "sharedWith": i.sharedWith
-                    ]
-                }
-            } as Any
+            }
         ]
+
+        // Optional fields — only add if non-nil
+        if let t = type { splitData["type"] = t }
+        if let s = status { splitData["status"] = s }
+        if let sw = splitWith { splitData["splitWith"] = sw }
+        if let d = inputsDict { splitData["inputs"] = d }
+        if let a = itemsArray { splitData["items"] = a }
         data["split"] = splitData
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: data, options: []),

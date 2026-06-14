@@ -9,7 +9,7 @@ xcodebuild -project Notra.xcodeproj -scheme Notra -configuration Debug \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 
-No tests, no package managers, no CI. Deployment target 26.0. Swift 5.0. Dev team `85R4T7NRSX`. Bundle `com.loml.Notra`.
+No tests, no package managers, no CI. Deployment target 26.0, Swift 5.0. Dev team `85R4T7NRSX`, bundle `com.loml.Notra`.
 
 ## Entry & Navigation
 
@@ -17,32 +17,41 @@ No tests, no package managers, no CI. Deployment target 26.0. Swift 5.0. Dev tea
 
 Only `DashboardViewModel` calls the Notion API directly; setup screens read from `SessionCacheManager`.
 
-## Known Bug — Do Not Fix
+## ⚠️ Known Bug — Do Not Fix
 
 `SceneDelegate.swift:152` returns `DatabaseRoleAssignmentViewController()` for `.columnMapping` instead of `ColumnMappingViewController()`.
 
-## Gotchas
+## Decoding & Parsing Gotchas
 
 - **No `convertFromSnakeCase`**: Every `JSONDecoder()` uses default config. All `CodingKeys` must manually map snake_case keys (e.g. `"rich_text"` → `richText`).
 - **Date-only strings**: Parse with `DateComponents` + `hour=12` local (`TransactionNormalizer.extractDate()`). `ISO8601DateFormatter` shifts to previous day in local tz.
 - **Number parsing**: Strip commas via `replacingOccurrences(of: ",", with: "")` — do NOT replace commas with dots. Exception: `AddTransactionViewModel:127` replaces comma with dot for deep link amount parsing (handles European decimal).
+- **Split metadata column type**: Filter `.appMetadata` for both `"rich_text"` and `"text"`.
+
+## API & Cache Gotchas
+
 - **PATCH returns updated page**: `updateTransaction` must return `NotionPage` from PATCH response. Parse in `buildUpdatedTransaction(from:updatedPage:)`.
 - **Cache on create**: New transactions must be manually added to `SessionCacheManager` (`addExpense`/`addIncome`) via `lastCreatedPage`.
+- **`SessionCacheManager`**: NSLock-protected, regroups by date after every mutation. Methods: `replaceExpense`, `replaceIncome`, `removeExpense(byPageId:)`, `removeIncome(byPageId:)`, `addExpense`, `addIncome`.
+
+## UIKit Gotchas
+
 - **iOS 26 `performBatchUpdates` crash**: Avoid row count changes in `performBatchUpdates` blocks. Use only for height recalculation.
-- **Budget over-budget check**: `Models/GroupedTransactionSection.swift:463` — use `pct > 1.0` (not `>= 1.0`).
-- **Sub-1% formatting**: Use explicit `"<1%"` string. `maximumFractionDigits=0` rounds <0.5% to `"0%"`.
-- **Mapping cell info icon recycling**: `MappingCell.configure()` must `infoButton.isHidden = true` at start.
-- **Split metadata column type**: Filter `.appMetadata` for both `"rich_text"` and `"text"`.
-- **Suggestions inline in title cell**: No `reloadData()`/`reloadRows()` for suggestion lifecycle — only `cell.updateSuggestions()`.
 - **`tableView.reloadData()` not synchronous**: Month classification auto-select must fire in `cellForRowAt`, not `viewDidLoad`.
+- **Mapping cell info icon recycling**: `MappingCell.configure()` must `infoButton.isHidden = true` at start.
+- **Bottom inset**: `table.contentInset.bottom` must equal bottom bar height (`50 + 48 + 8 + 8 + 16`).
+- **Empty sections**: `heightForHeaderInSection`/`heightForFooterInSection` return 0 when 0 rows to avoid gaps in `.insetGrouped`.
+- **Table views**: `.plain` except `AddTransaction`, `Settings`, `FilterPanel`, `ReceiptReview`, `SplitTracker` (`.insetGrouped`).
+- **Suggestions inline in title cell**: No `reloadData()`/`reloadRows()` for suggestion lifecycle — only `cell.updateSuggestions()`.
+
+## Budget Gotchas
+
+- **Over-budget check**: `Models/GroupedTransactionSection.swift:463` — use `pct > 1.0` (not `>= 1.0`).
+- **Sub-1% formatting**: Use explicit `"<1%"` string. `maximumFractionDigits=0` rounds <0.5% to `"0%"`.
 
 ## Edit & Delete
 
 Triggered from `TransactionDetailViewController`. Edit: `AddTransactionViewController` init with `editingTransaction`; VM `applyEditPrefill(columnMapping:)`. Save via `TransactionInsertService.updateTransaction(pageId:)` (PATCH), then cache `replaceExpense`/`replaceIncome`. Delete: confirmation → `NotionService.trashPage(pageId:)` (PATCH `in_trash: true`), then cache remove helpers.
-
-## Cache
-
-`SessionCacheManager` with `replaceExpense`, `replaceIncome`, `removeExpense(byPageId:)`, `removeIncome(byPageId:)`, `addExpense`, `addIncome`. Regroups by date after every mutation. NSLock-protected.
 
 ## Expense Category Suggestions
 
@@ -52,13 +61,11 @@ Up to 3 suggestion chips inline in the title `FormFieldCell`. 400ms debounce + i
 
 `ReceiptScanCoordinator`: file picker → OCR (Vision `VNRecognizeTextRequest` or PDFKit) → Gemini AI parsing. API key in Keychain via `GeminiKeychainService` (label `com.notra.gemini`). Default model `gemini-3.1-flash-lite`. Available: `gemini-2.0-flash`, `gemini-3.5-flash`, `gemini-3.1-flash-lite` (Settings picker). Fallback `ReceiptParserService` for local text-only extraction. `ReceiptReviewViewController` shows results before saving. If key missing, in-app alert → Keychain → file picker.
 
-### Dashboard Plus Button (No Receipt Scan)
-
-Dashboard FAB directly presents `AddTransactionViewController(initialRole: .expense)` — no action sheet, no receipt scan trigger from Dashboard. Scanning only via Settings → Scan Receipt.
+Dashboard FAB directly presents `AddTransactionViewController(initialRole: .expense)` — no receipt scan trigger from Dashboard. Scanning only via Settings → Scan Receipt.
 
 ## Multi-Person Receipt Split
 
-`SplitPeopleStore` singleton (UserDefaults key `notraSplitPeople`) manages `SplitPerson(id, name)`.
+`SplitPeopleStore` singleton (UserDefaults key `notraSplitPeople`) manages `SplitPerson(id, name)`. IDs are deterministic via `stablePersonId(from:)` — lowercase, no diacritics, spaces→hyphens, strip unsupported chars. `load()` auto-migrates old UUID IDs to stable name-based IDs.
 
 `GeminiReceiptItem.sharedWith: [String]` holds person IDs. Items classified: `mine`, `shared`, `ignore`.
 
@@ -66,32 +73,67 @@ Dashboard FAB directly presents `AddTransactionViewController(initialRole: .expe
 - All mine → one normal expense (no split metadata).
 - Shared items must have ≥1 selected person; validation blocks save.
 - `multiPersonSettlement` computed prop: mine full price → `myShare`; shared split equally among `1 + sharedWith.count` participants; tax proportional if `includeTaxProportionally`. Returns `(myShare, theyOwe, personOwes: [personId: amount])`.
-- Split metadata version 2 (`buildMultiPersonSplitMetadataJSON`): contains `version: 2`, `split { enabled, status: "pending", type: "receiptMultiPerson", paidAmount, myShare, theyOwe, participants, items, inputs }`, `receipt { source, merchant, itemCount }`. Version 1 (`buildSplitMetadataJSON`) still exists but unused for new receipts.
+- Version 2 split metadata (`buildMultiPersonSplitMetadataJSON`): `{ version: 2, split { enabled, status: "pending", type: "receiptMultiPerson", paidAmount, myShare, theyOwe, participants, items, inputs }, receipt { source, merchant, itemCount } }`. Version 1 (`buildSplitMetadataJSON`) exists but unused for new receipts.
+- Manual add uses centralized `calculateManualSplit()` in `AddTransactionViewModel.swift` — single source of truth for v2 metadata.
+
+### Split Tracker
+
+`SplitTrackerViewModel.buildGroups(from:)` groups participants by `stablePersonId(name)`. Display name resolution: prefers participant name from metadata → resolves via `SplitPeopleStore.getPersonByStableId()` → converts stable ID to readable title (`"sandy"` → `"Sandy"`) → `"Unknown person"`. `SplitTrackerViewController.viewWillAppear` reloads from cache.
+
+Person detail screen (`SplitTrackerPersonDetailViewController`):
+- Compact header: name + pending owed + settled + entry count (no duplicate giant name)
+- Transaction cards: title + amount top row, date • category, split context (`"Paid: $X • Their share: $Y"`), compact Pending chip (warning/gold) + Settle button (income/green, right-aligned)
+- Edit from detail: wired via `detailVC.onEdit` → `AddTransactionViewController` in edit mode → cache update + reload on success
+- Settlement: PATCH only participant status in Split Details JSON, no income created
 
 ### Bulk Actions (Receipt Review)
 
-`BulkAssignmentMode` enum (`.none`, `.allMine`, `.allShared`) + `selectedBulkSharedPersonIds` owned by `ReceiptReviewViewModel`. `BulkActionsCell` renders 3 fill-equally buttons: [All Mine] [All Shared] [Clear].
-
-- **Default**: no mode selected, chips hidden.
-- **All Mine**: button gets accent highlight + checkmark. Sets all non-ignore items to `.mine`, clears `sharedWith`. Chips stay hidden.
-- **All Shared**: button gets accent highlight + checkmark. Does NOT apply until person selected. Chips appear below buttons. Helper text "Select people to share all items with." while no one selected. Tapping a chip toggles it (checkmark + accent fill). Applying: all non-ignore items → `.shared` with selected person IDs.
+`BulkAssignmentMode` enum (`.none`, `.allMine`, `.allShared`) + `selectedBulkSharedPersonIds` owned by `ReceiptReviewViewModel`. Default: no mode, chips hidden.
+- **All Mine**: Sets all non-ignore items to `.mine`, clears `sharedWith`. Chips stay hidden.
+- **All Shared**: Does NOT apply until person selected. Chips appear below buttons. Tapping a chip toggles selection. Applying: all non-ignore items → `.shared` with selected person IDs.
 - **Clear**: resets mode to `.none`, hides chips, resets non-ignore items to `.mine`.
-- **Person chips**: hidden by default, visible only when `bulkMode == .allShared`. Selected chip: accent fill + "✓ Name". Unselected: `cardBackgroundAlt` fill + `textSecondary` + `border` border.
-- **Button styling** (all 3 buttons): unselected = `cardBackgroundAlt`/`border`/`textMuted`; selected = `accent` fill+border/`buttonContent`/checkmark prefix. Clear is always unselected.
-
-### Key Gotchas
-
-- **Bottom inset**: `table.contentInset.bottom` must equal bottom bar height (`50 + 48 + 8 + 8 + 16`).
-- **Empty sections**: `heightForHeaderInSection`/`heightForFooterInSection` return 0 when 0 rows to avoid gaps in `.insetGrouped`.
+- **Button styling**: unselected = `cardBackgroundAlt`/`border`/`textMuted`; selected = `accent`/`buttonContent`/checkmark prefix (`✓`). Clear always unselected.
 - **`displayMerchant`**: Guards `merchant != platform` to avoid "Walmart via Walmart".
-- **Warning dedup**: Subtotal mismatch checks `warnings.contains` before appending.
 - **Create button label**: `hasSharedItems` → "Create Split Expense"; personal-only → "Create 1 Expense".
 
 ## Split Details
 
 Optional `expenseAppMetadataProperty` (Text/rich_text column) stores `SplitMetadata` JSON. Decodes old `expenseSplitDetailsProperty` key. Skipped from Add Transaction form. Works unmapped with warning toast.
 
-SplitMethodType: `splitEqually`, `exactAmounts`, `percent`, `shares`, `adjustment`. Legacy `"50/50"` → `splitEqually`, `"Custom Amount"` → `exactAmounts` via `fromLegacy()`.
+### Version 2 (manual participant) types
+
+When people are selected, the centralized `calculateManualSplit()` in `AddTransactionViewModel.swift` computes everything and caches `lastManualSplitResult`. All paths (recalculate, build JSON, cache) read from this single result.
+
+- `manualEqual` → Equal split, each `myShare = paid / (1 + count)`
+- `manualPercent` → Percent split, `myShare = paid * myPercent / 100` (or `theyOwe = paid * theirPercent / 100` depending on `entryMode`)
+- `manualCustom` → Exact amount split, `theyOwe = customAmount` (or `myShare = customAmount`)
+- `receiptMultiPerson` → Receipt scan multi-person
+
+Participant owes for manualPercent/manualCustom: `theyOwe / selectedCount` (equal split of theyOwe among selected people).
+
+### Display mapping
+
+`SplitMetadata.displayTypeName` and `SplitMethodType.fromLegacy()` now handle all v2 types:
+- `manualEqual` → `"Equal"` / `.splitEqually`
+- `manualPercent` → `"Percent"` / `.percent`
+- `manualCustom` → `"Exact amount"` / `.exactAmounts`
+- `receiptMultiPerson` → `"Multi-Person Split"`
+
+### Save flow
+
+In `saveTransaction()`:
+1. VM calls `recalculateSplit()` → `calculateManualSplit()` → stores `lastManualSplitResult`
+2. Reads `splitResult.myShare` → sets Notion Amount
+3. Reads `splitResult.splitDetailsJSON` → sets Notion Split Details rich_text
+4. VC's `buildUpdatedTransaction`/`buildNewTransaction` reads `viewModel.lastManualSplitResult` for cache object
+
+### Edit & Legacy Upgrade
+
+`isLegacySplitWithoutParticipants` detects v1 splits with no participants. When editing and selecting a person, the split is upgraded to v2 metadata (version 2, type matching the selected method, participants array). An amber helper label `"Select a person to replace legacy split person."` appears above the people chips.
+
+### JSON Serialization Gotcha
+
+`buildUpdatedJSON()` in `GroupedTransactionSection.swift` must convert `SplitInputs`, `[SplitItem]`, and `ReceiptScanMetadata` structs to `[String: Any]` dictionaries before passing to `JSONSerialization`. Swift Codable structs passed as `Any` cause `__SwiftValue` crash.
 
 - **UI**: 2x2 method chip grid in `SplitDetailCell`. Bottom stack auto-collapses hidden subviews.
 - **List display**: `paidAmountLabel` physically removed from `contentStack.arrangedSubviews` for non-split, re-added for split only.
@@ -129,8 +171,7 @@ All sections use selected-month data only — no API calls. Hierarchy: Hero → 
 - **TransactionNormalizer**: Amounts `abs()`'d. Deduplicates by page id. Relation resolution via `relationLookupMap`.
 - **DatabaseDiscoveryService**: Searches ALL accessible databases via `POST /search`. Adds `"title"` property if missing.
 - **NotionService.fetchTopLevelPages**: Only workspace-level pages (`parent.type == "workspace"`).
-- **DynamicFormValue.isEmpty**: For `.checkbox`, always `false`.
-- **Table views**: `.plain` except `AddTransaction`, `Settings`, `FilterPanel`, `ReceiptReview`, `SplitTracker` (`.insetGrouped`).
+- **`DynamicFormValue.isEmpty`**: For `.checkbox`, always `false`.
 
 ## Debug
 
@@ -139,7 +180,7 @@ print(ColumnMappingService.shared.getSessionSummary())
 print(SessionCacheManager.shared.getTransactionSummary())
 ```
 
-Log prefixes: `[SetupState]`, `[SessionCache]`, `[DataFetcher]`, `[NotionService]`, `[DashboardViewModel]`, `[Analytics]`, `[AddTransactionVM]`, `[AddTransactionVC]`, `[TransactionInsert]`, `[DeepLink]`, `[ExpenseListViewModel]`, `[IncomeListViewModel]`, `[ExpenseFilter]`, `[IncomeFilter]`, `[ReceiptScan]`, `[ReceiptImport]`, `[ReceiptExtraction]`, `[GeminiReceiptParser]`, `[ReceiptReview]`, `[ReceiptValidation]`
+Log prefixes: `[SetupState]`, `[SessionCache]`, `[DataFetcher]`, `[NotionService]`, `[DashboardViewModel]`, `[Analytics]`, `[AddTransactionVM]`, `[AddTransactionVC]`, `[TransactionInsert]`, `[DeepLink]`, `[ExpenseListViewModel]`, `[IncomeListViewModel]`, `[ExpenseFilter]`, `[IncomeFilter]`, `[ReceiptScan]`, `[ReceiptImport]`, `[ReceiptExtraction]`, `[GeminiReceiptParser]`, `[ReceiptReview]`, `[ReceiptValidation]`, `[ManualSplit]`, `[ManualSplitCalc]`, `[ManualSplitSave]`, `[EditSplit]`, `[SplitTracker]`, `[SplitTrackerDetail]`, `[SplitDetailsParser]`
 
 ## Dead Code
 
@@ -148,5 +189,5 @@ Log prefixes: `[SetupState]`, `[SessionCache]`, `[DataFetcher]`, `[NotionService
 
 ## Style
 
-- Use `AppTheme.Fonts`, `AppTheme.CornerRadius`, `AppTheme.Shadow`, `AppTheme.styleNavigationBar()` for consistency
-- `AGENTS.md` is gitignored (not version controlled)
+- Use `AppTheme.Fonts`, `AppTheme.CornerRadius`, `AppTheme.Shadow`, `AppTheme.styleNavigationBar()` for consistency.
+- `AGENTS.md` is gitignored (not version controlled).

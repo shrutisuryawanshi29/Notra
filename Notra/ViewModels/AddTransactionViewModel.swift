@@ -5,6 +5,187 @@
 
 import Foundation
 
+// MARK: - Manual Split Calculator
+
+enum ManualSplitMethod: String {
+    case equal = "manualEqual"
+    case percent = "manualPercent"
+    case customAmount = "manualCustom"
+}
+
+struct ManualSplitInputs {
+    var entryMode: String?
+    var myPercent: Double?
+    var theirPercent: Double?
+    var customAmount: Double?
+}
+
+struct ManualSplitResult {
+    let paidAmount: Double
+    let method: ManualSplitMethod
+    let myShare: Double
+    let theyOwe: Double
+    let participantOwes: [String: Double]
+    let validationError: String?
+    let typeString: String
+    let inputsDict: [String: Any]
+    let participantsList: [[String: Any]]
+    let splitDetailsJSON: String
+}
+
+func calculateManualSplit(
+    paidAmount: Double,
+    method: ManualSplitMethod,
+    selectedPersonIds: Set<String>,
+    inputs: ManualSplitInputs
+) -> ManualSplitResult {
+    let allPeople = SplitPeopleStore.shared.getPeople()
+    let selectedCount = selectedPersonIds.count
+
+    let myShare: Double
+    let theyOwe: Double
+    let participantOwes: [String: Double]
+    let typeString: String
+    let inputsDict: [String: Any]
+    var validationError: String?
+
+    switch method {
+    case .equal:
+        let totalParticipants = 1 + selectedCount
+        let eachShare = paidAmount / Double(totalParticipants)
+        myShare = eachShare
+        theyOwe = paidAmount - myShare
+        var owes: [String: Double] = [:]
+        for pid in selectedPersonIds {
+            owes[pid] = eachShare
+        }
+        participantOwes = owes
+        typeString = "manualEqual"
+        inputsDict = [:]
+
+    case .percent:
+        let entryMode = inputs.entryMode ?? "myPercent"
+        let myPct = inputs.myPercent ?? 50
+        let theirPct = inputs.theirPercent ?? 50
+
+        if entryMode == "myPercent" {
+            myShare = paidAmount * myPct / 100.0
+            theyOwe = paidAmount - myShare
+        } else {
+            theyOwe = paidAmount * theirPct / 100.0
+            myShare = paidAmount - theyOwe
+        }
+
+        if selectedCount > 0 {
+            var owes: [String: Double] = [:]
+            let eachOwe = theyOwe / Double(selectedCount)
+            for pid in selectedPersonIds {
+                owes[pid] = eachOwe
+            }
+            participantOwes = owes
+        } else {
+            participantOwes = [:]
+        }
+
+        typeString = "manualPercent"
+        inputsDict = [
+            "entryMode": entryMode,
+            "myPercent": myPct,
+            "theirPercent": theirPct
+        ]
+
+    case .customAmount:
+        let entryMode = inputs.entryMode ?? "theyOwe"
+        let amount = inputs.customAmount ?? 0
+
+        if entryMode == "theyOwe" {
+            theyOwe = amount
+            myShare = paidAmount - theyOwe
+        } else {
+            myShare = amount
+            theyOwe = paidAmount - myShare
+        }
+
+        if myShare < 0 || theyOwe < 0 {
+            validationError = "Custom amount exceeds paid amount."
+        }
+
+        if selectedCount > 0 {
+            var owes: [String: Double] = [:]
+            let eachOwe = theyOwe / Double(selectedCount)
+            for pid in selectedPersonIds {
+                owes[pid] = eachOwe
+            }
+            participantOwes = owes
+        } else {
+            participantOwes = [:]
+        }
+
+        typeString = "manualCustom"
+        inputsDict = [
+            "entryMode": entryMode,
+            "customAmount": amount
+        ]
+    }
+
+    var participantsList: [[String: Any]] = []
+    for pid in selectedPersonIds {
+        guard let person = allPeople.first(where: { $0.id == pid }) else { continue }
+        let owes = participantOwes[pid] ?? 0
+        let entry: [String: Any] = [
+            "id": person.id,
+            "name": person.name,
+            "owes": owes,
+            "status": "pending",
+            "settledAt": NSNull()
+        ]
+        participantsList.append(entry)
+    }
+
+    let splitData: [String: Any] = [
+        "enabled": true,
+        "paidAmount": paidAmount,
+        "myShare": myShare,
+        "theyOwe": theyOwe,
+        "type": typeString,
+        "status": "pending",
+        "participants": participantsList,
+        "inputs": inputsDict
+    ]
+
+    let data: [String: Any] = [
+        "version": 2,
+        "split": splitData
+    ]
+
+    var jsonString = ""
+    if let jsonData = try? JSONSerialization.data(withJSONObject: data, options: []),
+       let str = String(data: jsonData, encoding: .utf8) {
+        jsonString = str
+    }
+
+    print("[ManualSplitCalc] method=\(method.rawValue)")
+    print("[ManualSplitCalc] paidAmount=\(paidAmount)")
+    print("[ManualSplitCalc] selectedPeople=\(selectedPersonIds.sorted())")
+    print("[ManualSplitCalc] inputs=\(inputsDict)")
+    print("[ManualSplitCalc] myShare=\(myShare)")
+    print("[ManualSplitCalc] theyOwe=\(theyOwe)")
+    print("[ManualSplitCalc] participantOwes=\(participantOwes)")
+
+    return ManualSplitResult(
+        paidAmount: paidAmount,
+        method: method,
+        myShare: myShare,
+        theyOwe: theyOwe,
+        participantOwes: participantOwes,
+        validationError: validationError,
+        typeString: typeString,
+        inputsDict: inputsDict,
+        participantsList: participantsList,
+        splitDetailsJSON: jsonString
+    )
+}
+
 enum SplitMethod: String, CaseIterable {
     case half = "50/50"
     case customAmount = "Custom Amount"
@@ -57,6 +238,22 @@ final class AddTransactionViewModel {
     private(set) var myShareAmountForSplit: Double = 0
     private(set) var reimbursementAmountForSplit: Double = 0
     private(set) var splitStatus: String = "pending"
+    private(set) var selectedSplitPersonIds: Set<String> = []
+
+    private(set) var lastManualSplitResult: ManualSplitResult?
+
+    var hasSelectedSplitPeople: Bool { !selectedSplitPersonIds.isEmpty }
+
+    var isLegacySplitWithoutParticipants: Bool {
+        guard isEditMode, isSplitExpense, let tx = editingTransaction,
+              let meta = tx.splitMetadata else { return false }
+        let participants = meta.participants ?? []
+        return participants.isEmpty
+    }
+
+    var totalSplitParticipants: Int {
+        1 + selectedSplitPersonIds.count
+    }
 
     // Method-specific inputs
     private(set) var splitMyShareExact: Double = 0
@@ -246,6 +443,15 @@ final class AddTransactionViewModel {
                             splitMethod = SplitMethod(from: resolvedType)
                             reimbursementAmountForSplit = theyOwe
                             splitStatus = statusStr
+                            let hasV2Participants = split["participants"] is [[String: Any]]
+                            print("[EditSplit] loaded existing split version=\(json["version"] as? Int ?? 1)")
+                            print("[EditSplit] legacySplitWithoutParticipants=\(!hasV2Participants)")
+                            if typeStr == "manualEqual", let participants = split["participants"] as? [[String: Any]] {
+                                for pData in participants {
+                                    guard let pid = pData["id"] as? String else { continue }
+                                    selectedSplitPersonIds.insert(pid)
+                                }
+                            }
                             if let inputs = rawInputs {
                                 splitMyPercent = inputs["myPercent"] as? Double ?? 50
                                 splitTheirPercent = inputs["theirPercent"] as? Double ?? 50
@@ -698,6 +904,27 @@ final class AddTransactionViewModel {
 
     func setSplitEnabled(_ enabled: Bool) {
         isSplitExpense = enabled
+        if !enabled {
+            selectedSplitPersonIds = []
+        }
+        recalculateSplit()
+    }
+
+    func toggleSplitPerson(_ person: SplitPerson) {
+        print("[ManualSplit] toggleSplitPerson \(person.name) id=\(person.id)")
+        if selectedSplitPersonIds.contains(person.id) {
+            selectedSplitPersonIds.remove(person.id)
+            print("[ManualSplit] removed \(person.name)")
+        } else {
+            selectedSplitPersonIds.insert(person.id)
+            print("[ManualSplit] added \(person.name)")
+        }
+        recalculateSplit()
+    }
+
+    func addSplitPerson(name: String) {
+        let person = SplitPeopleStore.shared.addPerson(name: name)
+        selectedSplitPersonIds.insert(person.id)
         recalculateSplit()
     }
 
@@ -765,22 +992,58 @@ final class AddTransactionViewModel {
         guard isSplitExpense, paidAmountForSplit > 0 else {
             myShareAmountForSplit = paidAmountForSplit
             reimbursementAmountForSplit = 0
+            lastManualSplitResult = nil
             return
         }
-        let result = SplitCalculator.calculate(
-            paidAmount: paidAmountForSplit,
-            method: splitMethodType,
-            myShareExact: (splitMethodType == .exactAmounts && splitEntryMode != "theyOwe") ? splitMyShareExact : nil,
-            theyOweExact: (splitMethodType == .exactAmounts && splitEntryMode == "theyOwe") ? splitTheyOweExact : nil,
-            myPercent: (splitMethodType == .percent) ? splitMyPercent : nil,
-            adjustmentAmount: splitAdjustmentAmount,
-            adjustmentMode: splitAdjustmentMode
-        )
-        myShareAmountForSplit = result.myShare
-        reimbursementAmountForSplit = result.theyOwe
+        print("[ManualSplit] selectedPersonIds=\(selectedSplitPersonIds.sorted())")
+        print("[ManualSplit] paidAmount=\(paidAmountForSplit)")
+        print("[ManualSplit] splitMethodType=\(splitMethodType.rawValue)")
+        if hasSelectedSplitPeople {
+            let method: ManualSplitMethod
+            switch splitMethodType {
+            case .percent: method = .percent
+            case .exactAmounts: method = .customAmount
+            default: method = .equal
+            }
+            let inputs = ManualSplitInputs(
+                entryMode: splitEntryMode,
+                myPercent: splitMyPercent,
+                theirPercent: splitTheirPercent,
+                customAmount: splitMethodType == .exactAmounts
+                    ? (splitEntryMode == "theyOwe" ? splitTheyOweExact : splitMyShareExact) : nil
+            )
+            let result = calculateManualSplit(
+                paidAmount: paidAmountForSplit,
+                method: method,
+                selectedPersonIds: selectedSplitPersonIds,
+                inputs: inputs
+            )
+            myShareAmountForSplit = result.myShare
+            reimbursementAmountForSplit = result.theyOwe
+            lastManualSplitResult = result
+        } else {
+            lastManualSplitResult = nil
+            let result = SplitCalculator.calculate(
+                paidAmount: paidAmountForSplit,
+                method: splitMethodType,
+                myShareExact: (splitMethodType == .exactAmounts && splitEntryMode != "theyOwe") ? splitMyShareExact : nil,
+                theyOweExact: (splitMethodType == .exactAmounts && splitEntryMode == "theyOwe") ? splitTheyOweExact : nil,
+                myPercent: (splitMethodType == .percent) ? splitMyPercent : nil,
+                adjustmentAmount: splitAdjustmentAmount,
+                adjustmentMode: splitAdjustmentMode
+            )
+            myShareAmountForSplit = result.myShare
+            reimbursementAmountForSplit = result.theyOwe
+        }
     }
 
     private func buildSplitMetadataJSON(existingJSON: String? = nil) -> String {
+        if let result = lastManualSplitResult {
+            print("[ManualSplitSave] using result method=\(result.method.rawValue)")
+            print("[ManualSplitSave] Split Details JSON=\(result.splitDetailsJSON)")
+            return result.splitDetailsJSON
+        }
+
         var data: [String: Any] = [:]
 
         if let existing = existingJSON,
@@ -842,6 +1105,7 @@ final class AddTransactionViewModel {
         splitAdjustmentAmount = 0
         splitAdjustmentMode = "extraIPay"
         splitEntryMode = "myShare"
+        selectedSplitPersonIds = []
     }
 
     func saveTransaction() {
@@ -853,6 +1117,11 @@ final class AddTransactionViewModel {
 
         guard validation.isValid else {
             delegate?.didFailToSave(error: "Please fill in all required fields: \(validation.missingFields.joined(separator: ", "))")
+            return
+        }
+
+        if isSplitExpense && selectedRole == .expense && !hasSelectedSplitPeople {
+            delegate?.didFailToSave(error: "Select at least one person to split with.")
             return
         }
 
@@ -889,23 +1158,43 @@ final class AddTransactionViewModel {
         }
 
         if isSplitExpense && selectedRole == .expense {
+            if hasSelectedSplitPeople {
+                recalculateSplit()
+            }
             let amountFieldName = mappings.values.first { $0.role == .expense }?.columnMapping?.amountColumn
-            for i in valuesToSave.indices {
-                if valuesToSave[i].propertyType == .number {
-                    if valuesToSave[i].propertyName == amountFieldName {
-                        valuesToSave[i].numberValue = myShareAmountForSplit
+            if let splitResult = lastManualSplitResult {
+                let splitDetailsJSON = splitResult.splitDetailsJSON
+                print("[ManualSplitSave] selectedMethod=\(splitMethodType.rawValue)")
+                print("[ManualSplitSave] savedSplitType=\(splitResult.typeString)")
+                print("[ManualSplitSave] splitInputs=\(splitResult.inputsDict)")
+                print("[ManualSplitSave] Amount field=\(splitResult.myShare)")
+                print("[ManualSplitSave] Split Details JSON=\(splitDetailsJSON)")
+                for i in valuesToSave.indices {
+                    if valuesToSave[i].propertyType == .number {
+                        if valuesToSave[i].propertyName == amountFieldName {
+                            let oldVal = valuesToSave[i].numberValue ?? 0
+                            valuesToSave[i].numberValue = splitResult.myShare
+                            print("[EditSplit] updating Notion Amount=\(splitResult.myShare) (was \(oldVal))")
+                        }
+                    }
+                    if valuesToSave[i].propertyType == .richText {
+                        let metadataCol = targetDatabaseMapping?.columnMapping?.expenseAppMetadataProperty
+                        if let col = metadataCol, valuesToSave[i].propertyName == col {
+                            valuesToSave[i].stringValue = splitDetailsJSON
+                            print("[EditSplit] updating Notion Split Details=\(splitDetailsJSON)")
+                        }
                     }
                 }
-                if valuesToSave[i].propertyType == .richText {
-                    let metadataCol = targetDatabaseMapping?.columnMapping?.expenseAppMetadataProperty
-                    if let col = metadataCol, valuesToSave[i].propertyName == col {
-                        if let editingTx = editingTransaction,
-                           let rawProps = editingTx.rawProperties,
-                           let existingProp = rawProps[col],
-                           let existingRichText = existingProp.richText,
-                           let existingText = existingRichText.first?.plainText ?? existingRichText.first?.text?.content {
-                            valuesToSave[i].stringValue = buildSplitMetadataJSON(existingJSON: existingText)
-                        } else {
+            } else {
+                for i in valuesToSave.indices {
+                    if valuesToSave[i].propertyType == .number {
+                        if valuesToSave[i].propertyName == amountFieldName {
+                            valuesToSave[i].numberValue = myShareAmountForSplit
+                        }
+                    }
+                    if valuesToSave[i].propertyType == .richText {
+                        let metadataCol = targetDatabaseMapping?.columnMapping?.expenseAppMetadataProperty
+                        if let col = metadataCol, valuesToSave[i].propertyName == col {
                             valuesToSave[i].stringValue = buildSplitMetadataJSON()
                         }
                     }
@@ -923,7 +1212,7 @@ final class AddTransactionViewModel {
             ) { [weak self] result in
                 switch result {
                 case .success(let page):
-                    print("[AddTransactionVM] Transaction updated successfully: \(page.id)")
+                    print("[EditSplit] update success pageId=\(page.id)")
                     self?.lastCreatedPage = page
                     self?.delegate?.didSaveSuccessfully()
 

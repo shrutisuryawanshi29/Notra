@@ -168,7 +168,7 @@ class FinanceCell: UITableViewCell {
             if !contentStack.arrangedSubviews.contains(paidAmountLabel) {
                 contentStack.addArrangedSubview(paidAmountLabel)
             }
-            if let split = expense.splitMetadata, split.isMultiPersonReceipt {
+            if let split = expense.splitMetadata, split.isMultiPersonReceipt || split.isManualMultiPerson {
                 if let subtitle = split.multiPersonSubtitle {
                     paidAmountLabel.text = "Split · \(subtitle)"
                 } else {

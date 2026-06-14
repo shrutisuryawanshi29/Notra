@@ -36,6 +36,7 @@ final class SplitTrackerViewModel {
 
     func loadSplitTransactions() {
         isLoading = true
+        print("[SplitTracker] reload triggered after transaction update")
         delegate?.didStartLoading()
 
         let expenses = cache.allExpenses
@@ -44,8 +45,39 @@ final class SplitTrackerViewModel {
         let groups = buildGroups(from: splitExpenses)
         allGroups = groups
         applyFilter()
+        print("[SplitTracker] rebuilt groups count=\(personGroups.count)")
+        for g in personGroups {
+            print("[SplitTracker] group personId=\(g.personId), displayName=\(g.personName), pending=\(g.pendingTotal)")
+        }
         isLoading = false
         delegate?.didFinishLoading()
+    }
+
+    private func resolvedDisplayName(from participant: SplitParticipant) -> String {
+        let trimmed = participant.name.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty && trimmed != "Someone" {
+            return trimmed
+        }
+        if let person = SplitPeopleStore.shared.getPersonByStableId(participant.id) {
+            print("[SplitTracker] resolvedDisplayName=\(person.name) via SplitPeopleStore for id=\(participant.id)")
+            return person.name
+        }
+        let readable = stableIdToReadableName(participant.id)
+        if !readable.isEmpty {
+            print("[SplitTracker] resolvedDisplayName=\(readable) via id conversion for id=\(participant.id)")
+            return readable
+        }
+        return "Unknown person"
+    }
+
+    private func stableIdToReadableName(_ id: String) -> String {
+        let trimmed = id.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !trimmed.contains("_") else { return "" }
+        return trimmed
+            .replacingOccurrences(of: "-", with: " ")
+            .split(separator: " ")
+            .map { $0.capitalized }
+            .joined(separator: " ")
     }
 
     private func buildGroups(from transactions: [NormalizedTransaction]) -> [SplitTrackerPersonGroup] {
@@ -56,9 +88,13 @@ final class SplitTrackerViewModel {
             let participants = split.participants ?? []
 
             if !participants.isEmpty {
-                // Version 2: use participant array
                 for p in participants {
                     let status = SettlementStatus(rawValue: p.status ?? "pending") ?? .pending
+                    let nameBased = stablePersonId(from: p.name)
+                    let stableKey = nameBased.isEmpty ? p.id : nameBased
+                    let displayName = resolvedDisplayName(from: p)
+                    print("[SplitTracker] group personId=\(stableKey), displayName=\(displayName)")
+                    print("[SplitTracker] entry title=\(tx.title), participantName=\(p.name), participantId=\(p.id), owes=\(p.owes)")
                     let entry = SplitTrackerEntry(
                         transactionId: tx.id,
                         transactionTitle: tx.title,
@@ -71,18 +107,16 @@ final class SplitTrackerViewModel {
                         splitMetadata: split,
                         transaction: tx
                     )
-                    let key = p.id
-                    if var existing = personMap[key] {
+                    if var existing = personMap[stableKey] {
                         existing.entries.append(entry)
-                        personMap[key] = existing
+                        personMap[stableKey] = existing
                     } else {
-                        personMap[key] = (name: p.name, entries: [entry])
+                        personMap[stableKey] = (name: displayName, entries: [entry])
                     }
                 }
             } else {
-                // Fallback: use splitWith or generic name
                 let personId = "unknown_\(tx.id)"
-                let personName = split.splitWith ?? "Someone"
+                let personName = split.splitWith ?? "Unknown person"
                 let status: SettlementStatus = .pending
                 let entry = SplitTrackerEntry(
                     transactionId: tx.id,
@@ -154,8 +188,13 @@ final class SplitTrackerViewModel {
 
     func updateSettlementStatus(entry: SplitTrackerEntry, newStatus: SettlementStatus, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let split = entry.transaction.splitMetadata,
-              var participants = split.participants,
-              let idx = participants.firstIndex(where: { $0.id == entry.participantId }) else {
+              var participants = split.participants else {
+            completion(.failure(SplitTrackerError.noParticipantFound))
+            return
+        }
+        let idx = participants.firstIndex(where: { $0.id == entry.participantId })
+            ?? participants.firstIndex(where: { stablePersonId(from: $0.name) == entry.participantId })
+        guard let idx = idx else {
             completion(.failure(SplitTrackerError.noParticipantFound))
             return
         }
@@ -198,7 +237,9 @@ final class SplitTrackerViewModel {
                     // Update local cache
                     var updatedTx = entry.transaction
                     var updatedSplit = split
-                    if let pIdx = updatedSplit.participants?.firstIndex(where: { $0.id == entry.participantId }) {
+                    let cacheIdx = updatedSplit.participants?.firstIndex(where: { $0.id == entry.participantId })
+                        ?? updatedSplit.participants?.firstIndex(where: { stablePersonId(from: $0.name) == entry.participantId })
+                    if let pIdx = cacheIdx {
                         updatedSplit.participants?[pIdx] = participants[idx]
                     }
                     updatedTx = NormalizedTransaction(
