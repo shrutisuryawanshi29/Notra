@@ -56,7 +56,7 @@ enum SplitMethodType: String, Codable, CaseIterable {
             return .shares
         case "percent", "manualPercent":
             return .percent
-        case "manualHHS":
+        case "manualHHS", "adjust", "hhs":
             return .adjustment
         default:
             return SplitMethodType(rawValue: legacy) ?? .exactAmounts

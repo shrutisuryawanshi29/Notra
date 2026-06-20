@@ -219,15 +219,45 @@ final class TransactionNormalizer {
     }
 
     private func extractSplitMetadata(from row: NotionPage, column: String?) -> SplitMetadata? {
-        guard let column = column, let props = row.properties else {
+        guard let props = row.properties else {
             #if DEBUG
             print("[SplitDetailsParser] No column or props")
             #endif
             return nil
         }
-        guard let prop = props[column], let richText = prop.richText else {
+
+        let availableProperties = Array(props.keys)
+        #if DEBUG
+        print("[SplitDetailsParser] availableProperties=\(availableProperties)")
+        #endif
+
+        // Resolve the column to search. If not provided, try fallback names.
+        let resolvedColumn: String?
+        if let col = column, !col.isEmpty, props[col] != nil {
+            resolvedColumn = col
+        } else {
+            let fallbackNames = ["Split Details", "App Metadata", "Metadata", "Notra Metadata", "Split Metadata", "App Data", "Notra Data"]
+            let lowerProps = availableProperties.reduce(into: [String: String]()) { $0[$1.lowercased()] = $1 }
+            var found: String?
+            for name in fallbackNames {
+                if let match = lowerProps[name.lowercased()] {
+                    found = match
+                    #if DEBUG
+                    print("[SplitDetailsParser] foundField=\(match)")
+                    #endif
+                    break
+                }
+            }
+            resolvedColumn = found
+        }
+
+        guard let searchColumn = resolvedColumn, let prop = props[searchColumn], let richText = prop.richText else {
             #if DEBUG
-            print("[SplitDetailsParser] No property or richText for column: \(column)")
+            if let col = column, !col.isEmpty {
+                print("[SplitDetailsParser] No property or richText for column: \(col)")
+            } else {
+                print("[SplitDetailsParser] No fallback field found")
+            }
             #endif
             return nil
         }
@@ -236,7 +266,7 @@ final class TransactionNormalizer {
             guard let text = item.plainText ?? item.text?.content else { continue }
 
             #if DEBUG
-            print("[SplitDetailsParser] Raw metadata: \(text)")
+            print("[SplitDetailsParser] rawText=\(text)")
             #endif
 
             guard let data = text.data(using: .utf8),
@@ -250,6 +280,9 @@ final class TransactionNormalizer {
             }
 
             let version = json["version"] as? Int
+            #if DEBUG
+            print("[SplitDetailsParser] parsed version=\(version ?? 1)")
+            #endif
             let paid = split["paidAmount"] as? Double ?? 0
             let myShare = split["myShare"] as? Double ?? 0
             let theyOwe = split["theyOwe"] as? Double ?? max(paid - myShare, 0)
@@ -283,6 +316,22 @@ final class TransactionNormalizer {
                         settledAt: p["settledAt"] as? String
                     )
                 }
+            }
+
+            // Fallback for v1 legacy splits without participants
+            if (participants == nil || participants!.isEmpty) && theyOwe > 0 {
+                let fallbackName = splitWith ?? "Unknown person"
+                let fallbackId = stablePersonId(from: fallbackName)
+                participants = [SplitParticipant(
+                    id: fallbackId,
+                    name: fallbackName,
+                    owes: theyOwe,
+                    status: status ?? "pending",
+                    settledAt: nil
+                )]
+                #if DEBUG
+                print("[SplitDetailsParser] created fallback participant id=\(fallbackId) name=\(fallbackName) owes=\(theyOwe)")
+                #endif
             }
 
             var splitItems: [SplitItem]?

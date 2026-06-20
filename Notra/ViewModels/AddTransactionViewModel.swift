@@ -468,68 +468,108 @@ final class AddTransactionViewModel {
         if selectedRole == .expense, let rawProps = editingTx.rawProperties {
             var parsedFromMetadata = false
             let metadataCol = columnMapping?.expenseAppMetadataProperty
-                if let col = metadataCol, let prop = rawProps[col], let richText = prop.richText {
-                    for item in richText {
-                        guard let text = item.plainText ?? item.text?.content,
-                              let data = text.data(using: .utf8),
-                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                              let split = json["split"] as? [String: Any],
-                              let enabled = split["enabled"] as? Bool, enabled else { continue }
-                        let paid = split["paidAmount"] as? Double ?? 0
-                        let myShare = split["myShare"] as? Double ?? 0
-                        let theyOwe = split["theyOwe"] as? Double ?? 0
-                        let typeStr = split["type"] as? String ?? "50/50"
-                        let statusStr = split["status"] as? String ?? "pending"
-                        let rawInputs = split["inputs"] as? [String: Any]
-                        if paid > 0 {
-                            isSplitExpense = true
-                            paidAmountForSplit = paid
-                            myShareAmountForSplit = myShare > 0 ? myShare : (editingTx.amount)
-                            let resolvedType = SplitMethodType.fromLegacy(typeStr)
-                            splitMethodType = resolvedType
-                            splitMethod = SplitMethod(from: resolvedType)
-                            reimbursementAmountForSplit = theyOwe
-                            splitStatus = statusStr
-                            let hasV2Participants = split["participants"] is [[String: Any]]
-                            print("[EditSplit] loaded existing split version=\(json["version"] as? Int ?? 1)")
-                            print("[EditSplit] legacySplitWithoutParticipants=\(!hasV2Participants)")
-                            if typeStr == "manualEqual", let participants = split["participants"] as? [[String: Any]] {
-                                for pData in participants {
-                                    guard let pid = pData["id"] as? String else { continue }
-                                    selectedSplitPersonIds.insert(pid)
-                                }
-                            }
-                            if let inputs = rawInputs {
-                                splitMyPercent = inputs["myPercent"] as? Double ?? 50
-                                splitTheirPercent = inputs["theirPercent"] as? Double ?? 50
-                                splitAdjustmentAmount = inputs["adjustmentAmount"] as? Double ?? 0
-                                splitAdjustmentMode = inputs["adjustmentMode"] as? String ?? "extraIPay"
-                                splitEntryMode = inputs["entryMode"] as? String ?? "myShare"
-                                if let exact = inputs["myShare"] as? Double {
-                                    myShareAmountForSplit = exact
-                                    splitMyShareExact = exact
-                                }
-                                if let owe = inputs["theyOwe"] as? Double {
-                                    splitTheyOweExact = owe
-                                }
-                                // Map old shares to exact for editing
-                                if resolvedType == .shares {
-                                    if let myS = inputs["myShares"] as? Double, let theirS = inputs["theirShares"] as? Double, (myS + theirS) > 0 {
-                                        let ratio = myS / (myS + theirS)
-                                        let shareEstimate = paid * ratio
-                                        myShareAmountForSplit = shareEstimate
-                                        splitMyShareExact = shareEstimate
-                                        splitTheyOweExact = max(paid - shareEstimate, 0)
-                                    }
-                                    splitMethodType = .exactAmounts
-                                }
-                            }
-                            recalculateSplit()
-                            parsedFromMetadata = true
-                        }
+            let resolvedCol: String?
+            if let col = metadataCol, !col.isEmpty, rawProps[col] != nil {
+                resolvedCol = col
+            } else {
+                let fallbackNames = ["Split Details", "App Metadata", "Metadata", "Notra Metadata", "Split Metadata", "App Data", "Notra Data"]
+                let lowerProps = rawProps.reduce(into: [String: String]()) { $0[$1.key.lowercased()] = $1.key }
+                var found: String?
+                for name in fallbackNames {
+                    if let match = lowerProps[name.lowercased()] {
+                        found = match
+                        print("[EditSplit] resolved metadata column via fallback: \(match)")
                         break
                     }
                 }
+                resolvedCol = found
+            }
+            if let col = resolvedCol, let prop = rawProps[col], let richText = prop.richText {
+                for item in richText {
+                    guard let text = item.plainText ?? item.text?.content,
+                          let data = text.data(using: .utf8),
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let split = json["split"] as? [String: Any],
+                          let enabled = split["enabled"] as? Bool, enabled else { continue }
+                    let paid = split["paidAmount"] as? Double ?? 0
+                    let myShare = split["myShare"] as? Double ?? 0
+                    let theyOwe = split["theyOwe"] as? Double ?? 0
+                    let typeStr = split["type"] as? String ?? "50/50"
+                    let statusStr = split["status"] as? String ?? "pending"
+                    let rawInputs = split["inputs"] as? [String: Any]
+                    if paid > 0 {
+                        isSplitExpense = true
+                        paidAmountForSplit = paid
+                        myShareAmountForSplit = myShare > 0 ? myShare : (editingTx.amount)
+                        let resolvedType = SplitMethodType.fromLegacy(typeStr)
+                        splitMethodType = resolvedType
+                        splitMethod = SplitMethod(from: resolvedType)
+                        reimbursementAmountForSplit = theyOwe
+                        splitStatus = statusStr
+                        let hasV2Participants = split["participants"] is [[String: Any]]
+                        print("[EditSplitPrefill] parsed=true type=\(typeStr)")
+                        print("[EditSplitPrefill] paidAmount=\(paid)")
+                        print("[EditSplitPrefill] myShare=\(myShare) theyOwe=\(theyOwe)")
+                        // Load participants for all v2 types, not just manualEqual
+                        selectedSplitPersonIds = []
+                        if let participants = split["participants"] as? [[String: Any]] {
+                            for pData in participants {
+                                if let pid = pData["id"] as? String {
+                                    selectedSplitPersonIds.insert(pid)
+                                }
+                            }
+                        }
+                        print("[EditSplitPrefill] selectedPersonIds=\(selectedSplitPersonIds.sorted())")
+                            if let inputs = rawInputs {
+                            print("[EditSplitPrefill] inputs=\(inputs)")
+                            splitMyPercent = inputs["myPercent"] as? Double ?? 50
+                            splitTheirPercent = inputs["theirPercent"] as? Double ?? 50
+                            splitEntryMode = inputs["entryMode"] as? String ?? "myShare"
+                            // HHS stores extraAmount/entryMode; adjust stores adjustmentAmount/adjustmentMode
+                            splitAdjustmentAmount = inputs["extraAmount"] as? Double ?? inputs["adjustmentAmount"] as? Double ?? 0
+                            splitAdjustmentMode = inputs["entryMode"] as? String ?? inputs["adjustmentMode"] as? String ?? "extraIPay"
+                            // v1 exactAmounts stores myShare/theyOwe; v2 manualCustom stores customAmount
+                            if let exact = inputs["myShare"] as? Double {
+                                myShareAmountForSplit = exact
+                                splitMyShareExact = exact
+                            }
+                            if let owe = inputs["theyOwe"] as? Double {
+                                splitTheyOweExact = owe
+                            }
+                            if let custom = inputs["customAmount"] as? Double {
+                                if splitEntryMode == "theyOwe" {
+                                    splitTheyOweExact = custom
+                                    splitMyShareExact = max(paid - custom, 0)
+                                } else {
+                                    splitMyShareExact = custom
+                                    splitTheyOweExact = max(paid - custom, 0)
+                                }
+                                myShareAmountForSplit = splitMyShareExact
+                            }
+                            if resolvedType == .shares {
+                                if let myS = inputs["myShares"] as? Double, let theirS = inputs["theirShares"] as? Double, (myS + theirS) > 0 {
+                                    let ratio = myS / (myS + theirS)
+                                    let shareEstimate = paid * ratio
+                                    myShareAmountForSplit = shareEstimate
+                                    splitMyShareExact = shareEstimate
+                                    splitTheyOweExact = max(paid - shareEstimate, 0)
+                                }
+                                splitMethodType = .exactAmounts
+                            }
+                        }
+                        // Overwrite Amount field value with paidAmount for editing
+                        let amountCol = mappings.values.first { $0.role == .expense }?.columnMapping?.amountColumn
+                        if let aCol = amountCol, var amountValue = fieldValues[aCol] {
+                            amountValue.numberValue = paid
+                            fieldValues[aCol] = amountValue
+                            print("[EditSplitPrefill] set Amount field=\(paid)")
+                        }
+                        recalculateSplit()
+                        parsedFromMetadata = true
+                    }
+                    break
+                }
+            }
             if !parsedFromMetadata {
                 let paidField = rawProps.first { key, value in
                     let lower = key.lowercased()
@@ -669,7 +709,7 @@ final class AddTransactionViewModel {
                 print("[AddTransactionVM] Mapped core field: \(propName) (\(notionType.rawValue)) = \(mappedRole ?? "")")
             }
 
-            if propName == columnMapping?.expenseAppMetadataProperty {
+            if isMetadataFieldName(propName) && notionType == .richText {
                 var formValue = DynamicFormValue(propertyName: propName, propertyType: notionType)
                 fieldValues[propName] = formValue
                 print("[AddTransactionVM] Skipping Split Details column from form: \(propName)")
@@ -1139,6 +1179,14 @@ final class AddTransactionViewModel {
         return jsonString
     }
 
+    private static let metadataFallbackNames = ["split details", "app metadata", "metadata", "notra metadata", "split metadata", "app data", "notra data"]
+
+    private func isMetadataFieldName(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return lower == targetDatabaseMapping?.columnMapping?.expenseAppMetadataProperty?.lowercased()
+            || AddTransactionViewModel.metadataFallbackNames.contains(lower)
+    }
+
     func resetSplitState() {
         isSplitExpense = false
         splitMethod = .half
@@ -1226,12 +1274,9 @@ final class AddTransactionViewModel {
                             print("[EditSplit] updating Notion Amount=\(splitResult.myShare) (was \(oldVal))")
                         }
                     }
-                    if valuesToSave[i].propertyType == .richText {
-                        let metadataCol = targetDatabaseMapping?.columnMapping?.expenseAppMetadataProperty
-                        if let col = metadataCol, valuesToSave[i].propertyName == col {
-                            valuesToSave[i].stringValue = splitDetailsJSON
-                            print("[EditSplit] updating Notion Split Details=\(splitDetailsJSON)")
-                        }
+                    if valuesToSave[i].propertyType == .richText, isMetadataFieldName(valuesToSave[i].propertyName) {
+                        valuesToSave[i].stringValue = splitDetailsJSON
+                        print("[EditSplit] updating Notion Split Details=\(splitDetailsJSON)")
                     }
                 }
             } else {
@@ -1241,11 +1286,8 @@ final class AddTransactionViewModel {
                             valuesToSave[i].numberValue = myShareAmountForSplit
                         }
                     }
-                    if valuesToSave[i].propertyType == .richText {
-                        let metadataCol = targetDatabaseMapping?.columnMapping?.expenseAppMetadataProperty
-                        if let col = metadataCol, valuesToSave[i].propertyName == col {
-                            valuesToSave[i].stringValue = buildSplitMetadataJSON()
-                        }
+                    if valuesToSave[i].propertyType == .richText, isMetadataFieldName(valuesToSave[i].propertyName) {
+                        valuesToSave[i].stringValue = buildSplitMetadataJSON()
                     }
                 }
             }
